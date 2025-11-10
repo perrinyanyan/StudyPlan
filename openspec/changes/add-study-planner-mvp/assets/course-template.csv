@@ -1,0 +1,3 @@
+course_code,course_name,term,class_code,date,start_time,end_time,location,instructor,attendance_policy
+ACCP-MATH-101,Algebra I,2025 Spring,ACCP-11A,2025-03-01,19:00,20:30,Room 203,Ms. Zhang,Required
+TOEFL-READ-201,TOEFL Reading,2025 Spring,,2025-03-02,20:00,21:00,Online,Mr. Li,Optional
