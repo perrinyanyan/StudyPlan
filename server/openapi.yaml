@@ -1,0 +1,458 @@
+openapi: 3.1.0
+info:
+  title: Study Planner API
+  version: 0.1.0
+  description: Backend APIs for accounts, tasks, planner, courses, focus, and notifications.
+servers:
+  - url: http://localhost:3000
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+    Captcha:
+      type: object
+      properties:
+        id: { type: string }
+        svg: { type: string }
+      required: [id, svg]
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: ["string", "null"] }
+        color: { type: ["string", "null"] }
+        due_at: { type: ["string", "null"], format: date-time }
+        estimate_min: { type: ["integer", "null"] }
+        priority: { type: ["integer", "null"] }
+        recurrence_rule: { type: ["string", "null"] }
+        status: { type: string, enum: [open, done] }
+        scheduling_status: { type: string, enum: [scheduled, unscheduled] }
+        created_at: { type: string, format: date-time }
+    TimeBlock:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        task_id: { type: ["string", "null"], format: uuid }
+        start_at: { type: string, format: date-time }
+        end_at: { type: string, format: date-time }
+        recurrence_rule: { type: ["string", "null"] }
+        created_at: { type: string, format: date-time }
+    Course:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        term: { type: string }
+        school_id: { type: ["string", "null"], format: uuid }
+        created_at: { type: string, format: date-time }
+    CourseSession:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        course_id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        start_time: { type: string, example: "19:00:00" }
+        end_time: { type: string, example: "20:30:00" }
+        location: { type: ["string", "null"] }
+        class_id: { type: ["string", "null"], format: uuid }
+        instructor: { type: string }
+        attendance_policy: { type: string }
+        created_at: { type: string, format: date-time }
+    FocusStats:
+      type: object
+      properties:
+        total_minutes: { type: integer }
+        sessions_count: { type: integer }
+        by_day:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              minutes: { type: integer }
+              sessions: { type: integer }
+    PushSubscription:
+      type: object
+      properties:
+        endpoint: { type: string }
+        keys:
+          type: object
+          properties:
+            p256dh: { type: string }
+            auth: { type: string }
+          required: [p256dh, auth]
+        userAgent: { type: string }
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
+  /auth/signup:
+    post:
+      summary: Sign up (email + password + nickname)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 6 }
+                nickname: { type: string }
+              required: [email, password, nickname]
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '409': { description: Conflict, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /auth/verify-email:
+    post:
+      summary: Verify email using token from email link
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { token: { type: string } }, required: [token] }
+      responses:
+        '200': { description: Verified, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+  /auth/login:
+    post:
+      summary: Login and get JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { email: { type: string }, password: { type: string } }, required: [email, password] }
+      responses:
+        '200':
+          description: Token
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string } }, required: [token] }
+  /auth/request-password-reset:
+    post:
+      summary: Request password reset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { email: { type: string, format: email } }, required: [email] }
+      responses:
+        '200': { description: Sent, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+  /auth/reset-password:
+    post:
+      summary: Reset password using token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { token: { type: string }, new_password: { type: string, minLength: 6 } }, required: [token, new_password] }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+  /auth/captcha:
+    get:
+      summary: Get captcha svg
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Captcha' } } } }
+        '429': { description: Too Many Requests }
+  /auth/profile/nickname:
+    patch:
+      summary: Update nickname (captcha + JWT)
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string }
+                captcha_id: { type: string }
+                captcha_answer: { type: string }
+              required: [nickname, captcha_id, captcha_answer]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { description: Unauthorized }
+        '400': { description: Bad Request }
+  /tasks:
+    get:
+      summary: List tasks
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [open, done] }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Task' } } }, required: [items] } } } }
+        '401': { description: Unauthorized }
+    post:
+      summary: Create task
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                type: { type: string }
+                color: { type: string }
+                due_at: { type: string, format: date-time }
+                estimate_min: { type: integer }
+                priority: { type: integer }
+                recurrence_rule: { type: string }
+              required: [title]
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid } }, required: [id] } } } }
+        '401': { description: Unauthorized }
+  /tasks/daily:
+    get:
+      summary: Aggregate due-today and overdue tasks
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, example: '2025-11-11' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today: { type: array, items: { $ref: '#/components/schemas/Task' } }
+                  overdue: { type: array, items: { $ref: '#/components/schemas/Task' } }
+                required: [today, overdue]
+        '401': { description: Unauthorized }
+  /tasks/{id}:
+    patch:
+      summary: Update task
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { description: Unauthorized }
+    delete:
+      summary: Delete task
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { description: Unauthorized }
+  /blocks:
+    post:
+      summary: Create time block
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_at: { type: string, format: date-time }
+                end_at: { type: string, format: date-time }
+                task_id: { type: ["string", "null"], format: uuid }
+              required: [start_at, end_at]
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid } }, required: [id] } } } }
+        '401': { description: Unauthorized }
+  /blocks/daily:
+    get:
+      summary: List time blocks that intersect a given date (UTC)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: date
+          required: true
+          schema: { type: string, example: '2025-11-11' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/TimeBlock' } } }, required: [items] } } } }
+        '401': { description: Unauthorized }
+  /blocks/{id}:
+    patch:
+      summary: Update time block
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { description: Unauthorized }
+    delete:
+      summary: Delete time block
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '401': { description: Unauthorized }
+  /courses/import:
+    post:
+      summary: Import course sessions from CSV (one row per session)
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { courses: { type: integer }, sessions: { type: integer } }, required: [courses, sessions] } } } }
+        '401': { description: Unauthorized }
+  /courses:
+    get:
+      summary: List courses
+      parameters:
+        - in: query
+          name: term
+          schema: { type: string }
+        - in: query
+          name: school_id
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Course' } } }, required: [items] } } } }
+  /courses/{id}/sessions:
+    get:
+      summary: List sessions for a course
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/CourseSession' } } }, required: [items] } } } }
+  /focus/start:
+    post:
+      summary: Start a focus session
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task_id: { type: ["string", "null"], format: uuid }
+                started_at: { type: string, format: date-time }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid } }, required: [id] } } } }
+        '409': { description: Active session exists }
+  /focus/end:
+    post:
+      summary: End current focus session
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ended_at: { type: string, format: date-time }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '404': { description: No active session }
+  /focus/stats:
+    get:
+      summary: Focus stats
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FocusStats' } } } }
+  /push/public-key:
+    get:
+      summary: Get VAPID public key
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { key: { type: string } }, required: [key] } } } }
+  /push/subscribe:
+    post:
+      summary: Save push subscription
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscription' }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Message' } } } }
+        '429': { description: Too Many Requests }
+  /notifications/test:
+    post:
+      summary: Send a test push to all subscriptions of current user (dev)
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: Result per endpoint
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        endpoint: { type: string }
+                        ok: { type: boolean }
+                        error: { type: string }
+                required: [results]

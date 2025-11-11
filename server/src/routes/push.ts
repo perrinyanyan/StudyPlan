@@ -1,0 +1,53 @@
+import { Router } from 'express';
+import type { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
+import { z } from 'zod';
+import { supabase } from '../db/supabase.js';
+
+const router = Router();
+const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
+
+function getUserId(req: Request): string | null {
+  const auth = req.headers['authorization'] || '';
+  if (typeof auth !== 'string' || !auth.startsWith('Bearer ')) return null;
+  const token = auth.slice(7);
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as any;
+    return payload.sub as string;
+  } catch {
+    return null;
+  }
+}
+
+const subSchema = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({ p256dh: z.string(), auth: z.string() }),
+  userAgent: z.string().optional(),
+});
+
+router.get('/public-key', async (_req: Request, res: Response) => {
+  const key = process.env.VAPID_PUBLIC_KEY || '';
+  res.json({ key });
+});
+
+router.post('/subscribe', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const parsed = subSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid subscription' });
+  const { endpoint, keys, userAgent } = parsed.data;
+  const upsert = {
+    user_id: userId,
+    endpoint,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    user_agent: userAgent ?? null,
+  };
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .upsert(upsert, { onConflict: 'endpoint' });
+  if (error) return res.status(500).json({ error: 'Failed to save subscription' });
+  res.json({ message: 'OK' });
+});
+
+export default router;

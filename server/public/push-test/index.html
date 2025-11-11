@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Push 订阅测试（开发环境）</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 24px; line-height: 1.5; }
+    input, button { padding: 8px 12px; margin: 4px 0; }
+    .row { margin-bottom: 12px; }
+    .ok { color: #0a8; }
+    .err { color: #c00; }
+    #log { white-space: pre-wrap; background: #fafafa; border: 1px solid #eee; padding: 12px; border-radius: 8px; min-height: 120px; }
+    code { background: #f2f2f2; padding: 2px 4px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Web Push 订阅测试（开发环境）</h1>
+  <p>步骤：登录 → 授权通知 → 注册 Service Worker → 订阅 → 提交订阅 → 测试推送</p>
+
+  <div class="row">
+    <label>邮箱</label><br />
+    <input id="email" type="email" value="46464126@qq.com" style="width: 320px" />
+  </div>
+  <div class="row">
+    <label>密码</label><br />
+    <input id="password" type="password" value="Passw0rd2!" style="width: 320px" />
+  </div>
+  <div class="row">
+    <button id="btn-login">登录以获取 JWT</button>
+    <span id="login-status"></span>
+  </div>
+
+  <hr />
+
+  <div class="row">
+    <button id="btn-perm">请求浏览器通知权限</button>
+    <span>当前权限：<code id="perm">unknown</code></span>
+  </div>
+  <div class="row">
+    <button id="btn-register-sw">注册 Service Worker</button>
+    <span id="sw-status"></span>
+  </div>
+  <div class="row">
+    <button id="btn-subscribe">订阅并提交到后端</button>
+    <span id="sub-status"></span>
+  </div>
+  <div class="row">
+    <button id="btn-test-push">发送测试推送</button>
+  </div>
+
+  <h3>日志</h3>
+  <div id="log"></div>
+
+<script>
+  const logEl = document.getElementById('log');
+  const permEl = document.getElementById('perm');
+  const loginStatus = document.getElementById('login-status');
+  const swStatus = document.getElementById('sw-status');
+  const subStatus = document.getElementById('sub-status');
+
+  let token = null;
+  let reg = null;
+
+  function log(msg, cls) {
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logEl.appendChild(line);
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  async function login() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    try {
+      const resp = await fetch('/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      if (!resp.ok) throw new Error('登录失败');
+      const data = await resp.json();
+      token = data.token;
+      loginStatus.textContent = '已登录';
+      loginStatus.className = 'ok';
+      log('登录成功，已获取 JWT', 'ok');
+    } catch (e) {
+      loginStatus.textContent = '登录失败';
+      loginStatus.className = 'err';
+      log('登录失败: ' + e.message, 'err');
+    }
+  }
+
+  async function ensureSW() {
+    if (!('serviceWorker' in navigator)) throw new Error('此浏览器不支持 Service Worker');
+    if (!reg) {
+      reg = await navigator.serviceWorker.register('/push-test/sw.js');
+    }
+    swStatus.textContent = 'SW 已注册';
+    swStatus.className = 'ok';
+    return reg;
+  }
+
+  async function requestPerm() {
+    const perm = await Notification.requestPermission();
+    permEl.textContent = perm;
+    log('通知权限: ' + perm);
+  }
+
+  async function subscribe() {
+    if (!token) throw new Error('请先登录');
+    await ensureSW();
+    const keyResp = await fetch('/push/public-key');
+    const { key } = await keyResp.json();
+    if (!key) throw new Error('服务器未配置 VAPID 公钥');
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) });
+    const body = { endpoint: sub.endpoint, keys: sub.toJSON().keys, userAgent: navigator.userAgent };
+    const resp = await fetch('/push/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify(body) });
+    if (!resp.ok) throw new Error('提交订阅失败');
+    subStatus.textContent = '订阅成功';
+    subStatus.className = 'ok';
+    log('订阅成功并已提交到后端', 'ok');
+  }
+
+  async function testPush() {
+    if (!token) throw new Error('请先登录');
+    const resp = await fetch('/notifications/test', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+    const data = await resp.json();
+    log('测试推送结果: ' + JSON.stringify(data));
+  }
+
+  document.getElementById('btn-login').addEventListener('click', () => login());
+  document.getElementById('btn-perm').addEventListener('click', () => requestPerm());
+  document.getElementById('btn-register-sw').addEventListener('click', () => ensureSW().then(() => log('SW 已注册', 'ok')).catch(e => log(e.message, 'err')));
+  document.getElementById('btn-subscribe').addEventListener('click', () => subscribe().catch(e => log(e.message, 'err')));
+  document.getElementById('btn-test-push').addEventListener('click', () => testPush().catch(e => log(e.message, 'err')));
+
+  // Init
+  permEl.textContent = Notification.permission;
+</script>
+</body>
+</html>
