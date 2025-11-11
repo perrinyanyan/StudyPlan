@@ -18,7 +18,9 @@ export function createCaptcha() {
   });
   const id = uid();
   store.set(id, { code: text.toLowerCase(), expireAt: Date.now() + TTL_MS });
-  console.log(`[dev] captcha ${id} code: ${text.toLowerCase()}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[dev] captcha ${id} code: ${text.toLowerCase()}`);
+  }
   return { id, svg: data };
 }
 

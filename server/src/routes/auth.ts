@@ -58,7 +58,9 @@ router.post('/signup', async (req: Request, res: Response) => {
 
   const token = mktoken();
   emailVerifications.set(token, { email, expireAt: Date.now() + TOKEN_TTL_MS });
-  console.log(`[dev] verify-email token for ${email}: ${token}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[dev] verify-email token for ${email}: ${token}`);
+  }
   const base = process.env.APP_BASE_URL || 'http://localhost:3000';
   const link = `${base}/verify-email?token=${token}`;
   await sendEmail({ to: email, subject: 'Verify your email', html: `点击验证：<a href="${link}">${link}</a>` });
@@ -105,7 +107,9 @@ router.post('/request-password-reset', async (req: Request, res: Response) => {
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
   const token = mktoken();
   passwordResets.set(token, { email: parsed.data.email, expireAt: Date.now() + TOKEN_TTL_MS });
-  console.log(`[dev] reset-password token for ${parsed.data.email}: ${token}`);
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[dev] reset-password token for ${parsed.data.email}: ${token}`);
+  }
   const base = process.env.APP_BASE_URL || 'http://localhost:3000';
   const link = `${base}/reset-password?token=${token}`;
   await sendEmail({ to: parsed.data.email, subject: 'Reset your password', html: `点击重置：<a href="${link}">${link}</a>` });
