@@ -1,11 +1,12 @@
 import { supabase } from '../db/supabase.js';
 import { sendPushToSubscription } from '../utils/push.js';
-import { addMinutes } from 'date-fns';
+import { addMinutes, startOfDay, endOfDay } from 'date-fns';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 
 const PREBLOCK_WINDOW_MIN = Number(process.env.PREBLOCK_WINDOW_MIN || 10);
 
 const remindedBlocks = new Set<string>();
-let lastDailySummaryDate = '';
+const lastDailySummaryByUser = new Map<string, string>(); // user_id -> YYYY-MM-DD (in their timezone)
 
 async function sendToUser(userId: string, payload: any) {
   const { data: subs, error } = await supabase
@@ -44,36 +45,53 @@ async function runPreblockReminders() {
   }
 }
 
+function hhmmInZone(d: Date, tz: string): string {
+  const fmt = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz });
+  const parts = fmt.formatToParts(d);
+  const hh = parts.find(p => p.type === 'hour')?.value || '00';
+  const mm = parts.find(p => p.type === 'minute')?.value || '00';
+  return `${hh}:${mm}`;
+}
+
+function ymdInZone(d: Date, tz: string): string {
+  const fmt = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
+  // en-CA yields YYYY-MM-DD
+  return fmt.format(d);
+}
+
 async function runDailySummary() {
-  // Use UTC date string for once-per-day guard
-  const today = new Date().toISOString().slice(0, 10);
-  if (lastDailySummaryDate === today) return;
   const now = new Date();
-  const hhmm = now.toISOString().slice(11, 16); // UTC HH:MM
-  const target = process.env.DAILY_SUMMARY_UTC_HHMM || '20:00';
-  if (hhmm !== target) return;
-  lastDailySummaryDate = today;
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[notifications] daily summary triggered for ${today} at ${hhmm} (target ${target})`);
-  }
+  // Load users who configured daily summary time
+  const { data: rows, error } = await supabase
+    .from('user_settings')
+    .select('user_id, daily_summary_time, timezone')
+    .not('daily_summary_time', 'is', null);
+  if (error || !rows || rows.length === 0) return;
 
-  // Fetch users who have subscriptions
-  const { data: users, error } = await supabase
-    .from('push_subscriptions')
-    .select('user_id')
-    .neq('user_id', null);
-  if (error || !users) return;
-  const uniq = Array.from(new Set(users.map(u => u.user_id)));
+  for (const r of rows as any[]) {
+    const uid: string = r.user_id;
+    const tz: string = r.timezone || 'Asia/Shanghai';
+    const target: string = String(r.daily_summary_time).slice(0, 5); // HH:MM or HH:MM:SS
+    const localNow = hhmmInZone(now, tz);
+    if (localNow !== target) continue; // only fire at the configured minute
 
-  for (const uid of uniq) {
-    // Count open tasks due today or overdue
-    const start = new Date(now);
-    start.setUTCHours(0, 0, 0, 0);
-    const end = new Date(now);
-    end.setUTCHours(23, 59, 59, 999);
+    const todayLocal = ymdInZone(now, tz);
+    if (lastDailySummaryByUser.get(uid) === todayLocal) continue; // already sent today
+    lastDailySummaryByUser.set(uid, todayLocal);
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[notifications] daily summary for user ${uid} at ${localNow} ${tz} (${todayLocal})`);
+    }
+
+    // Count open tasks due today in user's timezone, and overdue before local start
+    const nowLocal = toZonedTime(now, tz);
+    const startLocal = startOfDay(nowLocal);
+    const endLocal = endOfDay(nowLocal);
+    const startUtc = fromZonedTime(startLocal, tz);
+    const endUtc = fromZonedTime(endLocal, tz);
     const [{ data: todayTasks }, { data: overdueTasks }] = await Promise.all([
-      supabase.from('tasks').select('id').eq('user_id', uid).eq('status', 'open').gte('due_at', start.toISOString()).lte('due_at', end.toISOString()),
-      supabase.from('tasks').select('id').eq('user_id', uid).eq('status', 'open').lt('due_at', start.toISOString()),
+      supabase.from('tasks').select('id').eq('user_id', uid).eq('status', 'open').gte('due_at', startUtc.toISOString()).lte('due_at', endUtc.toISOString()),
+      supabase.from('tasks').select('id').eq('user_id', uid).eq('status', 'open').lt('due_at', startUtc.toISOString()),
     ]);
     const countToday = (todayTasks || []).length;
     const countOverdue = (overdueTasks || []).length;
@@ -81,7 +99,7 @@ async function runDailySummary() {
       type: 'daily_summary',
       title: '每日总结',
       body: `今天待办 ${countToday} 项，逾期 ${countOverdue} 项`,
-      date: today,
+      date: todayLocal,
     });
   }
 }

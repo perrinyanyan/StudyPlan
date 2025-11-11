@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase.js';
+import { fromZonedTime } from 'date-fns-tz';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
@@ -81,8 +82,14 @@ router.get('/daily', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const dateStr = typeof req.query.date === 'string' ? req.query.date : undefined;
   if (!dateStr) return res.status(400).json({ error: 'date is required (YYYY-MM-DD)' });
-  const start = new Date(`${dateStr}T00:00:00.000Z`);
-  const end = new Date(`${dateStr}T23:59:59.999Z`);
+  const { data: us } = await supabase
+    .from('user_settings')
+    .select('timezone')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const tz = us?.timezone || 'Asia/Shanghai';
+  const start = fromZonedTime(`${dateStr} 00:00:00.000`, tz);
+  const end = fromZonedTime(`${dateStr} 23:59:59.999`, tz);
   const { data: today, error: err1 } = await supabase
     .from('tasks')
     .select('*')

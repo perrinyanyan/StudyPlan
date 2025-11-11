@@ -314,6 +314,21 @@ export function getOpenApiSpec() {
           properties: { results: { type: 'array', items: { $ref: '#/components/schemas/NotificationTestResult' } } },
           required: ['results'],
         },
+        UserSettings: {
+          type: 'object',
+          properties: {
+            daily_summary_time: { type: 'string', nullable: true, pattern: '^\\d{2}:\\d{2}(:\\d{2})?$' },
+            timezone: { type: 'string', nullable: true },
+          },
+          required: ['daily_summary_time', 'timezone'],
+        },
+        UpdateUserSettingsRequest: {
+          type: 'object',
+          properties: {
+            daily_summary_time: { type: 'string', nullable: true, pattern: '^\\d{2}:\\d{2}(:\\d{2})?$' },
+            timezone: { type: 'string', nullable: true },
+          },
+        },
       },
     },
     security: [],
@@ -683,6 +698,26 @@ export function getOpenApiSpec() {
           responses: {
             '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/NotificationTestResponse' } } } },
             '400': { description: 'No subscription', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+      },
+      '/settings': {
+        get: {
+          summary: 'Get current user settings',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/UserSettings' } } } },
+            '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+          },
+        },
+        put: {
+          summary: 'Update current user settings',
+          security: [{ bearerAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateUserSettingsRequest' } } } },
+          responses: {
+            '200': { description: 'OK', content: { 'application/json': { schema: { $ref: '#/components/schemas/MessageResponse' } } } },
+            '400': { description: 'Invalid input', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
             '401': { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
           },
         },
