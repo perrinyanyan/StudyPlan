@@ -61,7 +61,10 @@ router.post('/', async (req: Request, res: Response) => {
     .eq('user_id', userId)
     .lt('start_at', endIso)
     .gt('end_at', startIso);
-  if (cErr) return res.status(500).json({ error: 'Failed to check conflicts' });
+  if (cErr) {
+    if (process.env.NODE_ENV !== 'production') console.error('[blocks] conflict check error (create)', cErr);
+    return res.status(500).json({ error: 'Failed to check conflicts' });
+  }
   if (conflicts && conflicts.length > 0) return res.status(409).json({ error: 'Time conflict', conflicts });
 
   const { data, error } = await supabase
@@ -119,7 +122,10 @@ router.patch('/:id', async (req: Request, res: Response) => {
     .neq('id', id)
     .lt('start_at', endIso)
     .gt('end_at', startIso);
-  if (cErr) return res.status(500).json({ error: 'Failed to check conflicts' });
+  if (cErr) {
+    if (process.env.NODE_ENV !== 'production') console.error('[blocks] conflict check error (update)', cErr);
+    return res.status(500).json({ error: 'Failed to check conflicts' });
+  }
   if (conflicts && conflicts.length > 0) return res.status(409).json({ error: 'Time conflict' });
 
   const { error: uErr } = await supabase
