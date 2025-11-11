@@ -4,6 +4,8 @@ import cors from 'cors';
 import authRouter from './routes/auth.js';
 import tasksRouter from './routes/tasks.js';
 import blocksRouter from './routes/blocks.js';
+import coursesRouter from './routes/courses.js';
+import focusRouter from './routes/focus.js';
 
 const app = express();
 app.use(cors());
@@ -13,6 +15,8 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth', authRouter);
 app.use('/tasks', tasksRouter);
 app.use('/blocks', blocksRouter);
+app.use('/courses', coursesRouter);
+app.use('/focus', focusRouter);
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {

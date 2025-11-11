@@ -54,6 +54,7 @@ ALTER TABLE class_join_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE class_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE time_blocks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE focus_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE course_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE optional_plans ENABLE ROW LEVEL SECURITY;
@@ -132,6 +133,12 @@ CREATE POLICY tb_read_own ON time_blocks FOR SELECT USING (user_id = auth.uid())
 CREATE POLICY tb_insert_own ON time_blocks FOR INSERT WITH CHECK (user_id = auth.uid());
 CREATE POLICY tb_update_own ON time_blocks FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 CREATE POLICY tb_delete_own ON time_blocks FOR DELETE USING (user_id = auth.uid());
+
+-- FOCUS_SESSIONS: owner-only CRUD
+CREATE POLICY fs_read_own ON focus_sessions FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY fs_insert_own ON focus_sessions FOR INSERT WITH CHECK (user_id = auth.uid());
+CREATE POLICY fs_update_own ON focus_sessions FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE POLICY fs_delete_own ON focus_sessions FOR DELETE USING (user_id = auth.uid());
 
 -- COURSES & SESSIONS: read for authenticated; write by admins
 CREATE POLICY courses_read ON courses FOR SELECT USING (auth.uid() IS NOT NULL);

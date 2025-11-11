@@ -194,4 +194,15 @@ CREATE TABLE IF NOT EXISTS user_settings (
   UNIQUE(user_id)
 );
 
+-- Focus sessions for Pomodoro tracking
+CREATE TABLE IF NOT EXISTS focus_sessions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_id uuid REFERENCES tasks(id) ON DELETE SET NULL,
+  started_at timestamptz NOT NULL DEFAULT now(),
+  ended_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CHECK (ended_at IS NULL OR ended_at > started_at)
+);
+
 COMMIT;
