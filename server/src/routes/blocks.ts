@@ -74,7 +74,15 @@ router.post('/', async (req: Request, res: Response) => {
     .select('id, task_id')
     .single();
   if (error) return res.status(500).json({ error: 'Failed to create block' });
-  if (data.task_id) await updateTaskSchedulingStatus(data.task_id);
+  if (data.task_id) {
+    await updateTaskSchedulingStatus(data.task_id);
+    const estimateMin = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
+    await supabase
+      .from('tasks')
+      .update({ due_at: endIso, estimate_min: estimateMin })
+      .eq('id', data.task_id)
+      .eq('user_id', userId);
+  }
   res.status(201).json({ id: data.id });
 });
 

@@ -237,6 +237,15 @@ export default function App() {
     return DEFAULT_TZ_LIST
   }, [])
 
+  function formatYmdWeek(d: Date) {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+    const w = weekdays[d.getDay()]
+    return `${y}年${m}月${day}日 ${w}`
+  }
+
   // Planner UI enhancements
   const [showFutureOnly, setShowFutureOnly] = useState<boolean>(false)
   const [overdueCollapsed, setOverdueCollapsed] = useState<boolean>(true)
@@ -263,6 +272,7 @@ export default function App() {
   const [centerAlert, setCenterAlert] = useState<{ title: string; detail?: string } | null>(null)
   const [profile, setProfile] = useState<{ id: string | number; email: string; nickname?: string } | null>(null)
   const [showCreateTask, setShowCreateTask] = useState<boolean>(false)
+  const [editTask, setEditTask] = useState<Task | null>(null)
   const [vw, setVw] = useState<number>(typeof window !== 'undefined' ? window.innerWidth : 1024)
   const isSmall = vw < 768
 
@@ -539,6 +549,24 @@ export default function App() {
     return true
   }
 
+  async function updateTaskAdvanced(id: Task['id'], payload: { title: string; type?: string; color?: string; type_id?: string; due_at?: string; estimate_min?: number; priority?: number; recurrence_rule?: string; tags?: string[] }): Promise<boolean> {
+    const r = await fetch(`/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify(payload),
+    })
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}))
+      alert('更新任务失败 ' + (j.error || r.status))
+      return false
+    }
+    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (pathOnly === '/planner' && plannerView === 'list') {
+      setRangeReloadKey((k) => k + 1)
+    }
+    return true
+  }
+
   async function completeTask(id: Task['id']) {
     const r = await fetch(`/tasks/${id}`, {
       method: 'PATCH',
@@ -550,6 +578,9 @@ export default function App() {
       return
     }
     await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (pathOnly === '/planner' && plannerView === 'list') {
+      setRangeReloadKey((k) => k + 1)
+    }
   }
 
   async function deleteTask(id: Task['id']) {
@@ -559,6 +590,9 @@ export default function App() {
       return
     }
     await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (pathOnly === '/planner' && plannerView === 'list') {
+      setRangeReloadKey((k) => k + 1)
+    }
   }
 
   async function addBlock(start: string, end: string, taskId?: string, dateOverride?: string): Promise<boolean> {
@@ -1369,17 +1403,17 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-3 p-3 text-white">
+                  <div className="space-y-4 p-3 text-white">
                     {(() => {
                       const baseBlocks = rangeBlocks !== null ? rangeBlocks : blocks
                       let arr = [...baseBlocks].sort((a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime())
                       if (listFilterOverdue !== 'all') {
-                        arr = arr.filter(b => (new Date(b.end_at).getTime() < now.getTime()) === (listFilterOverdue === 'yes'))
+                        arr = arr.filter((b) => (new Date(b.end_at).getTime() < now.getTime()) === (listFilterOverdue === 'yes'))
                       }
                       if (listFilterDone !== 'all') {
-                        arr = arr.filter(b => {
+                        arr = arr.filter((b) => {
                           const st = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
-                          return (listFilterDone === 'done') ? st === 'done' : st !== 'done'
+                          return listFilterDone === 'done' ? st === 'done' : st !== 'done'
                         })
                       }
                       if (listFilterType !== 'all' || listFilterPriority !== 'all' || listFilterTag !== 'all') {
@@ -1405,201 +1439,241 @@ export default function App() {
                       }
                       if (rangeBlocksLoading && rangeBlocks === null) return <div className="text-sm text-white/60">加载中...</div>
                       if (arr.length === 0) return <div className="text-sm text-white/60">该日期范围内暂无条目</div>
-                      return arr.map((b) => {
-                        const s = new Date(b.start_at)
-                        const e = new Date(b.end_at)
-                        const name = b.task_id ? taskTitleMap[String(b.task_id)] : undefined
-                        const over = e.getTime() < now.getTime()
-                        const status = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
-                        const blockId = String(b.id)
-                        const taskIdStr = b.task_id ? String(b.task_id) : null
-                        const meta = taskIdStr ? taskMetaMap[taskIdStr] : undefined
-                        const prio = meta?.priority ?? null
-                        const prioLabel = prio === 2 ? '高' : prio === 1 ? '中' : prio === 0 ? '低' : null
-                        const prioClass =
-                          prio === 2
-                            ? 'bg-red-500/20 text-red-300'
-                            : prio === 1
-                            ? 'bg-yellow-500/20 text-yellow-300'
-                            : prio === 0
-                            ? 'bg-green-500/20 text-green-300'
-                            : 'bg-slate-500/20 text-slate-300'
-                        const type = meta?.type || null
-                        const tags = meta?.tags || []
-                        const isMenuOpen = listMenuOpenId === blockId
-                        const isEditing = !!(listEdit && taskIdStr && listEdit.taskId === taskIdStr)
-                        const isCurrentNow = todayStr(s) === todayStr(now) && s <= now && now < e
-                        return (
-                          <div
-                            key={blockId}
-                            className={`relative flex flex-col gap-1 rounded-lg bg-white/5 p-2.5 border ${
-                              isCurrentNow ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-500/10' : 'border-transparent'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2.5">
-                              <div
-                                className="w-1.5 h-10 rounded-full"
-                                style={{ backgroundColor: (meta?.color || '#60A5FA') + 'CC' }}
-                              ></div>
-                              <div className="flex items-center justify-between w-full text-sm">
-                                <div className="flex flex-col flex-1">
-                                  <div className="flex items-center gap-1">
-                                    {status === 'done' && (
-                                      <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[0.65rem] font-medium text-emerald-300">
-                                        完成
-                                      </span>
-                                    )}
-                                    <p className={`font-medium ${status === 'done' ? 'line-through opacity-60' : ''}`}>{name || '时间块'}</p>
+
+                      const sections: { key: string; date: Date; items: typeof arr }[] = []
+                      for (const b of arr) {
+                        const d = new Date(b.start_at)
+                        const key = todayStr(d)
+                        let sec = sections.find((s2) => s2.key === key)
+                        if (!sec) {
+                          sec = { key, date: d, items: [] as typeof arr }
+                          sections.push(sec)
+                        }
+                        sec.items.push(b)
+                      }
+
+                      return sections.map((section) => (
+                        <div key={section.key} className="space-y-2">
+                          <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                            <span className="inline-flex h-5 w-1 rounded-full bg-slate-400" />
+                            <span>{formatYmdWeek(section.date)}</span>
+                          </div>
+                          <div className="space-y-2">
+                            {section.items.map((b) => {
+                              const s = new Date(b.start_at)
+                              const e = new Date(b.end_at)
+                              const name = b.task_id ? taskTitleMap[String(b.task_id)] : undefined
+                              const over = e.getTime() < now.getTime()
+                              const status = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
+                              const blockId = String(b.id)
+                              const taskIdStr = b.task_id ? String(b.task_id) : null
+                              const meta = taskIdStr ? taskMetaMap[taskIdStr] : undefined
+                              const prio = meta?.priority ?? null
+                              const prioLabel = prio === 2 ? '高' : prio === 1 ? '中' : prio === 0 ? '低' : null
+                              const prioClass =
+                                prio === 2
+                                  ? 'bg-red-500/20 text-red-300'
+                                  : prio === 1
+                                  ? 'bg-yellow-500/20 text-yellow-300'
+                                  : prio === 0
+                                  ? 'bg-green-500/20 text-green-300'
+                                  : 'bg-slate-500/20 text-slate-300'
+                              const type = meta?.type || null
+                              const tags = meta?.tags || []
+                              const isMenuOpen = listMenuOpenId === blockId
+                              const isEditing = !!(listEdit && taskIdStr && listEdit.taskId === taskIdStr)
+                              const isCurrentNow = todayStr(s) === todayStr(now) && s <= now && now < e
+
+                              return (
+                                <div
+                                  key={blockId}
+                                  className={`relative flex flex-col gap-1 rounded-lg bg-white/5 p-2.5 border ${
+                                    isCurrentNow ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-500/10' : 'border-transparent'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div
+                                      className="w-1.5 h-10 rounded-full"
+                                      style={{ backgroundColor: (meta?.color || '#60A5FA') + 'CC' }}
+                                    ></div>
+                                    <div className="flex items-center justify-between w-full text-sm">
+                                      <div className="flex flex-col flex-1">
+                                        <div className="flex items-center gap-1">
+                                          {status === 'done' && (
+                                            <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[0.65rem] font-medium text-emerald-300">
+                                              完成
+                                            </span>
+                                          )}
+                                          <p className={`font-medium ${status === 'done' ? 'line-through opacity-60' : ''}`}>{name || '时间块'}</p>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
+                                          {type && (
+                                            <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta?.color || '#9CA3AF' }}></span>
+                                              <span>{type}</span>
+                                            </span>
+                                          )}
+                                          {tags.map((g) => (
+                                            <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div className={`flex items-center text-white/80 gap-2 text-xs ${status === 'done' ? 'opacity-60' : ''}`}>
+                                        {isCurrentNow && (
+                                          <button
+                                            className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-black hover:bg-amber-400"
+                                            onClick={() => {
+                                              const title = name || '当前时间段任务'
+                                              setCenterAlert({ title: '专注模式', detail: `请专注完成：${title}` })
+                                            }}
+                                          >
+                                            <span className="material-symbols-outlined text-sm">center_focus_strong</span>
+                                            <span>专注</span>
+                                          </button>
+                                        )}
+                                        {over && (
+                                          <span className="inline-flex items-center gap-1 rounded-md bg-red-500/80 px-2 py-1 font-bold text-white text-xs">
+                                            <span className="material-symbols-outlined text-sm">error</span>
+                                            逾期
+                                          </span>
+                                        )}
+                                        <p className="whitespace-nowrap">{fmtHHmm(s)} - {fmtHHmm(e)}</p>
+                                        {prioLabel && (
+                                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${prioClass}`}>
+                                            <span>{prioLabel}</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-2 pl-3">
+                                        {taskIdStr && (
+                                          <div className="relative">
+                                            <button
+                                              className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/10"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setListMenuOpenId(isMenuOpen ? null : blockId)
+                                              }}
+                                            >
+                                              <span className="material-symbols-outlined text-lg">more_vert</span>
+                                            </button>
+                                            {isMenuOpen && (
+                                              <div className="absolute right-0 mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20">
+                                                <button
+                                                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                                                  onClick={() => {
+                                                    if (!taskIdStr) return
+                                                    const candidates: Task[] = []
+                                                    ;(tasks.today || []).forEach((x) => candidates.push(x))
+                                                    ;(tasks.overdue || []).forEach((x) => candidates.push(x))
+                                                    ;(unscheduled || []).forEach((x) => candidates.push(x))
+                                                    ;(rangeTasks || []).forEach((x) => candidates.push(x))
+                                                    const t = candidates.find((x) => String(x.id) === taskIdStr)
+                                                    if (t) {
+                                                      setEditTask(t)
+                                                    }
+                                                    setListMenuOpenId(null)
+                                                  }}
+                                                >
+                                                  修改
+                                                </button>
+                                                <button
+                                                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                                                  onClick={async () => {
+                                                    if (!taskIdStr) return
+                                                    setListMenuOpenId(null)
+                                                    await completeTask(taskIdStr)
+                                                  }}
+                                                >
+                                                  完成
+                                                </button>
+                                                <button
+                                                  className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
+                                                  onClick={async () => {
+                                                    if (!taskIdStr) return
+                                                    setListMenuOpenId(null)
+                                                    await deleteTask(taskIdStr)
+                                                  }}
+                                                >
+                                                  删除
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                                    {type && (
-                                      <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meta?.color || '#9CA3AF' }}></span>
-                                        <span>{type}</span>
-                                      </span>
-                                    )}
-                                    {tags.map((g) => (
-                                      <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                                <div className={`flex items-center text-white/80 gap-2 text-xs ${status === 'done' ? 'opacity-60' : ''}`}>
-                                  {isCurrentNow && (
-                                    <button
-                                      className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-black hover:bg-amber-400"
-                                      onClick={() => {
-                                        const title = name || '当前时间段任务'
-                                        setCenterAlert({ title: '专注模式', detail: `请专注完成：${title}` })
-                                      }}
-                                    >
-                                      <span className="material-symbols-outlined text-sm">center_focus_strong</span>
-                                      <span>专注</span>
-                                    </button>
-                                  )}
-                                  {over && (
-                                    <span className="inline-flex items-center gap-1 rounded-md bg-red-500/80 px-2 py-1 font-bold text-white text-xs">
-                                      <span className="material-symbols-outlined text-sm">error</span>
-                                      逾期
-                                    </span>
-                                  )}
-                                  <p className="whitespace-nowrap">{todayStr(s)} </p>
-                                  <p className="whitespace-nowrap">{fmtHHmm(s)}-{fmtHHmm(e)}</p>
-                                  {prioLabel && (
-                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${prioClass}`}>
-                                      <span>{prioLabel}</span>
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 pl-3">
-                                  {taskIdStr && (
-                                    <div className="relative">
-                                      <button
-                                        className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/10"
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setListMenuOpenId(isMenuOpen ? null : blockId)
+                                  {isEditing && taskIdStr && listEdit && (
+                                    <div className="mt-1 ml-5 flex flex-wrap items-center gap-2 text-xs text-slate-200">
+                                      <select
+                                        className="px-2 py-1 rounded bg-slate-800 border border-slate-600"
+                                        value={listEdit.priority == null ? '' : String(listEdit.priority)}
+                                        onChange={(e) => {
+                                          const v = e.target.value
+                                          setListEdit((prev) =>
+                                            prev && prev.taskId === taskIdStr ? { ...prev, priority: v === '' ? null : Number(v) } : prev
+                                          )
                                         }}
                                       >
-                                        <span className="material-symbols-outlined text-lg">more_vert</span>
+                                        <option value="">优先级(无)</option>
+                                        <option value="2">高</option>
+                                        <option value="1">中</option>
+                                        <option value="0">低</option>
+                                      </select>
+                                      <input
+                                        className="px-2 py-1 rounded bg-slate-800 border border-slate-600 flex-1 min-w-[6rem]"
+                                        placeholder="任务类型"
+                                        value={listEdit.type}
+                                        onChange={(e) =>
+                                          setListEdit((prev) =>
+                                            prev && prev.taskId === taskIdStr ? { ...prev, type: e.target.value } : prev
+                                          )
+                                        }
+                                      />
+                                      <input
+                                        className="px-2 py-1 rounded bg-slate-800 border border-slate-600 flex-1 min-w-[8rem]"
+                                        placeholder="标签，用空格或逗号分隔"
+                                        value={listEdit.tagsInput}
+                                        onChange={(e) =>
+                                          setListEdit((prev) =>
+                                            prev && prev.taskId === taskIdStr
+                                              ? { ...prev, tagsInput: e.target.value }
+                                              : prev
+                                          )
+                                        }
+                                      />
+                                      <button
+                                        className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
+                                        onClick={() => setListEdit(null)}
+                                      >
+                                        取消
                                       </button>
-                                      {isMenuOpen && (
-                                        <div className="absolute right-0 mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20">
-                                          <button
-                                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                                            onClick={() => {
-                                              if (!taskIdStr) return
-                                              const current = taskMetaMap[taskIdStr] || {}
-                                              setListEdit({
-                                                taskId: taskIdStr,
-                                                priority: current.priority ?? null,
-                                                type: current.type || '',
-                                                tagsInput: (current.tags || []).join(' '),
-                                              })
-                                              setListMenuOpenId(null)
-                                            }}
-                                          >
-                                            修改
-                                          </button>
-                                          <button
-                                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                                            onClick={async () => {
-                                              if (!taskIdStr) return
-                                              setListMenuOpenId(null)
-                                              await completeTask(taskIdStr)
-                                            }}
-                                          >
-                                            完成
-                                          </button>
-                                          <button
-                                            className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
-                                            onClick={async () => {
-                                              if (!taskIdStr) return
-                                              setListMenuOpenId(null)
-                                              await deleteTask(taskIdStr)
-                                            }}
-                                          >
-                                            删除
-                                          </button>
-                                        </div>
-                                      )}
+                                      <button
+                                        className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500"
+                                        onClick={async () => {
+                                          if (!taskIdStr || !listEdit || listEdit.taskId !== taskIdStr) return
+                                          const tags = listEdit.tagsInput
+                                            .split(/[\s,]+/)
+                                            .map((s2) => s2.trim().toLowerCase())
+                                            .filter(Boolean)
+                                          await updateTaskMeta(taskIdStr, {
+                                            priority: listEdit.priority,
+                                            type: listEdit.type.trim() ? listEdit.type.trim() : null,
+                                            tags,
+                                          })
+                                          setListEdit(null)
+                                        }}
+                                      >
+                                        保存
+                                      </button>
                                     </div>
                                   )}
                                 </div>
-                              </div>
-                            </div>
-                            {isEditing && taskIdStr && listEdit && (
-                              <div className="mt-1 ml-5 flex flex-wrap items-center gap-2 text-xs text-slate-200">
-                                <select
-                                  className="px-2 py-1 rounded bg-slate-800 border border-slate-600"
-                                  value={listEdit.priority == null ? '' : String(listEdit.priority)}
-                                  onChange={(e) => {
-                                    const v = e.target.value
-                                    setListEdit((prev) => prev && prev.taskId === taskIdStr ? { ...prev, priority: v === '' ? null : Number(v) } : prev)
-                                  }}
-                                >
-                                  <option value="">优先级(无)</option>
-                                  <option value="2">高</option>
-                                  <option value="1">中</option>
-                                  <option value="0">低</option>
-                                </select>
-                                <input
-                                  className="px-2 py-1 rounded bg-slate-800 border border-slate-600 flex-1 min-w-[6rem]"
-                                  placeholder="任务类型"
-                                  value={listEdit.type}
-                                  onChange={(e) => setListEdit((prev) => prev && prev.taskId === taskIdStr ? { ...prev, type: e.target.value } : prev)}
-                                />
-                                <input
-                                  className="px-2 py-1 rounded bg-slate-800 border border-slate-600 flex-1 min-w-[8rem]"
-                                  placeholder="标签，用空格或逗号分隔"
-                                  value={listEdit.tagsInput}
-                                  onChange={(e) => setListEdit((prev) => prev && prev.taskId === taskIdStr ? { ...prev, tagsInput: e.target.value } : prev)}
-                                />
-                                <button
-                                  className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
-                                  onClick={() => setListEdit(null)}
-                                >
-                                  取消
-                                </button>
-                                <button
-                                  className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500"
-                                  onClick={async () => {
-                                    if (!taskIdStr || !listEdit || listEdit.taskId !== taskIdStr) return
-                                    const tags = listEdit.tagsInput.split(/[\s,]+/).map(s2 => s2.trim().toLowerCase()).filter(Boolean)
-                                    await updateTaskMeta(taskIdStr, {
-                                      priority: listEdit.priority,
-                                      type: listEdit.type.trim() ? listEdit.type.trim() : null,
-                                      tags,
-                                    })
-                                    setListEdit(null)
-                                  }}
-                                >
-                                  保存
-                                </button>
-                              </div>
-                            )}
+                              )
+                            })}
                           </div>
-                        )
-                      })
+                        </div>
+                      ))
                     })()}
                   </div>
                 </div>
@@ -1661,14 +1735,7 @@ export default function App() {
                                   <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
                                     onClick={() => {
-                                      const taskIdStr = String(t.id)
-                                      const current = taskMetaMap[taskIdStr] || {}
-                                      setListEdit({
-                                        taskId: taskIdStr,
-                                        priority: current.priority ?? null,
-                                        type: current.type || '',
-                                        tagsInput: (current.tags || []).join(' '),
-                                      })
+                                      setEditTask(t)
                                       setUnschedMenuOpenId(null)
                                     }}
                                   >
@@ -2045,6 +2112,16 @@ export default function App() {
               onSave={createTaskAdvanced}
               authHeaders={headers()}
               availableTags={listTagOptions}
+            />
+          )}
+          {editTask && (
+            <CreateTaskModal
+              defaultDate={date}
+              onClose={() => setEditTask(null)}
+              onSave={(p) => updateTaskAdvanced(editTask.id, p)}
+              authHeaders={headers()}
+              availableTags={listTagOptions}
+              initialTask={editTask}
             />
           )}
           {scheduleFor && (
@@ -2473,18 +2550,53 @@ function AddBlock({ tasks, onAdd }: { tasks: Task[]; onAdd: (start: string, end:
   )
 }
 
-function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableTags }: { defaultDate: string; onClose: () => void; onSave: (p: { title: string; type?: string; color?: string; type_id?: string; due_at?: string; estimate_min?: number; priority?: number; recurrence_rule?: string; tags?: string[] }) => Promise<boolean>; authHeaders: Record<string, string>; availableTags: string[] }) {
-  const [title, setTitle] = useState('')
+function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableTags, initialTask }: { defaultDate: string; onClose: () => void; onSave: (p: { title: string; type?: string; color?: string; type_id?: string; due_at?: string; estimate_min?: number; priority?: number; recurrence_rule?: string; tags?: string[] }) => Promise<boolean>; authHeaders: Record<string, string>; availableTags: string[]; initialTask?: Task | null }) {
+  const isEdit = !!initialTask
+
+  function toInputLocal(d: Date): string {
+    return `${todayStr(d)}T${fmtHHmm(d)}`
+  }
+
+  const [title, setTitle] = useState(initialTask ? initialTask.title : '')
   type TypeRow = { id: string; name: string; color: string }
   const [types, setTypes] = useState<TypeRow[]>([])
   const [typeIdx, setTypeIdx] = useState<number>(-1)
-  const [timeMode, setTimeMode] = useState<'duration' | 'end' | 'undecided'>('duration')
-  const [startAt, setStartAt] = useState<string>(`${defaultDate}T20:00`)
-  const [duration, setDuration] = useState<string>('')
-  const [endAt, setEndAt] = useState<string>('')
-  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>('medium')
-  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none')
-  const [tags, setTags] = useState<string[]>([])
+  const [timeMode, setTimeMode] = useState<'duration' | 'end' | 'undecided'>(() => {
+    if (!initialTask) return 'duration'
+    if (initialTask.due_at && typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) return 'duration'
+    if (initialTask.due_at) return 'end'
+    return 'undecided'
+  })
+  const [startAt, setStartAt] = useState<string>(() => {
+    if (!initialTask || !initialTask.due_at) return `${defaultDate}T20:00`
+    const end = new Date(initialTask.due_at)
+    let start = end
+    if (typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) {
+      start = new Date(end.getTime() - initialTask.estimate_min * 60000)
+    }
+    return toInputLocal(start)
+  })
+  const [duration, setDuration] = useState<string>(() => {
+    if (!initialTask || typeof initialTask.estimate_min !== 'number') return ''
+    return String(initialTask.estimate_min)
+  })
+  const [endAt, setEndAt] = useState<string>(() => {
+    if (!initialTask || !initialTask.due_at) return ''
+    const end = new Date(initialTask.due_at)
+    return toInputLocal(end)
+  })
+  const [priority, setPriority] = useState<'high' | 'medium' | 'low'>(() => {
+    if (!initialTask || initialTask.priority == null) return 'medium'
+    return initialTask.priority === 2 ? 'high' : initialTask.priority === 1 ? 'medium' : 'low'
+  })
+  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly'>(() => {
+    if (!initialTask || !initialTask.recurrence_rule) return 'none'
+    if (initialTask.recurrence_rule === 'DAILY') return 'daily'
+    if (initialTask.recurrence_rule === 'WEEKLY') return 'weekly'
+    if (initialTask.recurrence_rule === 'MONTHLY') return 'monthly'
+    return 'none'
+  })
+  const [tags, setTags] = useState<string[]>(() => initialTask?.tags || [])
   const [tagInput, setTagInput] = useState('')
   const [typeModalOpen, setTypeModalOpen] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
@@ -2509,6 +2621,23 @@ function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableT
   }
 
   useEffect(() => { loadTypes() }, [])
+
+  useEffect(() => {
+    if (!initialTask) return
+    if (typeIdx !== -1) return
+    if (types.length === 0) return
+    if (!initialTask.type) return
+    const k = types.findIndex((t) => t.name === initialTask.type)
+    if (k >= 0) setTypeIdx(k)
+  }, [initialTask, types, typeIdx])
+
+  // 当使用“开始 & 结束”模式时，如果尚未设置结束时间，则默认使用与开始时间相同的日期时间
+  // 一旦用户手动设置了结束时间，后续修改开始时间将不会再自动修改结束时间
+  useEffect(() => {
+    if (timeMode !== 'end') return
+    if (!startAt) return
+    setEndAt((prev) => (prev ? prev : startAt))
+  }, [timeMode, startAt])
 
   async function addType(name: string, color: string): Promise<boolean> {
     const trimmed = name.trim()
@@ -2581,15 +2710,28 @@ function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableT
     const prio = priority === 'high' ? 2 : priority === 'medium' ? 1 : 0
     const recur = recurrence === 'daily' ? 'DAILY' : recurrence === 'weekly' ? 'WEEKLY' : recurrence === 'monthly' ? 'MONTHLY' : undefined
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
-    const ok = await onSave({
+    const selectedType = typeIdx >= 0 ? types[typeIdx] : undefined
+    const basePayload = {
       title: title.trim(),
-      type_id: typeIdx >= 0 ? types[typeIdx]?.id : undefined,
       due_at: dueISO,
       estimate_min: estimateMin,
       priority: prio,
       recurrence_rule: recur,
       tags: finalTags,
-    })
+    } as any
+
+    const payload = isEdit
+      ? {
+          ...basePayload,
+          type: selectedType ? selectedType.name : undefined,
+          color: selectedType ? selectedType.color : undefined,
+        }
+      : {
+          ...basePayload,
+          type_id: selectedType ? selectedType.id : undefined,
+        }
+
+    const ok = await onSave(payload)
     if (!ok) return
     onClose()
   }
@@ -2605,7 +2747,7 @@ function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableT
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-slate-900 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h2 className="text-white text-lg font-semibold">创建新任务</h2>
+          <h2 className="text-white text-lg font-semibold">{isEdit ? '编辑任务' : '创建新任务'}</h2>
           <button className="text-white/60 hover:text-white" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
           </button>

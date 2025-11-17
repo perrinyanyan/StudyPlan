@@ -306,6 +306,21 @@ router.patch('/:id', async (req: Request, res: Response) => {
   const parsed = updateTaskSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
   const payload = parsed.data;
+  let autoStart: string | null = null;
+  let autoEnd: string | null = null;
+  if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0) {
+    autoEnd = new Date(payload.due_at).toISOString();
+    autoStart = new Date(new Date(payload.due_at).getTime() - payload.estimate_min * 60000).toISOString();
+    const { data: conflicts, error: cErr } = await supabase
+      .from('time_blocks')
+      .select('id,task_id')
+      .eq('user_id', userId)
+      .neq('task_id', id)
+      .lt('start_at', autoEnd)
+      .gt('end_at', autoStart);
+    if (cErr) return res.status(500).json({ error: 'Failed to check conflicts' });
+    if (conflicts && conflicts.length > 0) return res.status(409).json({ error: 'Time conflict' });
+  }
   const update: any = {};
   if (payload.title !== undefined) update.title = payload.title;
   if (payload.type !== undefined) update.type = payload.type;
@@ -321,6 +336,34 @@ router.patch('/:id', async (req: Request, res: Response) => {
     .eq('id', id)
     .eq('user_id', userId);
   if (error) return res.status(500).json({ error: 'Failed to update task' });
+
+  if (autoStart && autoEnd) {
+    const { data: blocks, error: bSelErr } = await supabase
+      .from('time_blocks')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('task_id', id);
+    if (bSelErr) return res.status(500).json({ error: 'Failed to update time block' });
+    if (blocks && blocks.length === 1) {
+      const blockId = (blocks[0] as any).id as string;
+      const { error: bUpdErr } = await supabase
+        .from('time_blocks')
+        .update({ start_at: autoStart, end_at: autoEnd })
+        .eq('id', blockId)
+        .eq('user_id', userId);
+      if (bUpdErr) return res.status(500).json({ error: 'Failed to update time block' });
+    } else if (blocks && blocks.length === 0) {
+      const { error: bInsErr } = await supabase
+        .from('time_blocks')
+        .insert({ user_id: userId, start_at: autoStart, end_at: autoEnd, task_id: id });
+      if (bInsErr) return res.status(500).json({ error: 'Failed to create time block' });
+      await supabase
+        .from('tasks')
+        .update({ scheduling_status: 'scheduled' })
+        .eq('id', id)
+        .eq('user_id', userId);
+    }
+  }
 
   if (payload.tags !== undefined) {
     const names = Array.from(new Set((payload.tags || []).map(s => s.trim().toLowerCase()).filter(Boolean)));
