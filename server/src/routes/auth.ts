@@ -101,10 +101,25 @@ router.post('/login', async (req: Request, res: Response) => {
   res.json({ token });
 });
 
+// Return current user's basic profile
+router.get('/me', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, nickname')
+    .eq('id', userId)
+    .single();
+  if (error || !data) return res.status(500).json({ error: 'Failed to load profile' });
+  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '' });
+});
+
 router.post('/request-password-reset', async (req: Request, res: Response) => {
-  const schema = z.object({ email: z.string().email() });
+  const schema = z.object({ email: z.string().email(), captcha_id: z.string(), captcha_answer: z.string() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+  const ok = verifyCaptcha(parsed.data.captcha_id, parsed.data.captcha_answer);
+  if (!ok) return res.status(400).json({ error: 'Invalid captcha' });
   const token = mktoken();
   passwordResets.set(token, { email: parsed.data.email, expireAt: Date.now() + TOKEN_TTL_MS });
   if (process.env.NODE_ENV !== 'production') {

@@ -102,6 +102,35 @@ router.get('/daily', async (req: Request, res: Response) => {
   res.json({ items: data });
 });
 
+router.get('/range', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const startStr = typeof req.query.start === 'string' ? req.query.start : undefined;
+  const endStr = typeof req.query.end === 'string' ? req.query.end : undefined;
+  if (!startStr || !endStr) return res.status(400).json({ error: 'start and end are required (YYYY-MM-DD)' });
+  if (startStr > endStr) return res.status(400).json({ error: 'start must be <= end' });
+
+  const { data: us } = await supabase
+    .from('user_settings')
+    .select('timezone')
+    .eq('user_id', userId)
+    .maybeSingle();
+  const tz = us?.timezone || 'Asia/Shanghai';
+
+  const start = fromZonedTime(`${startStr} 00:00:00.000`, tz).toISOString();
+  const end = fromZonedTime(`${endStr} 23:59:59.999`, tz).toISOString();
+
+  const { data, error } = await supabase
+    .from('time_blocks')
+    .select('*')
+    .eq('user_id', userId)
+    .lt('start_at', end)
+    .gt('end_at', start)
+    .order('start_at', { ascending: true });
+  if (error) return res.status(500).json({ error: 'Failed to list time blocks' });
+  res.json({ items: data });
+});
+
 router.patch('/:id', async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });

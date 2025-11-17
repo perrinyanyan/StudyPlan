@@ -12,6 +12,8 @@ export default defineConfig({
       '/shares': { target: 'http://localhost:3000', changeOrigin: true },
       '/shared': { target: 'http://localhost:3000', changeOrigin: true },
       '/settings': { target: 'http://localhost:3000', changeOrigin: true },
+      '/task-types': { target: 'http://localhost:3000', changeOrigin: true },
+      '/tags': { target: 'http://localhost:3000', changeOrigin: true },
       '/push': { target: 'http://localhost:3000', changeOrigin: true },
       '/notifications': { target: 'http://localhost:3000', changeOrigin: true },
       '/classes': { target: 'http://localhost:3000', changeOrigin: true },
