@@ -154,6 +154,7 @@ export default function App() {
     hourCollapsed,
     expandAllHours,
     collapseAllHours,
+    toggleHourCollapsed,
     tasksFlat,
     taskTitleMap,
     taskStatusMap,
@@ -598,6 +599,7 @@ export default function App() {
                 createTaskAdvanced,
                 updateTaskAdvanced,
                 headers,
+                toggleHourCollapsed,
               }}
             />
           )}

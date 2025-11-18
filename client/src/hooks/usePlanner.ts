@@ -37,6 +37,7 @@ export interface UsePlannerResult {
   hourCollapsed: Record<number, boolean>
   expandAllHours: () => void
   collapseAllHours: () => void
+  toggleHourCollapsed: (hour: number) => void
   tasksFlat: Task[]
   taskTitleMap: Record<string, string>
   taskStatusMap: Record<string, string>
@@ -184,6 +185,10 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     const all: Record<number, boolean> = {}
     for (let h = 0; h < 24; h++) all[h] = true
     setHourCollapsed(all)
+  }
+
+  function toggleHourCollapsed(hour: number) {
+    setHourCollapsed((prev) => ({ ...prev, [hour]: !(prev[hour] ?? false) }))
   }
 
   const tasksFlat = useMemo(
@@ -499,6 +504,7 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     hourCollapsed,
     expandAllHours,
     collapseAllHours,
+    toggleHourCollapsed,
     tasksFlat,
     taskTitleMap,
     taskStatusMap,

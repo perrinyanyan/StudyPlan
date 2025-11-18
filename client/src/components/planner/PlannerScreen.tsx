@@ -97,6 +97,7 @@ export function PlannerScreen({
     collapseAllHours,
     setOverdueCollapsed,
     setShowFutureOnly,
+    toggleHourCollapsed,
     // 数据加载 / 创建 / 更新
     fetchDaily,
     createTaskAdvanced,
@@ -224,9 +225,19 @@ export function PlannerScreen({
             fetchState,
             blocks,
             taskTitleMap,
-            fmtHHmm,
+            taskStatusMap,
+            taskMetaMap,
+            listMenuOpenId,
             unschedMenuOpenId,
             listEdit,
+            listFilterType,
+            listFilterPriority,
+            listFilterTag,
+            listFilterOverdue,
+            listFilterDone,
+            listTypeOptions,
+            listTagOptions,
+            rangeTasks,
           }}
           actions={{
             completeTask,
@@ -244,6 +255,13 @@ export function PlannerScreen({
             deleteBlock,
             expandAllHours,
             collapseAllHours,
+            setListFilterType,
+            setListFilterPriority,
+            setListFilterTag,
+            setListFilterOverdue,
+            setListFilterDone,
+            toggleHourCollapsed,
+            setListMenuOpenId,
           }}
         />
       )}

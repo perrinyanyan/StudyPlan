@@ -31,43 +31,57 @@ export function PlannerPage(props: PlannerPageProps) {
     onCloseRangePicker,
   } = props
 
+  const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
+  let weekLabel = ''
+  try {
+    const d = new Date(date)
+    if (!Number.isNaN(d.getTime())) {
+      weekLabel = weekdays[d.getDay()]
+    }
+  } catch {
+    weekLabel = ''
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
       <div className="flex items-center gap-4 text-white">
-        {plannerView !== 'list' && (
-          <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
-            <button
-              className="p-2 text-white/80 hover:bg-white/10"
-              onClick={onPrevDay}
-            >
-              <span className="material-symbols-outlined">chevron_left</span>
-            </button>
-            <button
-              className="flex cursor-pointer items-center justify-center h-10 bg-black/20 text-white text-sm font-medium px-4 hover:bg-white/10 border-l border-r border-white/10"
-              onClick={onToday}
-            >
-              今日
-            </button>
-            <button
-              className="p-2 text-white/80 hover:bg-white/10"
-              onClick={onNextDay}
-            >
-              <span className="material-symbols-outlined">chevron_right</span>
-            </button>
-          </div>
-        )}
         <div className="relative flex items-center gap-2">
           <span className="material-symbols-outlined text-white/80">calendar_today</span>
           {plannerView === 'list' ? (
             <button
               type="button"
-              className="text-white tracking-light text-sm sm:text-base font-semibold px-2 py-1 rounded-md bg-black/20 hover:bg-white/10 border border-white/10"
+              className="text-white tracking-light text-xl font-bold px-2 py-1 rounded-md bg-black/20 hover:bg-white/10 border border-white/10"
               onClick={onToggleRangePicker}
             >
               {listRangeStart} ~ {listRangeEnd}
             </button>
           ) : (
-            <p className="text-white tracking-light text-xl font-bold">{date}</p>
+            <p className="text-white tracking-light text-xl font-bold px-2">
+              {date}
+              {weekLabel ? ` ${weekLabel}` : ''}
+            </p>
+          )}
+          {plannerView !== 'list' && (
+            <div className="flex items-center rounded-lg border border-white/10 overflow-hidden">
+              <button
+                className="p-2 text-white/80 hover:bg-white/10"
+                onClick={onPrevDay}
+              >
+                <span className="material-symbols-outlined">chevron_left</span>
+              </button>
+              <button
+                className="flex cursor-pointer items-center justify-center h-10 bg-black/20 text-white text-sm font-medium px-4 hover:bg-white/10 border-l border-r border-white/10"
+                onClick={onToday}
+              >
+                今日
+              </button>
+              <button
+                className="p-2 text-white/80 hover:bg-white/10"
+                onClick={onNextDay}
+              >
+                <span className="material-symbols-outlined">chevron_right</span>
+              </button>
+            </div>
           )}
           {plannerView === 'list' && listRangePickerOpen && (
             <div className="absolute top-full left-6 mt-2 z-30 w-72 rounded-lg border border-white/10 bg-slate-900 shadow-xl p-3">
