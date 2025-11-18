@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Task } from '../../App'
+import type { Task } from '../../types'
+import { todayStr, fmtHHmm, parseDurationMin } from '../../utils/datetime'
 
 export type CreateTaskPayload = {
   title: string
@@ -20,19 +21,6 @@ export type CreateTaskModalProps = {
   authHeaders: Record<string, string>
   availableTags: string[]
   initialTask?: Task | null
-}
-
-function todayStr(d: Date = new Date()) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-function fmtHHmm(d: Date) {
-  const h = String(d.getHours()).padStart(2, '0')
-  const m = String(d.getMinutes()).padStart(2, '0')
-  return `${h}:${m}`
 }
 
 export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableTags, initialTask }: CreateTaskModalProps) {
@@ -98,7 +86,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
         if (selectId) {
           const k = list.findIndex((t) => String(t.id) === String(selectId))
           setTypeIdx(k >= 0 ? k : (list.length > 0 ? 0 : -1))
-        } else if (typeIdx === -1 && list.length > 0) {
+        } else if (!isEdit && typeIdx === -1 && list.length > 0) {
           setTypeIdx(0)
         }
       }
@@ -156,28 +144,6 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
     if (!ok) return
     setTypeModalOpen(false)
     setNewTypeName('')
-  }
-
-  function parseDurationMin(s: string): number | null {
-    const str = s.trim()
-    if (!str) return null
-    const mm = str.match(/^([0-9]{1,2}):(\d{2})$/)
-    if (mm) {
-      const h = parseInt(mm[1])
-      const m = parseInt(mm[2])
-      return h * 60 + m
-    }
-    let total = 0
-    const h = str.match(/(\d+)\s*h/) || str.match(/(\d+)小时/)
-    if (h) total += parseInt(h[1]) * 60
-    const m = str.match(/(\d+)\s*m/) || str.match(/(\d+)分/)
-    if (m) total += parseInt(m[1])
-    if (!h && !m) {
-      const onlyMin = str.match(/^\d+$/)
-      if (onlyMin) return parseInt(str)
-      return null
-    }
-    return total
   }
 
   async function submit() {

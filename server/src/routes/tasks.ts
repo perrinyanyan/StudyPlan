@@ -398,6 +398,15 @@ router.delete('/:id', async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const { id } = req.params;
+
+  // First remove any time blocks associated with this task to avoid orphan blocks
+  const { error: blockErr } = await supabase
+    .from('time_blocks')
+    .delete()
+    .eq('user_id', userId)
+    .eq('task_id', id);
+  if (blockErr) return res.status(500).json({ error: 'Failed to delete time blocks for task' });
+
   const { error } = await supabase
     .from('tasks')
     .delete()
