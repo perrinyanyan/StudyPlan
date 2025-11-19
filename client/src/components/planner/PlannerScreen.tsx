@@ -238,6 +238,7 @@ export function PlannerScreen({
             listTypeOptions,
             listTagOptions,
             rangeTasks,
+            fmtHHmm,
           }}
           actions={{
             completeTask,
@@ -262,6 +263,7 @@ export function PlannerScreen({
             setListFilterDone,
             toggleHourCollapsed,
             setListMenuOpenId,
+            setCenterAlert,
           }}
         />
       )}

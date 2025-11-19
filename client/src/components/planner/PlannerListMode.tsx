@@ -213,7 +213,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                 sec.items.push(b)
               }
 
-              return sections.map((section) => (
+              return sections.map((section, sectionIndex) => (
                 <div key={section.key} className="space-y-2">
                   <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                     <span className="inline-flex h-5 w-1 rounded-full bg-slate-400" />
@@ -222,7 +222,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                     </span>
                   </div>
                   <div className="space-y-2">
-                    {section.items.map((b) => {
+                    {section.items.map((b, itemIndex) => {
                       const s = new Date(b.start_at)
                       const e = new Date(b.end_at)
                       const name = b.task_id ? taskTitleMap[String(b.task_id)] : undefined
@@ -246,6 +246,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                       const type = meta?.type || null
                       const tags = meta?.tags || []
                       const isMenuOpen = listMenuOpenId === blockId
+                      const isLastSection = sectionIndex === sections.length - 1
+                      const isLastItem = isLastSection && itemIndex === section.items.length - 1
+                      const menuPositionClass = isLastItem ? 'bottom-full mb-1' : 'top-full mt-1'
                       const isEditing = !!(
                         listEdit && taskIdStr && listEdit.taskId === taskIdStr
                       )
@@ -365,7 +368,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                       </span>
                                     </button>
                                     {isMenuOpen && (
-                                      <div className="absolute right-0 mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20">
+                                      <div
+                                        className={`absolute right-0 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20 ${menuPositionClass}`}
+                                      >
                                         <button
                                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
                                           onClick={() => {

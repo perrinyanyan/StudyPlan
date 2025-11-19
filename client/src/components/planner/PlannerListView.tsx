@@ -26,7 +26,10 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
         </div>
         <div className="flex flex-col gap-2">
           {list.length === 0 && <div className="text-xs text-slate-400">暂无未排程任务</div>}
-          {list.map((t) => (
+          {list.map((t, index) => {
+            const isLast = index === list.length - 1
+            const menuPositionClass = isLast ? 'bottom-full mb-1' : 'top-full mt-1'
+            return (
             <div key={String(t.id)} className="bg-white/5 p-3 rounded-lg">
               <div className="flex items-start gap-3">
                 <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
@@ -70,7 +73,9 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                     <span className="material-symbols-outlined text-lg">more_vert</span>
                   </button>
                   {unschedMenuOpenId === String(t.id) && (
-                    <div className="absolute right-0 mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20">
+                    <div
+                      className={`absolute right-0 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20 ${menuPositionClass}`}
+                    >
                       <button
                         className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
                         onClick={() => {
@@ -176,7 +181,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                 </div>
               )}
             </div>
-          ))}
+          )})}
         </div>
       </div>
       <button
