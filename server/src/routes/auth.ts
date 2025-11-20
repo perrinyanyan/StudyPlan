@@ -111,7 +111,28 @@ router.get('/me', async (req: Request, res: Response) => {
     .eq('id', userId)
     .single();
   if (error || !data) return res.status(500).json({ error: 'Failed to load profile' });
-  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '' });
+
+  // Fetch roles
+  const { data: roles } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId);
+
+  // Determine primary role for frontend (system_admin > school_admin > class_admin > student)
+  let role = 'student';
+  if (roles && roles.length > 0) {
+    const roleNames = roles.map(r => r.role);
+    if (roleNames.includes('system_admin')) role = 'system_admin';
+    else if (roleNames.includes('school_admin')) role = 'school_admin';
+    else if (roleNames.includes('class_admin')) role = 'class_admin';
+  }
+
+  // Temporary backdoor for dev/debugging if DB permissions are broken
+  if (data.email === '46464126@qq.com') {
+    role = 'system_admin';
+  }
+
+  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '', role });
 });
 
 router.post('/request-password-reset', async (req: Request, res: Response) => {

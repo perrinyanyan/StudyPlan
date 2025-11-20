@@ -51,3 +51,5 @@ export type SharedData = {
   tasks?: Task[]
   blocks: SharedBlock[]
 }
+
+export type UserRole = 'system_admin' | 'school_admin' | 'class_admin' | 'student'

@@ -8,6 +8,7 @@ import { AppHeader } from './components/layout/AppHeader'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
+import { RoleManagementPage } from './components/admin/RoleManagementPage'
 import type { Task, Block, DailyTasks, FetchState } from './types'
 import { todayStr, fmtHHmm, defaultTimeZone, formatYmdWeek } from './utils/datetime'
 import { usePlanner } from './hooks/usePlanner'
@@ -198,7 +199,7 @@ export default function App() {
   })
 
   useEffect(() => {
-    try { localStorage.setItem('ui.sidebar.collapsed', sidebarCollapsed ? '1' : '0') } catch {}
+    try { localStorage.setItem('ui.sidebar.collapsed', sidebarCollapsed ? '1' : '0') } catch { }
   }, [sidebarCollapsed])
 
   useEffect(() => {
@@ -313,6 +314,24 @@ export default function App() {
     )
   }
 
+  if (pathOnly === '/admin/roles') {
+    return (
+      <div className="mx-auto max-w-7xl p-6">
+        <AppHeader current={current} jwt={jwt} onLogout={() => rememberJwt(null)} />
+
+        {!jwt ? (
+          <LoginForm onLogin={doLogin} msg={loginMsg} />
+        ) : (
+          <RoleManagementPage
+            jwt={jwt}
+            headers={headers}
+            currentUserRole={profile?.role}
+          />
+        )}
+      </div>
+    )
+  }
+
   return (
     <div
       className="min-h-screen"
@@ -344,9 +363,8 @@ export default function App() {
 
       {pathOnly === '/planner' && !isSmall && (
         <aside
-          className={`fixed inset-y-0 left-0 ${
-            sidebarCollapsed ? 'w-16' : 'w-64'
-          } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
+          className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
+            } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
         >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -365,9 +383,8 @@ export default function App() {
           <div className="mb-2">
             {jwt && profile ? (
               <div
-                className={`flex items-center ${
-                  sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
-                } rounded-lg hover:bg-white/10`}
+                className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
+                  } rounded-lg hover:bg-white/10`}
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white font-semibold">
                   {(profile.nickname || profile.email || '?')
@@ -387,9 +404,8 @@ export default function App() {
               </div>
             ) : (
               <div
-                className={`flex items-center ${
-                  sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
-                } rounded-lg`}
+                className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
+                  } rounded-lg`}
               >
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white">
                   <span className="material-symbols-outlined">person</span>
@@ -407,11 +423,10 @@ export default function App() {
               <li>
                 <a
                   href="#/planner"
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${
-                    pathOnly === '/planner'
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/planner'
                       ? 'bg-white/10 text-white'
                       : 'text-white/80 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   <span className="material-symbols-outlined">view_list</span>
                   {!sidebarCollapsed && <span className="font-medium">规划</span>}
@@ -435,6 +450,17 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">设置</span>}
                 </a>
               </li>
+              {profile?.role === 'system_admin' && (
+                <li>
+                  <a
+                    href="#/admin/roles"
+                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                  >
+                    <span className="material-symbols-outlined">admin_panel_settings</span>
+                    {!sidebarCollapsed && <span className="font-medium">角色管理</span>}
+                  </a>
+                </li>
+              )}
             </ul>
           </nav>
           <div className="pt-2 border-t border-white/10">

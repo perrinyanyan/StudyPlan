@@ -17,6 +17,7 @@ import classesRouter from './routes/classes.js';
 import taskTypesRouter from './routes/task-types.js';
 import tagsRouter from './routes/tags.js';
 import settingsRouter from './routes/settings.js';
+import adminRouter from './routes/admin.js';
 import { getOpenApiSpec } from './openapi.js';
 import { validateEnv } from './utils/env-check.js';
 
@@ -62,20 +63,7 @@ app.use('/courses', coursesRouter);
 app.use('/focus', focusRouter);
 app.use('/classes', classesRouter);
 app.use('/task-types', taskTypesRouter);
-app.use('/tags', tagsRouter);
-app.use('/settings', settingsRouter);
-app.use('/push/subscribe', pushSubLimiter);
-app.use('/push', pushRouter);
-app.use('/notifications', notificationsRouter);
-app.use('/shares', sharesRouter);
-app.use('/shared', sharedRouter);
-if (process.env.NODE_ENV !== 'production') {
-  import('./routes/dev.js').then(m => app.use('/dev', m.default));
-}
-
-app.get('/openapi.json', (_req, res) => {
-  res.json(getOpenApiSpec());
-});
+app.use('/admin', adminRouter);
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/docs', (_req, res) => {

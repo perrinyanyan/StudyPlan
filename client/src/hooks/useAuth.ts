@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
+import { UserRole } from '../types'
+
 export interface UseAuthResult {
   jwt: string | null
-  profile: { id: string | number; email: string; nickname?: string } | null
+  profile: { id: string | number; email: string; nickname?: string; role?: UserRole } | null
   loginMsg: string
   rememberJwt: (token: string | null) => void
   doLogin: (email: string, password: string) => Promise<void>
@@ -14,7 +16,7 @@ export function useAuth(): UseAuthResult {
     if (typeof window === 'undefined') return null
     return localStorage.getItem('jwt')
   })
-  const [profile, setProfile] = useState<{ id: string | number; email: string; nickname?: string } | null>(null)
+  const [profile, setProfile] = useState<{ id: string | number; email: string; nickname?: string; role?: UserRole } | null>(null)
   const [loginMsg, setLoginMsg] = useState<string>('')
 
   function headers(): Record<string, string> {
@@ -50,7 +52,7 @@ export function useAuth(): UseAuthResult {
       setProfile(null)
       return
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const r = await fetch('/auth/me', { headers: headers() })
         if (r.ok) {
