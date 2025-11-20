@@ -1,6 +1,8 @@
 import { PlannerPage } from './PlannerPage'
 import { PlannerListMode } from './PlannerListMode'
 import { PlannerDayView } from './PlannerDayView'
+import { PlannerWeekView } from './PlannerWeekView'
+import { PlannerMonthView } from './PlannerMonthView'
 import { CreateTaskModal } from './CreateTaskModal'
 import { ScheduleTaskModal } from './ScheduleTaskModal'
 import type { Task } from '../../types'
@@ -125,7 +127,14 @@ export function PlannerScreen({
         listRangePickerOpen={listRangePickerOpen}
         onPrevDay={() => {
           if (!setDate || !todayStr) return
-          setDate(todayStr(new Date(new Date(date).getTime() - 86400000)))
+          if (plannerView === 'month') {
+            const d = new Date(date)
+            d.setMonth(d.getMonth() - 1)
+            setDate(todayStr(d))
+          } else {
+            const offset = plannerView === 'week' ? 7 : 1
+            setDate(todayStr(new Date(new Date(date).getTime() - offset * 86400000)))
+          }
         }}
         onToday={() => {
           if (!setDate || !todayStr) return
@@ -133,7 +142,14 @@ export function PlannerScreen({
         }}
         onNextDay={() => {
           if (!setDate || !todayStr) return
-          setDate(todayStr(new Date(new Date(date).getTime() + 86400000)))
+          if (plannerView === 'month') {
+            const d = new Date(date)
+            d.setMonth(d.getMonth() + 1)
+            setDate(todayStr(d))
+          } else {
+            const offset = plannerView === 'week' ? 7 : 1
+            setDate(todayStr(new Date(new Date(date).getTime() + offset * 86400000)))
+          }
         }}
         onToggleRangePicker={() => {
           if (!setListRangePickerOpen) return
@@ -204,6 +220,90 @@ export function PlannerScreen({
             setEditTask,
             setScheduleFor,
             setShowCreateTask,
+          }}
+        />
+      ) : plannerView === 'week' ? (
+        <PlannerWeekView
+          state={{
+            tasks,
+            unscheduled,
+            rangeBlocks,
+            rangeTasks,
+            now,
+            taskTitleMap,
+            taskStatusMap,
+            taskMetaMap,
+            listMenuOpenId,
+            listFilterType,
+            listFilterPriority,
+            listFilterTag,
+            listFilterOverdue,
+            listFilterDone,
+            listTypeOptions,
+            listTagOptions,
+            fmtHHmm,
+            unschedMenuOpenId,
+            date,
+          }}
+          actions={{
+            deleteTask,
+            completeTask,
+            updateTaskMeta,
+            fetchUnscheduled,
+            setUnschedMenuOpenId,
+            setEditTask,
+            setScheduleFor,
+            setListEdit,
+            setShowCreateTask,
+            addBlock,
+            deleteBlock,
+            setListFilterType,
+            setListFilterPriority,
+            setListFilterTag,
+            setListFilterOverdue,
+            setListFilterDone,
+            setListMenuOpenId,
+            setCenterAlert,
+          }}
+        />
+      ) : plannerView === 'month' ? (
+        <PlannerMonthView
+          state={{
+            rangeBlocks,
+            now,
+            taskTitleMap,
+            taskStatusMap,
+            taskMetaMap,
+            listMenuOpenId,
+            listFilterType,
+            listFilterPriority,
+            listFilterTag,
+            listFilterOverdue,
+            listFilterDone,
+            listTypeOptions,
+            listTagOptions,
+            unscheduled,
+            unschedMenuOpenId,
+            listEdit,
+            date,
+          }}
+          actions={{
+            deleteTask,
+            completeTask,
+            updateTaskMeta,
+            fetchUnscheduled,
+            setUnschedMenuOpenId,
+            setEditTask,
+            setScheduleFor,
+            setListEdit,
+            setShowCreateTask,
+            deleteBlock,
+            setListFilterType,
+            setListFilterPriority,
+            setListFilterTag,
+            setListFilterOverdue,
+            setListFilterDone,
+            setListMenuOpenId,
           }}
         />
       ) : (

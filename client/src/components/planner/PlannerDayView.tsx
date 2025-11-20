@@ -1,3 +1,4 @@
+import { useState, useRef } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
@@ -102,6 +103,11 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
     return true
   })
+
+  const [hoveredTask, setHoveredTask] = useState<any | null>(null)
+  const [hoverPos, setHoverPos] = useState<{ x: number, y: number } | null>(null)
+  const hoverTimeoutRef = useRef<any>(null)
+  const [cardMenuOpen, setCardMenuOpen] = useState(false)
 
   const effectivePxPerMin = pxPerMin || (HOUR_PX ? HOUR_PX / 60 : 96 / 60)
   const hourHeight = effectivePxPerMin * 60
@@ -487,6 +493,25 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                       top,
                                       height,
                                     }}
+                                    onMouseEnter={(e) => {
+                                      if (b.task_id && meta) {
+                                        if (hoverTimeoutRef.current) {
+                                          clearTimeout(hoverTimeoutRef.current)
+                                          hoverTimeoutRef.current = null
+                                        }
+                                        const rect = e.currentTarget.getBoundingClientRect()
+                                        setHoverPos({ x: rect.right + 10, y: rect.top })
+                                        setHoveredTask({ ...meta, id: b.task_id, title: name, status, blockStart: b.start_at, blockEnd: b.end_at })
+                                        setCardMenuOpen(false)
+                                      }
+                                    }}
+                                    onMouseLeave={() => {
+                                      hoverTimeoutRef.current = setTimeout(() => {
+                                        setHoveredTask(null)
+                                        setHoverPos(null)
+                                        setCardMenuOpen(false)
+                                      }, 300)
+                                    }}
                                   >
                                     <div
                                       className={`h-full px-2.5 py-2 flex flex-col relative ${isLong ? 'justify-center' : 'justify-between'
@@ -519,8 +544,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                               )}
                                               <p
                                                 className={`font-medium truncate ${status === 'done'
-                                                    ? 'line-through opacity-60'
-                                                    : ''
+                                                  ? 'line-through opacity-60'
+                                                  : ''
                                                   }`}
                                               >
                                                 {name || '时间块'}
@@ -698,6 +723,128 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
           }}
         />
       </div>
+
+      {/* Hover Detail Card */}
+      {hoveredTask && hoverPos && (
+        <div
+          className="fixed z-50 w-80 p-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-visible"
+          style={{
+            top: Math.min(hoverPos.y, window.innerHeight - 200), // Prevent going off bottom
+            left: Math.min(hoverPos.x, window.innerWidth - 340), // Prevent going off right
+          }}
+          onMouseEnter={() => {
+            if (hoverTimeoutRef.current) {
+              clearTimeout(hoverTimeoutRef.current)
+              hoverTimeoutRef.current = null
+            }
+          }}
+          onMouseLeave={() => {
+            hoverTimeoutRef.current = setTimeout(() => {
+              setHoveredTask(null)
+              setHoverPos(null)
+              setCardMenuOpen(false)
+            }, 300)
+          }}
+        >
+          <div className="bg-white/5 p-3">
+            <div className="flex items-center gap-3">
+              <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (hoveredTask.color || '#4B5563') + '80' }}></div>
+              <div className="flex-1 space-y-1.5">
+                <p className="text-white text-sm font-medium leading-tight">{hoveredTask.title}</p>
+                {hoveredTask.blockStart && hoveredTask.blockEnd && (
+                  <p className="text-xs text-white/60 font-mono">
+                    {new Date(hoveredTask.blockStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(hoveredTask.blockEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
+                  {hoveredTask.type && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hoveredTask.color || '#9CA3AF' }}></span>
+                      <span>{hoveredTask.type}</span>
+                    </span>
+                  )}
+                  {typeof hoveredTask.priority === 'number' && (
+                    <span
+                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${hoveredTask.priority === 2
+                        ? 'bg-red-500/20 text-red-300'
+                        : hoveredTask.priority === 1
+                          ? 'bg-yellow-500/20 text-yellow-300'
+                          : 'bg-green-500/20 text-green-300'
+                        }`}
+                    >
+                      {hoveredTask.priority === 2 ? '高' : hoveredTask.priority === 1 ? '中' : '低'}
+                    </span>
+                  )}
+                  {(hoveredTask.tags || []).map((g: string) => (
+                    <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
+                  ))}
+                  {hoveredTask.status === 'done' && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">已完成</span>
+                  )}
+                </div>
+              </div>
+              <div className="relative">
+                <button
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCardMenuOpen(!cardMenuOpen)
+                  }}
+                >
+                  <span className="material-symbols-outlined text-lg">more_vert</span>
+                </button>
+                {cardMenuOpen && (
+                  <div
+                    className="absolute right-0 top-full mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-50"
+                  >
+                    <button
+                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
+                      onClick={() => {
+                        if (setEditTask) setEditTask(hoveredTask)
+                        setCardMenuOpen(false)
+                        setHoveredTask(null)
+                      }}
+                    >
+                      修改
+                    </button>
+                    <button
+                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
+                      onClick={async () => {
+                        if (completeTask && hoveredTask.id) await completeTask(String(hoveredTask.id))
+                        setCardMenuOpen(false)
+                        setHoveredTask(null)
+                      }}
+                    >
+                      完成
+                    </button>
+                    <button
+                      className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
+                      onClick={async () => {
+                        if (deleteTask && hoveredTask.id) await deleteTask(String(hoveredTask.id))
+                        setCardMenuOpen(false)
+                        setHoveredTask(null)
+                      }}
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Extra details not in list view but useful for hover */}
+            {(hoveredTask.estimate_min || hoveredTask.due_at) && (
+              <div className="mt-3 pt-2 border-t border-white/10 flex items-center gap-4 text-[10px] text-slate-400">
+                {hoveredTask.estimate_min && (
+                  <span>预估: {hoveredTask.estimate_min} 分钟</span>
+                )}
+                {hoveredTask.due_at && (
+                  <span>截止: {new Date(hoveredTask.due_at).toLocaleString()}</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

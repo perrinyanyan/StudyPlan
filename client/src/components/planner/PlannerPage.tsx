@@ -55,6 +55,36 @@ export function PlannerPage(props: PlannerPageProps) {
             >
               {listRangeStart} ~ {listRangeEnd}
             </button>
+          ) : plannerView === 'week' ? (
+            <p className="text-white tracking-light text-xl font-bold px-2">
+              {(() => {
+                try {
+                  const d = new Date(date)
+                  const day = d.getDay()
+                  const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
+                  const startOfWeek = new Date(d.setDate(diff))
+                  const endOfWeek = new Date(startOfWeek)
+                  endOfWeek.setDate(startOfWeek.getDate() + 6)
+
+                  const startStr = startOfWeek.toISOString().split('T')[0]
+                  const endStr = endOfWeek.toISOString().split('T')[0]
+                  return `${startStr} ~ ${endStr}`
+                } catch {
+                  return date
+                }
+              })()}
+            </p>
+          ) : plannerView === 'month' ? (
+            <p className="text-white tracking-light text-xl font-bold px-2">
+              {(() => {
+                try {
+                  const d = new Date(date)
+                  return `${d.getFullYear()}年${d.getMonth() + 1}月`
+                } catch {
+                  return date
+                }
+              })()}
+            </p>
           ) : (
             <p className="text-white tracking-light text-xl font-bold px-2">
               {date}
@@ -73,7 +103,7 @@ export function PlannerPage(props: PlannerPageProps) {
                 className="flex cursor-pointer items-center justify-center h-10 bg-black/20 text-white text-sm font-medium px-4 hover:bg-white/10 border-l border-r border-white/10"
                 onClick={onToday}
               >
-                今日
+                {plannerView === 'week' ? '本周' : plannerView === 'month' ? '本月' : '今日'}
               </button>
               <button
                 className="p-2 text-white/80 hover:bg-white/10"
@@ -130,11 +160,10 @@ export function PlannerPage(props: PlannerPageProps) {
           <button
             key={v}
             onClick={() => {
-              location.hash = `#/planner?view=${v}`
+              window.location.hash = `#/planner?view=${v}`
             }}
-            className={`flex-1 h-8 rounded-md text-sm ${
-              plannerView === v ? 'bg-[#137fec] text-white shadow-sm' : 'text-gray-400 hover:bg-white/10'
-            }`}
+            className={`flex-1 h-8 rounded-md text-sm ${plannerView === v ? 'bg-[#137fec] text-white shadow-sm' : 'text-gray-400 hover:bg-white/10'
+              }`}
           >
             {v === 'day' ? '日视图' : v === 'week' ? '周视图' : v === 'month' ? '月视图' : '列表视图'}
           </button>

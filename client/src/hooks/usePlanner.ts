@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-import type { Task, Block, DailyTasks, FetchState } from '../types'
+import { useState, useEffect, useMemo } from 'react'
+import { useAuth } from './useAuth'
 import { todayStr, toIso } from '../utils/datetime'
+import type { Task, Block, DailyTasks, FetchState } from '../types'
 
-export interface UsePlannerParams {
+export interface UsePlannerProps {
   date: string
   tasks: DailyTasks
   blocks: Block[]
@@ -12,79 +13,21 @@ export interface UsePlannerParams {
   isSmall: boolean
   jwt: string | null
   pathOnly: string
-  plannerView: 'day' | 'week' | 'month' | 'list'
+  plannerView: string
   headers: () => Record<string, string>
   listRangeStart: string
   listRangeEnd: string
   listRangePickerOpen: boolean
   rangeReloadKey: number
-  setTasks: Dispatch<SetStateAction<DailyTasks>>
-  setBlocks: Dispatch<SetStateAction<Block[]>>
-  setFetchState: Dispatch<SetStateAction<FetchState>>
-  setUnscheduled: Dispatch<SetStateAction<Task[]>>
-  setRangeReloadKey: Dispatch<SetStateAction<number>>
-  setCenterAlert: (value: { title: string; detail?: string } | null) => void
+  setTasks: (t: DailyTasks) => void
+  setBlocks: (b: Block[]) => void
+  setFetchState: (s: FetchState) => void
+  setUnscheduled: (t: Task[]) => void
+  setRangeReloadKey: (cb: (k: number) => number) => void
+  setCenterAlert: (a: { title: string; detail?: string } | null) => void
 }
 
-export interface UsePlannerResult {
-  isToday: boolean
-  now: Date
-  currentBlock?: Block
-  currentTaskId?: string | number | null
-  HOUR_PX: number
-  pxPerMin: number
-  filteredBlocks: Block[]
-  hourCollapsed: Record<number, boolean>
-  expandAllHours: () => void
-  collapseAllHours: () => void
-  toggleHourCollapsed: (hour: number) => void
-  tasksFlat: Task[]
-  taskTitleMap: Record<string, string>
-  taskStatusMap: Record<string, string>
-  taskMetaMap: Record<string, { priority?: number | null; type?: string | null; tags?: string[]; color?: string | null }>
-  listTypeOptions: string[]
-  listTagOptions: string[]
-  fetchDaily: () => Promise<void>
-  fetchUnscheduled: () => Promise<void>
-  rangeBlocks: Block[] | null
-  rangeBlocksLoading: boolean
-  rangeTasks: Task[] | null
-  updateTaskMeta: (
-    id: Task['id'],
-    payload: { priority?: number | null; type?: string | null; color?: string | null; tags?: string[] },
-  ) => Promise<void>
-  createTaskAdvanced: (payload: {
-    title: string
-    type?: string
-    color?: string
-    type_id?: string
-    due_at?: string
-    estimate_min?: number
-    priority?: number
-    recurrence_rule?: string
-    tags?: string[]
-  }) => Promise<boolean>
-  updateTaskAdvanced: (
-    id: Task['id'],
-    payload: {
-      title: string
-      type?: string
-      color?: string
-      type_id?: string
-      due_at?: string
-      estimate_min?: number
-      priority?: number
-      recurrence_rule?: string
-      tags?: string[]
-    },
-  ) => Promise<boolean>
-  completeTask: (id: Task['id']) => Promise<void>
-  deleteTask: (id: Task['id']) => Promise<void>
-  addBlock: (start: string, end: string, taskId?: string, dateOverride?: string) => Promise<boolean>
-  deleteBlock: (id: Block['id']) => Promise<void>
-}
-
-export function usePlanner(params: UsePlannerParams): UsePlannerResult {
+export function usePlanner(props: UsePlannerProps) {
   const {
     date,
     tasks,
@@ -94,6 +37,8 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     showFutureOnly,
     isSmall,
     jwt,
+    pathOnly,
+    plannerView,
     headers,
     listRangeStart,
     listRangeEnd,
@@ -103,14 +48,27 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     setBlocks,
     setFetchState,
     setUnscheduled,
-    pathOnly,
-    plannerView,
     setRangeReloadKey,
     setCenterAlert,
-  } = params
+  } = props
 
-  const isToday = date === todayStr()
-  const now = useMemo(() => new Date(nowTick), [nowTick])
+  // UI states
+  const [unschedMenuOpenId, setUnschedMenuOpenId] = useState<string | null>(null)
+  const [listMenuOpenId, setListMenuOpenId] = useState<string | null>(null)
+  const [listEdit, setListEdit] = useState<{ taskId: string; priority: number | null; type: string; tagsInput: string } | null>(null)
+  const [showCreateTask, setShowCreateTask] = useState(false)
+  const [scheduleFor, setScheduleFor] = useState<Task | null>(null)
+  const [editTask, setEditTask] = useState<Task | null>(null)
+
+  // Filters
+  const [listFilterType, setListFilterType] = useState('all')
+  const [listFilterPriority, setListFilterPriority] = useState('all')
+  const [listFilterTag, setListFilterTag] = useState('all')
+  const [listFilterOverdue, setListFilterOverdue] = useState('yes') // 'yes' | 'no' | 'all'
+  const [listFilterDone, setListFilterDone] = useState('open') // 'open' | 'done' | 'all'
+
+  const now = new Date(nowTick)
+  const isToday = date === todayStr(now)
 
   const currentBlock = useMemo(
     () =>
@@ -121,7 +79,7 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
   )
   const currentTaskId = currentBlock?.task_id
 
-  const HOUR_PX = isSmall ? 48 : 56
+  const HOUR_PX = 60 // Fixed height for now
   const pxPerMin = HOUR_PX / 60
 
   const filteredBlocks = useMemo(
@@ -198,77 +156,77 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
 
   const taskTitleMap = useMemo(() => {
     const m: Record<string, string> = {}
-    ;(tasks.today || []).forEach((t) => {
-      m[String(t.id)] = t.title
-    })
-    ;(tasks.overdue || []).forEach((t) => {
-      m[String(t.id)] = t.title
-    })
-    ;(unscheduled || []).forEach((t) => {
-      m[String(t.id)] = t.title
-    })
-    ;(rangeTasks || []).forEach((t) => {
-      m[String(t.id)] = t.title
-    })
+      ; (tasks.today || []).forEach((t) => {
+        m[String(t.id)] = t.title
+      })
+      ; (tasks.overdue || []).forEach((t) => {
+        m[String(t.id)] = t.title
+      })
+      ; (unscheduled || []).forEach((t) => {
+        m[String(t.id)] = t.title
+      })
+      ; (rangeTasks || []).forEach((t) => {
+        m[String(t.id)] = t.title
+      })
     return m
   }, [tasks, unscheduled, rangeTasks])
 
   const taskStatusMap = useMemo(() => {
     const m: Record<string, string> = {}
-    ;(tasks.today || []).forEach((t) => {
-      m[String(t.id)] = t.status
-    })
-    ;(tasks.overdue || []).forEach((t) => {
-      m[String(t.id)] = t.status
-    })
-    ;(rangeTasks || []).forEach((t) => {
-      m[String(t.id)] = t.status
-    })
+      ; (tasks.today || []).forEach((t) => {
+        m[String(t.id)] = t.status
+      })
+      ; (tasks.overdue || []).forEach((t) => {
+        m[String(t.id)] = t.status
+      })
+      ; (rangeTasks || []).forEach((t) => {
+        m[String(t.id)] = t.status
+      })
     return m
   }, [tasks, rangeTasks])
 
   const taskMetaMap = useMemo(() => {
     const m: Record<string, { priority?: number | null; type?: string | null; tags?: string[]; color?: string | null }> = {}
-    ;(tasks.today || []).forEach((t) => {
-      m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
-    })
-    ;(tasks.overdue || []).forEach((t) => {
-      m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
-    })
-    ;(unscheduled || []).forEach((t) => {
-      m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
-    })
-    ;(rangeTasks || []).forEach((t) => {
-      m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
-    })
+      ; (tasks.today || []).forEach((t) => {
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+      })
+      ; (tasks.overdue || []).forEach((t) => {
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+      })
+      ; (unscheduled || []).forEach((t) => {
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+      })
+      ; (rangeTasks || []).forEach((t) => {
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+      })
     return m
   }, [tasks, unscheduled, rangeTasks])
 
   const listTypeOptions = useMemo(() => {
     const set = new Set<string>()
-    ;(tasks.today || []).forEach((t) => {
-      if (t.type) set.add(t.type)
-    })
-    ;(tasks.overdue || []).forEach((t) => {
-      if (t.type) set.add(t.type)
-    })
-    ;(unscheduled || []).forEach((t) => {
-      if (t.type) set.add(t.type)
-    })
+      ; (tasks.today || []).forEach((t) => {
+        if (t.type) set.add(t.type)
+      })
+      ; (tasks.overdue || []).forEach((t) => {
+        if (t.type) set.add(t.type)
+      })
+      ; (unscheduled || []).forEach((t) => {
+        if (t.type) set.add(t.type)
+      })
     return Array.from(set)
   }, [tasks, unscheduled])
 
   const listTagOptions = useMemo(() => {
     const set = new Set<string>()
-    ;(tasks.today || []).forEach((t) => {
-      ;(t.tags || []).forEach((g) => set.add(g))
-    })
-    ;(tasks.overdue || []).forEach((t) => {
-      ;(t.tags || []).forEach((g) => set.add(g))
-    })
-    ;(unscheduled || []).forEach((t) => {
-      ;(t.tags || []).forEach((g) => set.add(g))
-    })
+      ; (tasks.today || []).forEach((t) => {
+        ; (t.tags || []).forEach((g) => set.add(g))
+      })
+      ; (tasks.overdue || []).forEach((t) => {
+        ; (t.tags || []).forEach((g) => set.add(g))
+      })
+      ; (unscheduled || []).forEach((t) => {
+        ; (t.tags || []).forEach((g) => set.add(g))
+      })
     return Array.from(set)
   }, [tasks, unscheduled])
 
@@ -301,48 +259,95 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     }
   }
 
-  // Load time blocks for list view date range without affecting day/week/month views
+  // Load time blocks for list view date range or week view
   useEffect(() => {
     if (!jwt) return
     if (pathOnly !== '/planner') return
-    if (plannerView !== 'list') return
-    if (!listRangeStart || !listRangeEnd) return
-    if (listRangeStart > listRangeEnd) return
-    if (listRangePickerOpen) return
+
+    let start = ''
+    let end = ''
+
+    if (plannerView === 'list') {
+      if (!listRangeStart || !listRangeEnd) return
+      if (listRangeStart > listRangeEnd) return
+      if (listRangePickerOpen) return
+      start = listRangeStart
+      end = listRangeEnd
+    } else if (plannerView === 'week') {
+      const d = new Date(date)
+      const day = d.getDay() // 0 is Sunday
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1) // Adjust to Monday
+      const startOfWeek = new Date(d.setDate(diff)) // Monday
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(startOfWeek.getDate() + 6) // Sunday
+
+      start = todayStr(startOfWeek)
+      end = todayStr(endOfWeek)
+    } else if (plannerView === 'month') {
+      const d = new Date(date)
+      const year = d.getFullYear()
+      const month = d.getMonth()
+
+      // First day of the month
+      const firstDay = new Date(year, month, 1)
+      // Last day of the month
+      const lastDay = new Date(year, month + 1, 0)
+
+      // Calculate padding for start (Monday start)
+      const startDay = firstDay.getDay() // 0 is Sunday
+      const startDiff = startDay === 0 ? 6 : startDay - 1
+      const startDate = new Date(firstDay)
+      startDate.setDate(firstDay.getDate() - startDiff)
+
+      // Calculate padding for end (Sunday end)
+      const endDay = lastDay.getDay() // 0 is Sunday
+      const endDiff = endDay === 0 ? 0 : 7 - endDay
+      const endDate = new Date(lastDay)
+      endDate.setDate(lastDay.getDate() + endDiff)
+
+      start = todayStr(startDate)
+      end = todayStr(endDate)
+    } else {
+      return
+    }
+
     let cancelled = false
-    ;(async () => {
-      try {
-        setRangeBlocksLoading(true)
-        const r = await fetch(`/blocks/range?start=${listRangeStart}&end=${listRangeEnd}`, { headers: headers() })
-        const j = await r.json().catch(() => ({}))
-        if (!r.ok) {
-          console.error('Failed to load range blocks', j)
-          return
-        }
-        const items = (j.items as Block[]) || []
-        if (cancelled) return
-        setRangeBlocks(items)
-        const ids = Array.from(new Set(items.map((b) => b.task_id).filter(Boolean))).map(String)
-        if (ids.length > 0) {
-          const tRes = await fetch(`/tasks/by-ids?ids=${encodeURIComponent(ids.join(','))}&with=tags`, { headers: headers() })
-          const tJson = await tRes.json().catch(() => ({}))
-          if (!tRes.ok) {
-            console.error('Failed to load range tasks', tJson)
+      ; (async () => {
+        try {
+          setRangeBlocksLoading(true)
+          const r = await fetch(`/blocks/range?start=${start}&end=${end}`, { headers: headers() })
+          const j = await r.json().catch(() => ({}))
+          if (!r.ok) {
+            console.error('Failed to load range blocks', j)
+            return
+          }
+          const items = (j.items as Block[]) || []
+          if (cancelled) return
+          setRangeBlocks(items)
+          const ids = Array.from(new Set(items.map((b) => b.task_id).filter(Boolean))).map(String)
+          if (ids.length > 0) {
+            const tRes = await fetch(`/tasks/by-ids?ids=${encodeURIComponent(ids.join(','))}&with=tags`, { headers: headers() })
+            const tJson = await tRes.json().catch(() => ({}))
+            if (!tRes.ok) {
+              console.error('Failed to load range tasks', tJson)
+            } else {
+              if (cancelled) return
+              setRangeTasks((tJson.items || []) as Task[])
+            }
           } else {
             if (cancelled) return
-            setRangeTasks((tJson.items || []) as Task[])
+            setRangeTasks([])
           }
+        } catch (e) {
+          console.error('Failed to load range blocks', e)
+        } finally {
+          if (!cancelled) setRangeBlocksLoading(false)
         }
-      } catch (e) {
-        console.error('Failed to load range blocks', e)
-      } finally {
-        if (!cancelled) setRangeBlocksLoading(false)
-      }
-    })()
+      })()
     return () => {
       cancelled = true
     }
-  }, [jwt, pathOnly, plannerView, listRangeStart, listRangeEnd, listRangePickerOpen, rangeReloadKey])
+  }, [jwt, pathOnly, plannerView, listRangeStart, listRangeEnd, listRangePickerOpen, rangeReloadKey, date])
 
   async function updateTaskMeta(
     id: Task['id'],
@@ -523,5 +528,27 @@ export function usePlanner(params: UsePlannerParams): UsePlannerResult {
     deleteTask,
     addBlock,
     deleteBlock,
+    unschedMenuOpenId,
+    setUnschedMenuOpenId,
+    listMenuOpenId,
+    setListMenuOpenId,
+    listEdit,
+    setListEdit,
+    showCreateTask,
+    setShowCreateTask,
+    scheduleFor,
+    setScheduleFor,
+    editTask,
+    setEditTask,
+    listFilterType,
+    setListFilterType,
+    listFilterPriority,
+    setListFilterPriority,
+    listFilterTag,
+    setListFilterTag,
+    listFilterOverdue,
+    setListFilterOverdue,
+    listFilterDone,
+    setListFilterDone,
   }
 }
