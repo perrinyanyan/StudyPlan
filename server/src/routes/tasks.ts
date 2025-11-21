@@ -416,4 +416,37 @@ router.delete('/:id', async (req: Request, res: Response) => {
   res.json({ message: 'OK' });
 });
 
+// Get unique task types for user
+router.get('/types', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('type')
+    .eq('user_id', userId)
+    .not('type', 'is', null);
+
+  if (error) return res.status(500).json({ error: 'Failed to fetch types' });
+
+  const types = Array.from(new Set((data || []).map(t => t.type).filter(Boolean)));
+  res.json({ types });
+});
+
+// Get unique tags for user
+router.get('/tags-list', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { data, error } = await supabase
+    .from('tags')
+    .select('name')
+    .eq('user_id', userId);
+
+  if (error) return res.status(500).json({ error: 'Failed to fetch tags' });
+
+  const tags = (data || []).map(t => t.name);
+  res.json({ tags });
+});
+
 export default router;

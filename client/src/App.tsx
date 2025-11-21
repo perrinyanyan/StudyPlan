@@ -9,6 +9,7 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
 import { RoleManagementPage } from './components/admin/RoleManagementPage'
+import { PlanLibraryPage } from './components/plans/PlanLibraryPage'
 import type { Task, Block, DailyTasks, FetchState } from './types'
 import { todayStr, fmtHHmm, defaultTimeZone, formatYmdWeek } from './utils/datetime'
 import { usePlanner } from './hooks/usePlanner'
@@ -361,7 +362,7 @@ export default function App() {
         </div>
       )}
 
-      {pathOnly === '/planner' && !isSmall && (
+      {(pathOnly === '/planner' || pathOnly === '/plans') && !isSmall && (
         <aside
           className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
             } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
@@ -424,12 +425,24 @@ export default function App() {
                 <a
                   href="#/planner"
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/planner'
-                      ? 'bg-white/10 text-white'
-                      : 'text-white/80 hover:bg-white/10'
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/80 hover:bg-white/10'
                     }`}
                 >
                   <span className="material-symbols-outlined">view_list</span>
                   {!sidebarCollapsed && <span className="font-medium">规划</span>}
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/plans"
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/plans'
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                    }`}
+                >
+                  <span className="material-symbols-outlined">library_books</span>
+                  {!sidebarCollapsed && <span className="font-medium">计划库</span>}
                 </a>
               </li>
               <li>
@@ -485,7 +498,7 @@ export default function App() {
 
       <div
         className={
-          pathOnly === '/planner' && !isSmall
+          (pathOnly === '/planner' || pathOnly === '/plans') && !isSmall
             ? sidebarCollapsed
               ? 'pl-16'
               : 'pl-64'
@@ -493,7 +506,7 @@ export default function App() {
         }
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          {pathOnly !== '/planner' && (
+          {pathOnly !== '/planner' && pathOnly !== '/plans' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h1 className="text-xl font-semibold">Study Planner</h1>
@@ -548,6 +561,8 @@ export default function App() {
 
           {!jwt ? (
             <LoginForm onLogin={doLogin} msg={loginMsg} />
+          ) : pathOnly === '/plans' ? (
+            <PlanLibraryPage />
           ) : (
             <PlannerScreen
               plannerView={plannerView}

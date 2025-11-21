@@ -53,3 +53,14 @@ export type SharedData = {
 }
 
 export type UserRole = 'system_admin' | 'school_admin' | 'class_admin' | 'student'
+
+export type OptionalPlan = {
+  id: string
+  name: string
+  description?: string
+  category?: string
+  scope_type: 'global' | 'school' | 'class' | 'personal'
+  scope_id?: string | null
+  status: 'draft' | 'published'
+  created_at: string
+}

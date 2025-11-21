@@ -57,6 +57,8 @@ const pushSubLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 60, standardHe
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/auth/captcha', captchaLimiter);
 app.use('/auth', authLimiter, authRouter);
+import plansRouter from './routes/plans.js';
+
 app.use('/tasks', tasksRouter);
 app.use('/blocks', blocksRouter);
 app.use('/courses', coursesRouter);
@@ -64,6 +66,7 @@ app.use('/focus', focusRouter);
 app.use('/classes', classesRouter);
 app.use('/task-types', taskTypesRouter);
 app.use('/admin', adminRouter);
+app.use('/plans', plansRouter);
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/docs', (_req, res) => {
