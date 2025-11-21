@@ -263,76 +263,6 @@ export default function App() {
     )
   }
 
-  if (pathOnly === '/shares') {
-    return (
-      <div className="mx-auto max-w-5xl p-6">
-        <AppHeader current={current} jwt={jwt} onLogout={() => rememberJwt(null)} />
-
-        {!jwt ? (
-          <LoginForm onLogin={doLogin} msg={loginMsg} />
-        ) : (
-          <SharesPage
-            jwt={jwt}
-            shareScope={shareScope}
-            shareDays={shareDays}
-            shareMsg={shareMsg}
-            shares={shares}
-            setShareScope={setShareScope as any}
-            setShareDays={setShareDays}
-            createShare={createShare}
-            deleteShare={deleteShare}
-          />
-        )}
-      </div>
-    )
-  }
-
-  if (pathOnly === '/settings') {
-    return (
-      <div className="mx-auto max-w-5xl p-6">
-        <AppHeader current={current} jwt={jwt} onLogout={() => rememberJwt(null)} />
-
-        {!jwt ? (
-          <LoginForm onLogin={doLogin} msg={loginMsg} />
-        ) : (
-          <SettingsPage
-            swReady={swReady}
-            pushMsg={pushMsg}
-            dailyEnabled={dailyEnabled}
-            settings={settings}
-            settingsMsg={settingsMsg}
-            tzOptions={tzOptions}
-            tzPlaceholder={defaultTimeZone()}
-            ensureSW={ensureSW}
-            subscribePush={subscribePush}
-            testPush={testPush}
-            saveSettings={saveSettings}
-            setDailyEnabled={setDailyEnabled}
-            setSettings={setSettings}
-          />
-        )}
-      </div>
-    )
-  }
-
-  if (pathOnly === '/admin/roles') {
-    return (
-      <div className="mx-auto max-w-7xl p-6">
-        <AppHeader current={current} jwt={jwt} onLogout={() => rememberJwt(null)} />
-
-        {!jwt ? (
-          <LoginForm onLogin={doLogin} msg={loginMsg} />
-        ) : (
-          <RoleManagementPage
-            jwt={jwt}
-            headers={headers}
-            currentUserRole={profile?.role}
-          />
-        )}
-      </div>
-    )
-  }
-
   return (
     <div
       className="min-h-screen"
@@ -362,7 +292,7 @@ export default function App() {
         </div>
       )}
 
-      {(pathOnly === '/planner' || pathOnly === '/plans') && !isSmall && (
+      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares') && !isSmall && (
         <aside
           className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
             } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
@@ -448,7 +378,10 @@ export default function App() {
               <li>
                 <a
                   href="#/shares"
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/shares'
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                    }`}
                 >
                   <span className="material-symbols-outlined">share</span>
                   {!sidebarCollapsed && <span className="font-medium">分享</span>}
@@ -457,7 +390,10 @@ export default function App() {
               <li>
                 <a
                   href="#/settings"
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/settings'
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                    }`}
                 >
                   <span className="material-symbols-outlined">settings</span>
                   {!sidebarCollapsed && <span className="font-medium">设置</span>}
@@ -467,7 +403,10 @@ export default function App() {
                 <li>
                   <a
                     href="#/admin/roles"
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/admin/roles'
+                      ? 'bg-white/10 text-white'
+                      : 'text-white/80 hover:bg-white/10'
+                      }`}
                   >
                     <span className="material-symbols-outlined">admin_panel_settings</span>
                     {!sidebarCollapsed && <span className="font-medium">角色管理</span>}
@@ -498,7 +437,7 @@ export default function App() {
 
       <div
         className={
-          (pathOnly === '/planner' || pathOnly === '/plans') && !isSmall
+          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares') && !isSmall
             ? sidebarCollapsed
               ? 'pl-16'
               : 'pl-64'
@@ -506,7 +445,7 @@ export default function App() {
         }
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          {pathOnly !== '/planner' && pathOnly !== '/plans' && (
+          {pathOnly !== '/planner' && pathOnly !== '/plans' && pathOnly !== '/admin/roles' && pathOnly !== '/settings' && pathOnly !== '/shares' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h1 className="text-xl font-semibold">Study Planner</h1>
@@ -563,6 +502,40 @@ export default function App() {
             <LoginForm onLogin={doLogin} msg={loginMsg} />
           ) : pathOnly === '/plans' ? (
             <PlanLibraryPage />
+          ) : pathOnly === '/admin/roles' ? (
+            <RoleManagementPage
+              jwt={jwt}
+              headers={headers}
+              currentUserRole={profile?.role}
+            />
+          ) : pathOnly === '/settings' ? (
+            <SettingsPage
+              swReady={swReady}
+              pushMsg={pushMsg}
+              dailyEnabled={dailyEnabled}
+              settings={settings}
+              settingsMsg={settingsMsg}
+              tzOptions={tzOptions}
+              tzPlaceholder={defaultTimeZone()}
+              ensureSW={ensureSW}
+              subscribePush={subscribePush}
+              testPush={testPush}
+              saveSettings={saveSettings}
+              setDailyEnabled={setDailyEnabled}
+              setSettings={setSettings}
+            />
+          ) : pathOnly === '/shares' ? (
+            <SharesPage
+              jwt={jwt}
+              shareScope={shareScope}
+              shareDays={shareDays}
+              shareMsg={shareMsg}
+              shares={shares}
+              setShareScope={setShareScope as any}
+              setShareDays={setShareDays}
+              createShare={createShare}
+              deleteShare={deleteShare}
+            />
           ) : (
             <PlannerScreen
               plannerView={plannerView}
