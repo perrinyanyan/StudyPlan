@@ -20,7 +20,7 @@ function getUserId(req: Request): string | null {
   }
 }
 
- 
+
 
 const joinReqSchema = z.object({ invite_code: z.string().min(1) });
 
@@ -176,6 +176,69 @@ router.get('/:class_id/members', async (req: Request, res: Response) => {
   const userMap = new Map<string, any>(users.map(u => [u.id, u]));
   const out = (members || []).map(m => ({ user_id: m.user_id, nickname: userMap.get(m.user_id)?.nickname ?? null, joined_at: m.joined_at }));
   res.json({ members: out });
+});
+
+router.get('/:class_id/selected-plan', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const classId = req.params.class_id;
+
+  const admin = await isAdminOfClass(userId, classId);
+  let allow = admin;
+  if (!allow) allow = await isMemberOfClass(userId, classId);
+  if (!allow) return res.status(403).json({ error: 'Forbidden' });
+
+  const { data, error } = await supabase
+    .from('selected_plans')
+    .select('*, optional_plan:optional_plans(*)')
+    .eq('class_id', classId)
+    .maybeSingle();
+
+  if (error) return res.status(500).json({ error: 'Failed to get selected plan' });
+  if (!data) return res.json({ selected_plan: null });
+
+  res.json({ selected_plan: data });
+});
+
+router.put('/:class_id/selected-plan', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const classId = req.params.class_id;
+
+  const ok = await isAdminOfClass(userId, classId);
+  if (!ok) return res.status(403).json({ error: 'Forbidden' });
+
+  const schema = z.object({
+    optional_plan_id: z.string().uuid(),
+    effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+  const { optional_plan_id, effective_from } = parsed.data;
+
+  const { data: plan, error: pErr } = await supabase
+    .from('optional_plans')
+    .select('id')
+    .eq('id', optional_plan_id)
+    .single();
+
+  if (pErr || !plan) return res.status(404).json({ error: 'Optional plan not found' });
+
+  const { data, error } = await supabase
+    .from('selected_plans')
+    .upsert({
+      class_id: classId,
+      optional_plan_id,
+      effective_from: effective_from || null,
+    }, { onConflict: 'class_id' })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: 'Failed to set selected plan' });
+
+  res.json({ selected_plan: data });
 });
 
 export default router;

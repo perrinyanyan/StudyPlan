@@ -132,7 +132,7 @@ router.get('/me', async (req: Request, res: Response) => {
     role = 'system_admin';
   }
 
-  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '', role });
+  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '', role, roles });
 });
 
 router.post('/request-password-reset', async (req: Request, res: Response) => {

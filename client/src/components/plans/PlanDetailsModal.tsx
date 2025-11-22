@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { PlanVisibilityModal } from './PlanVisibilityModal';
+import { SetSelectedPlanModal } from './SetSelectedPlanModal';
 
 interface PlanDetailsModalProps {
     planId: string;
     onClose: () => void;
+    onPlanDeleted?: () => void;
 }
 
 interface Session {
@@ -34,6 +37,8 @@ interface PlanDetails {
         description: string;
         category: string;
         scope_type: string;
+        scope_id: string;
+        created_by: string;
     };
     items: PlanItem[];
 }
@@ -44,7 +49,7 @@ interface CourseSettings {
     tags: string;
 }
 
-export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
+export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetailsModalProps) {
     const { headers } = useAuth();
     const [details, setDetails] = useState<PlanDetails | null>(null);
     const [loading, setLoading] = useState(true);
@@ -52,18 +57,26 @@ export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
 
     const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
     const [applying, setApplying] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const [courseSettings, setCourseSettings] = useState<Map<string, CourseSettings>>(new Map());
 
     const [availableTypes, setAvailableTypes] = useState<string[]>(['Class', 'Study', 'Exam', 'Activity']);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
 
+    const [showVisibilityModal, setShowVisibilityModal] = useState(false);
+    const [showSelectedPlanModal, setShowSelectedPlanModal] = useState(false);
+    const [userRole, setUserRole] = useState<string | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
+    const [userRoles, setUserRoles] = useState<any[]>([]);
+
     useEffect(() => {
         const fetchData = async () => {
             try {
-                const [detailsRes, typesRes, tagsRes] = await Promise.all([
+                const [detailsRes, typesRes, tagsRes, profileRes] = await Promise.all([
                     fetch(`/plans/${planId}`, { headers: headers() }),
                     fetch('/tasks/types', { headers: headers() }),
-                    fetch('/tasks/tags-list', { headers: headers() })
+                    fetch('/tasks/tags-list', { headers: headers() }),
+                    fetch('/auth/me', { headers: headers() })
                 ]);
 
                 if (!detailsRes.ok) throw new Error('Failed to load plan details');
@@ -85,6 +98,14 @@ export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
                 if (tagsRes.ok) {
                     const tagsData = await tagsRes.json();
                     setAvailableTags(tagsData.tags || []);
+                }
+
+                // Check user role for visibility management
+                if (profileRes.ok) {
+                    const profile = await profileRes.json();
+                    setUserRole(profile.role);
+                    setUserId(profile.id);
+                    setUserRoles(profile.roles || []);
                 }
             } catch (err: any) {
                 setError(err.message);
@@ -150,7 +171,49 @@ export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
         }
     };
 
+    const handleDelete = async () => {
+        if (!confirm('Are you sure you want to delete this plan? This action cannot be undone.')) return;
+
+        setDeleting(true);
+        try {
+            const res = await fetch(`/plans/${planId}`, {
+                method: 'DELETE',
+                headers: headers()
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || 'Failed to delete plan');
+            }
+
+            alert('Plan deleted successfully');
+            if (onPlanDeleted) onPlanDeleted();
+            onClose();
+        } catch (err: any) {
+            alert('Error: ' + err.message);
+        } finally {
+            setDeleting(false);
+        }
+    };
+
     if (!planId) return null;
+
+    // Determine if user can manage visibility
+    const canManageVisibility = details && (
+        (details.plan.scope_type === 'global' && userRole === 'system_admin') ||
+        (details.plan.scope_type === 'school' && ['school_admin', 'system_admin'].includes(userRole || ''))
+    );
+
+    // Determine if user can set selected plan (School Admin or Class Admin)
+    const canSetSelectedPlan = ['school_admin', 'class_admin', 'system_admin'].includes(userRole || '');
+
+    // Determine if user can delete plan
+    const canDelete = details && (
+        (details.plan.scope_type === 'personal' && details.plan.created_by === userId) ||
+        (userRole === 'system_admin') ||
+        (details.plan.scope_type === 'school' && userRoles.some((r: any) => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === details.plan.scope_id)) ||
+        (details.plan.scope_type === 'class' && userRoles.some((r: any) => r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === details.plan.scope_id))
+    );
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -246,7 +309,37 @@ export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
                 </div>
 
                 <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
-                    <div className="text-sm text-gray-500">{selectedCourseIds.length} courses selected</div>
+                    <div className="flex items-center gap-3">
+                        <div className="text-sm text-gray-500">{selectedCourseIds.length} courses selected</div>
+                        {canManageVisibility && (
+                            <button
+                                onClick={() => setShowVisibilityModal(true)}
+                                className="px-3 py-1.5 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
+                            >
+                                <span>👁️</span>
+                                管理可见性
+                            </button>
+                        )}
+                        {canSetSelectedPlan && (
+                            <button
+                                onClick={() => setShowSelectedPlanModal(true)}
+                                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
+                            >
+                                <span>⭐</span>
+                                设为选定计划
+                            </button>
+                        )}
+                        {canDelete && (
+                            <button
+                                onClick={handleDelete}
+                                disabled={deleting}
+                                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                            >
+                                <span>🗑️</span>
+                                删除计划
+                            </button>
+                        )}
+                    </div>
                     <div className="flex gap-3">
                         <button onClick={onClose} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg" disabled={applying}>Close</button>
                         <button onClick={handleApply} className={`px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 ${(selectedCourseIds.length === 0 || applying) ? 'opacity-50' : ''}`} disabled={selectedCourseIds.length === 0 || applying}>
@@ -255,6 +348,31 @@ export function PlanDetailsModal({ planId, onClose }: PlanDetailsModalProps) {
                     </div>
                 </div>
             </div>
+
+            {showVisibilityModal && details && (
+                <PlanVisibilityModal
+                    planId={planId}
+                    planName={details.plan.name}
+                    planScope={details.plan.scope_type as 'global' | 'school' | 'class' | 'personal'}
+                    onClose={() => setShowVisibilityModal(false)}
+                    onSuccess={() => {
+                        alert('可见性设置已更新！');
+                        setShowVisibilityModal(false);
+                    }}
+                />
+            )}
+
+            {showSelectedPlanModal && details && (
+                <SetSelectedPlanModal
+                    planId={planId}
+                    planName={details.plan.name}
+                    onClose={() => setShowSelectedPlanModal(false)}
+                    onSuccess={() => {
+                        alert('已成功设置为选定计划！');
+                        setShowSelectedPlanModal(false);
+                    }}
+                />
+            )}
         </div>
     );
 }

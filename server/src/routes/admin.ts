@@ -47,10 +47,8 @@ async function requireSystemAdmin(req: Request, res: Response, next: NextFunctio
     next();
 }
 
-router.use(requireSystemAdmin);
-
-// List all users with their roles
-router.get('/users', async (req: Request, res: Response) => {
+// List all users with their roles (System Admin only)
+router.get('/users', requireSystemAdmin, async (req: Request, res: Response) => {
     // 1. Fetch all users
     const { data: users, error: uErr } = await supabase
         .from('users')
@@ -111,14 +109,14 @@ router.get('/users', async (req: Request, res: Response) => {
     res.json({ users: result });
 });
 
-// Add role to user
+// Add role to user (System Admin only)
 const addRoleSchema = z.object({
     role: z.enum(['system_admin', 'school_admin', 'class_admin', 'student']),
     scope_type: z.enum(['global', 'school', 'class']).optional(),
     scope_id: z.string().optional()
 });
 
-router.post('/users/:id/roles', async (req: Request, res: Response) => {
+router.post('/users/:id/roles', requireSystemAdmin, async (req: Request, res: Response) => {
     const userId = req.params.id;
     const validation = addRoleSchema.safeParse(req.body);
 
@@ -166,8 +164,8 @@ router.post('/users/:id/roles', async (req: Request, res: Response) => {
     res.json({ success: true });
 });
 
-// Remove role from user
-router.delete('/users/:id/roles', async (req: Request, res: Response) => {
+// Remove role from user (System Admin only)
+router.delete('/users/:id/roles', requireSystemAdmin, async (req: Request, res: Response) => {
     const userId = req.params.id;
     const { role, scope_id } = req.body; // Expecting role and scope_id in body to identify which role to remove
 
@@ -195,16 +193,88 @@ router.delete('/users/:id/roles', async (req: Request, res: Response) => {
     res.json({ success: true });
 });
 
-// List schools (for scope selection)
+// List schools (System Admin or School Admin)
 router.get('/schools', async (req: Request, res: Response) => {
-    const { data, error } = await supabase.from('schools').select('id, name').order('name');
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No authorization header' });
+    }
+    const token = authHeader.slice(7);
+    let userId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Fetch user roles
+    const { data: roles } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', userId);
+
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const schoolAdminSchoolIds = userRoles
+        .filter(r => r.role === 'school_admin' && r.scope_type === 'school')
+        .map(r => r.scope_id);
+
+    if (!isSystemAdmin && schoolAdminSchoolIds.length === 0) {
+        return res.status(403).json({ error: 'Requires system_admin or school_admin role' });
+    }
+
+    let query = supabase.from('schools').select('id, name').order('name');
+
+    // If not system admin, filter by schools where user is school_admin
+    if (!isSystemAdmin) {
+        query = query.in('id', schoolAdminSchoolIds);
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch schools' });
     res.json({ schools: data });
 });
 
-// List classes (for scope selection)
+// List classes (System Admin or School Admin)
 router.get('/classes', async (req: Request, res: Response) => {
-    const { data, error } = await supabase.from('classes').select('id, name, school_id').order('name');
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No authorization header' });
+    }
+    const token = authHeader.slice(7);
+    let userId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Fetch user roles
+    const { data: roles } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', userId);
+
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const schoolAdminSchoolIds = userRoles
+        .filter(r => r.role === 'school_admin' && r.scope_type === 'school')
+        .map(r => r.scope_id);
+
+    if (!isSystemAdmin && schoolAdminSchoolIds.length === 0) {
+        return res.status(403).json({ error: 'Requires system_admin or school_admin role' });
+    }
+
+    let query = supabase.from('classes').select('id, name, school_id').order('name');
+
+    // If not system admin, filter by schools where user is school_admin
+    if (!isSystemAdmin) {
+        query = query.in('school_id', schoolAdminSchoolIds);
+    }
+
+    const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch classes' });
     res.json({ classes: data });
 });

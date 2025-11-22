@@ -11,6 +11,10 @@ export function PlanLibraryPage() {
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
     const [filterScope, setFilterScope] = useState<string>('all')
     const [filterCategory, setFilterCategory] = useState<string>('all')
+    const [showSelectedOnly, setShowSelectedOnly] = useState(false)
+
+    const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set())
+    const [userClasses, setUserClasses] = useState<any[]>([])
 
     const fetchPlans = async () => {
         setLoading(true)
@@ -22,6 +26,38 @@ export function PlanLibraryPage() {
             if (!res.ok) throw new Error('Failed to fetch plans')
             const data = await res.json()
             setPlans(data.plans)
+
+            // Fetch user's classes and their selected plans
+            try {
+                const classesRes = await fetch('/admin/classes', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
+                if (classesRes.ok) {
+                    const classesData = await classesRes.json()
+                    setUserClasses(classesData.classes || [])
+
+                    // Fetch selected plans for all classes
+                    const selectedIds = new Set<string>()
+                    for (const cls of classesData.classes || []) {
+                        try {
+                            const selectedRes = await fetch(`/classes/${cls.id}/selected-plan`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            })
+                            if (selectedRes.ok) {
+                                const selectedData = await selectedRes.json()
+                                if (selectedData.optional_plan_id) {
+                                    selectedIds.add(selectedData.optional_plan_id)
+                                }
+                            }
+                        } catch (err) {
+                            // Ignore errors for individual classes
+                        }
+                    }
+                    setSelectedPlanIds(selectedIds)
+                }
+            } catch (err) {
+                // Ignore class fetching errors
+            }
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -36,6 +72,7 @@ export function PlanLibraryPage() {
     const filteredPlans = plans.filter(p => {
         if (filterScope !== 'all' && p.scope_type !== filterScope) return false
         if (filterCategory !== 'all' && p.category !== filterCategory) return false
+        if (showSelectedOnly && !selectedPlanIds.has(p.id)) return false
         return true
     })
 
@@ -81,6 +118,16 @@ export function PlanLibraryPage() {
                     >
                         <span>📥</span> 导入 CSV
                     </button>
+
+                    <button
+                        onClick={() => setShowSelectedOnly(!showSelectedOnly)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 border transition-colors ${showSelectedOnly
+                            ? 'bg-amber-500 hover:bg-amber-600 border-amber-400/30 text-white'
+                            : 'bg-black/20 hover:bg-white/10 border-white/10 text-white/90'
+                            }`}
+                    >
+                        <span>⭐</span> {showSelectedOnly ? '显示全部' : '仅选定计划'}
+                    </button>
                 </div>
             </div>
 
@@ -95,41 +142,49 @@ export function PlanLibraryPage() {
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filteredPlans.map(plan => (
-                        <div key={plan.id} className="bg-slate-800 border border-white/10 rounded-lg p-5 hover:border-blue-500/50 transition-colors group">
-                            <div className="flex justify-between items-start mb-3">
-                                <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-medium tracking-wider
+                    {filteredPlans.map(plan => {
+                        const isSelected = selectedPlanIds.has(plan.id)
+                        return (
+                            <div key={plan.id} className="bg-slate-800 border border-white/10 rounded-lg p-5 hover:border-blue-500/50 transition-colors group relative">
+                                {isSelected && (
+                                    <div className="absolute top-3 right-3 bg-amber-500 text-white text-[10px] px-2 py-1 rounded-full font-medium flex items-center gap-1">
+                                        <span>⭐</span> 选定计划
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-start mb-3">
+                                    <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-medium tracking-wider
                                     ${plan.scope_type === 'global' ? 'bg-purple-500/20 text-purple-300' :
-                                        plan.scope_type === 'school' ? 'bg-blue-500/20 text-blue-300' :
-                                            plan.scope_type === 'class' ? 'bg-green-500/20 text-green-300' :
-                                                'bg-slate-600/20 text-slate-400'
-                                    }`}>
-                                    {plan.scope_type}
-                                </span>
-                                <span className="text-xs text-slate-500">{new Date(plan.created_at).toLocaleDateString()}</span>
-                            </div>
+                                            plan.scope_type === 'school' ? 'bg-blue-500/20 text-blue-300' :
+                                                plan.scope_type === 'class' ? 'bg-green-500/20 text-green-300' :
+                                                    'bg-slate-600/20 text-slate-400'
+                                        }`}>
+                                        {plan.scope_type}
+                                    </span>
+                                    <span className="text-xs text-slate-500">{new Date(plan.created_at).toLocaleDateString()}</span>
+                                </div>
 
-                            <h3 className="text-lg font-semibold text-white mb-1 group-hover:text-blue-400 transition-colors">
-                                {plan.name}
-                            </h3>
+                                <h3 className="text-lg font-semibold text-white mb-1 group-hover:text-blue-400 transition-colors">
+                                    {plan.name}
+                                </h3>
 
-                            <div className="text-xs text-slate-400 mb-4 line-clamp-2 h-8">
-                                {plan.description || 'No description'}
-                            </div>
+                                <div className="text-xs text-slate-400 mb-4 line-clamp-2 h-8">
+                                    {plan.description || 'No description'}
+                                </div>
 
-                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
-                                <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">
-                                    {plan.category || 'Uncategorized'}
-                                </span>
-                                <button
-                                    onClick={() => setSelectedPlanId(plan.id)}
-                                    className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
-                                >
-                                    查看详情
-                                </button>
+                                <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
+                                    <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">
+                                        {plan.category || 'Uncategorized'}
+                                    </span>
+                                    <button
+                                        onClick={() => setSelectedPlanId(plan.id)}
+                                        className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
+                                    >
+                                        查看详情
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    ))}
+                        )
+                    })}
                 </div>
             )}
 
@@ -144,6 +199,7 @@ export function PlanLibraryPage() {
                 <PlanDetailsModal
                     planId={selectedPlanId}
                     onClose={() => setSelectedPlanId(null)}
+                    onPlanDeleted={fetchPlans}
                 />
             )}
         </div>
