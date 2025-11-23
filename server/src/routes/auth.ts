@@ -6,8 +6,38 @@ import { createCaptcha, verifyCaptcha } from '../utils/captcha.js';
 import bcrypt from 'bcryptjs';
 import { supabase } from '../db/supabase.js';
 import type { Request, Response } from 'express';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
+
+// Configure multer for avatar uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'avatars');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Only image files are allowed!'));
+  }
+});
 
 // In-memory verification tokens for MVP; replace with DB later
 const emailVerifications = new Map<string, { email: string; expireAt: number }>();
@@ -107,7 +137,7 @@ router.get('/me', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, nickname')
+    .select('id, email, nickname, avatar_url')
     .eq('id', userId)
     .single();
   if (error || !data) return res.status(500).json({ error: 'Failed to load profile' });
@@ -132,7 +162,14 @@ router.get('/me', async (req: Request, res: Response) => {
     role = 'system_admin';
   }
 
-  res.json({ id: data.id, email: data.email, nickname: (data as any).nickname || '', role, roles });
+  res.json({
+    id: data.id,
+    email: data.email,
+    nickname: (data as any).nickname || '',
+    avatar_url: (data as any).avatar_url || null,
+    role,
+    roles
+  });
 });
 
 router.post('/request-password-reset', async (req: Request, res: Response) => {
@@ -168,6 +205,38 @@ router.post('/reset-password', async (req: Request, res: Response) => {
   res.json({ message: 'Password updated' });
 });
 
+router.post('/change-password', async (req: Request, res: Response) => {
+  const schema = z.object({
+    old_password: z.string(),
+    new_password: z.string().min(6)
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { data: user, error: selErr } = await supabase
+    .from('users')
+    .select('password_hash')
+    .eq('id', userId)
+    .single();
+
+  if (selErr || !user) return res.status(500).json({ error: 'Failed to verify user' });
+
+  const ok = await bcrypt.compare(parsed.data.old_password, user.password_hash);
+  if (!ok) return res.status(400).json({ error: 'Old password incorrect' });
+
+  const password_hash = await bcrypt.hash(parsed.data.new_password, 10);
+  const { error: upErr } = await supabase
+    .from('users')
+    .update({ password_hash })
+    .eq('id', userId);
+
+  if (upErr) return res.status(500).json({ error: 'Failed to update password' });
+  res.json({ message: 'Password updated' });
+});
+
 router.patch('/profile/nickname', async (req: Request, res: Response) => {
   const schema = z.object({ nickname: z.string().min(1), captcha_id: z.string(), captcha_answer: z.string() });
   const parsed = schema.safeParse(req.body);
@@ -182,6 +251,31 @@ router.patch('/profile/nickname', async (req: Request, res: Response) => {
     .eq('id', userId);
   if (upErr) return res.status(500).json({ error: 'Failed to update nickname' });
   res.json({ message: 'Nickname updated' });
+});
+
+router.post('/profile/avatar', upload.single('avatar'), async (req: Request, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+  const userId = getUserId(req);
+  if (!userId) {
+    // Clean up uploaded file if unauthorized
+    fs.unlinkSync(req.file.path);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+
+  const { error: upErr } = await supabase
+    .from('users')
+    .update({ avatar_url: avatarUrl })
+    .eq('id', userId);
+
+  if (upErr) {
+    fs.unlinkSync(req.file.path);
+    return res.status(500).json({ error: 'Failed to update avatar' });
+  }
+
+  res.json({ message: 'Avatar updated', avatar_url: avatarUrl });
 });
 
 export default router;

@@ -317,17 +317,30 @@ export default function App() {
                 className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
                   } rounded-lg hover:bg-white/10`}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white font-semibold">
-                  {(profile.nickname || profile.email || '?')
-                    .slice(0, 1)
-                    .toUpperCase()}
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white font-semibold overflow-hidden shrink-0">
+                  {profile.avatar_url ? (
+                    <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    (profile.nickname || profile.email || '?')
+                      .slice(0, 1)
+                      .toUpperCase()
+                  )}
                 </div>
                 {!sidebarCollapsed && (
-                  <div className="flex flex-col leading-tight">
-                    <span className="text-sm font-medium">
-                      {profile.nickname || profile.email}
-                    </span>
-                    <span className="text-xs text-white/60">
+                  <div className="flex flex-col leading-tight min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate">
+                        {profile.nickname || profile.email}
+                      </span>
+                      {profile.role && profile.role !== 'student' && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">
+                          {profile.role === 'system_admin' ? '系统管理员' :
+                            profile.role === 'school_admin' ? '校级管理员' :
+                              profile.role === 'class_admin' ? '班级管理员' : profile.role}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs text-white/60 truncate">
                       {profile.email}
                     </span>
                   </div>
@@ -338,7 +351,7 @@ export default function App() {
                 className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'
                   } rounded-lg`}
               >
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white shrink-0">
                   <span className="material-symbols-outlined">person</span>
                 </div>
                 {!sidebarCollapsed && (

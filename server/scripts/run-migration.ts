@@ -13,7 +13,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 async function runMigration() {
     console.log('Running plan_visibility migration...');
 
-    const migrationPath = path.join(__dirname, '../migrations/004_plan_visibility.sql');
+    const __dirname = path.dirname(new URL(import.meta.url).pathname);
+    // Remove leading slash on Windows if needed (though path.join usually handles it, sometimes URL pathname has /C:/...)
+    // Better to use fileURLToPath
+    const { fileURLToPath } = await import('url');
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname_fixed = path.dirname(__filename);
+
+    const migrationPath = path.join(__dirname_fixed, '../migrations/005_add_avatar.sql');
     const sql = fs.readFileSync(migrationPath, 'utf-8');
 
     // Split by semicolon and execute each statement

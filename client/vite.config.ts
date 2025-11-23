@@ -20,7 +20,8 @@ export default defineConfig({
       '/openapi.json': { target: 'http://localhost:3000', changeOrigin: true },
       '/docs': { target: 'http://localhost:3000', changeOrigin: true },
       '/admin': { target: 'http://localhost:3000', changeOrigin: true },
-      '/plans': { target: 'http://localhost:3000', changeOrigin: true }
+      '/plans': { target: 'http://localhost:3000', changeOrigin: true },
+      '/uploads': { target: 'http://localhost:3000', changeOrigin: true }
     }
   }
 })
