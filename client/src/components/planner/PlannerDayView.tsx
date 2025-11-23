@@ -578,13 +578,10 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                             {isCur && (
                                               <button
                                                 className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-black hover:bg-amber-400"
-                                                onClick={() => {
-                                                  const title = name || '当前时间段任务'
-                                                  if (!setCenterAlert) return
-                                                  setCenterAlert({
-                                                    title: '专注模式',
-                                                    detail: `请专注完成：${title}`,
-                                                  })
+                                                onClick={(e) => {
+                                                  e.stopPropagation()
+                                                  if (!taskIdStr) return
+                                                  window.location.hash = `#/focus?taskId=${taskIdStr}`
                                                 }}
                                               >
                                                 <span className="material-symbols-outlined text-sm">

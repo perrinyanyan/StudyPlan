@@ -10,6 +10,7 @@ import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
 import { RoleManagementPage } from './components/admin/RoleManagementPage'
 import { PlanLibraryPage } from './components/plans/PlanLibraryPage'
+import { FocusPage } from './components/focus/FocusPage'
 import type { Task, Block, DailyTasks, FetchState } from './types'
 import { todayStr, fmtHHmm, defaultTimeZone, formatYmdWeek } from './utils/datetime'
 import { usePlanner } from './hooks/usePlanner'
@@ -292,17 +293,19 @@ export default function App() {
         </div>
       )}
 
-      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares') && !isSmall && (
+      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall && (
         <aside
           className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
             } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="material-symbols-outlined text-blue-400">
-                auto_stories
-              </span>
-              {!sidebarCollapsed && <span className="font-bold">Study Planner</span>}
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-blue-400">
+                  auto_stories
+                </span>
+                {!sidebarCollapsed && <span className="font-bold">Study Planner</span>}
+              </div>
             </div>
             <button
               className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/10"
@@ -390,6 +393,18 @@ export default function App() {
               </li>
               <li>
                 <a
+                  href="#/focus"
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/focus'
+                    ? 'bg-white/10 text-white'
+                    : 'text-white/80 hover:bg-white/10'
+                    }`}
+                >
+                  <span className="material-symbols-outlined">timer</span>
+                  {!sidebarCollapsed && <span className="font-medium">专注</span>}
+                </a>
+              </li>
+              <li>
+                <a
                   href="#/shares"
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/shares'
                     ? 'bg-white/10 text-white'
@@ -450,7 +465,7 @@ export default function App() {
 
       <div
         className={
-          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares') && !isSmall
+          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall
             ? sidebarCollapsed
               ? 'pl-16'
               : 'pl-64'
@@ -458,7 +473,7 @@ export default function App() {
         }
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          {pathOnly !== '/planner' && pathOnly !== '/plans' && pathOnly !== '/admin/roles' && pathOnly !== '/settings' && pathOnly !== '/shares' && (
+          {pathOnly !== '/planner' && pathOnly !== '/plans' && pathOnly !== '/admin/roles' && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h1 className="text-xl font-semibold">Study Planner</h1>
@@ -548,6 +563,12 @@ export default function App() {
               setShareDays={setShareDays}
               createShare={createShare}
               deleteShare={deleteShare}
+            />
+          ) : pathOnly === '/focus' ? (
+            <FocusPage
+              tasks={tasks.today || []}
+              initialTaskId={new URLSearchParams(current.split('?')[1] || '').get('taskId') || undefined}
+              onExit={() => location.hash = '#/planner'}
             />
           ) : (
             <PlannerScreen
