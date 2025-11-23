@@ -230,6 +230,7 @@ export function PlannerScreen({
             rangeBlocks,
             rangeTasks,
             now,
+            currentBlock,
             taskTitleMap,
             taskStatusMap,
             taskMetaMap,
@@ -271,6 +272,7 @@ export function PlannerScreen({
           state={{
             rangeBlocks,
             now,
+            currentBlock,
             taskTitleMap,
             taskStatusMap,
             taskMetaMap,

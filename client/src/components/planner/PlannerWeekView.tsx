@@ -15,6 +15,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         rangeBlocks, // This will hold the week's blocks
         rangeTasks, // This will hold the week's tasks
         now,
+        currentBlock,
         taskTitleMap,
         taskStatusMap,
         taskMetaMap,
@@ -265,16 +266,20 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                 const status = taskIdStr ? taskStatusMap?.[taskIdStr] : 'open'
                                                 const isMenuOpen = listMenuOpenId === String(b.id)
                                                 const isOverdue = e.getTime() < now.getTime() && status !== 'done'
+                                                const isCurrent = currentBlock && String(currentBlock.id) === String(b.id)
 
                                                 return (
                                                     <div
                                                         key={String(b.id)}
-                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden border ${isMenuOpen ? 'z-50' : 'z-10'}`}
+                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden ${isCurrent
+                                                                ? 'border-2 border-amber-400 shadow-lg shadow-amber-500/50 z-30 ring-2 ring-amber-400/30 animate-pulse'
+                                                                : `border ${isMenuOpen ? 'z-50' : 'z-10'}`
+                                                            }`}
                                                         style={{
                                                             top: Math.max(0, top),
                                                             height: Math.max(20, height),
-                                                            backgroundColor: barColor,
-                                                            borderColor: borderColor
+                                                            backgroundColor: isCurrent ? '#F59E0B20' : barColor,
+                                                            borderColor: isCurrent ? '#F59E0B' : borderColor
                                                         }}
                                                         onClick={(e) => {
                                                             e.stopPropagation()

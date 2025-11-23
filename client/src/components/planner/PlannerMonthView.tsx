@@ -11,6 +11,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
     const {
         rangeBlocks, // This will hold the month's blocks
         now,
+        currentBlock,
         taskTitleMap,
         taskStatusMap,
         taskMetaMap,
@@ -236,14 +237,16 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                 const name = b.task_id ? taskTitleMap?.[String(b.task_id)] : '时间块'
                                                 const status = taskIdStr ? taskStatusMap?.[taskIdStr] : 'open'
                                                 const isOverdue = new Date(b.end_at).getTime() < now.getTime() && status !== 'done'
+                                                const isCurrent = currentBlock && String(currentBlock.id) === String(b.id)
 
                                                 return (
                                                     <div
                                                         key={b.id}
-                                                        className="text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 flex items-center"
+                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 flex items-center ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
+                                                            }`}
                                                         style={{
-                                                            backgroundColor: baseColor + '1A',
-                                                            borderLeft: `2px solid ${baseColor}`,
+                                                            backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
+                                                            borderLeft: `2px solid ${isCurrent ? '#F59E0B' : baseColor}`,
                                                             color: 'white'
                                                         }}
                                                         onMouseEnter={(e) => {
