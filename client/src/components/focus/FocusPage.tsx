@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Task } from '../../types'
+import { playFocusSound } from '../../utils/focusSounds'
 
 interface FocusPageProps {
     tasks: Task[]
     initialTaskId?: string
     defaultDuration?: number  // in minutes
+    startSoundType?: string
+    endSoundType?: string
     onExit: () => void
 }
 
-export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, onExit }: FocusPageProps) {
+export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, startSoundType = 'gentle', endSoundType = 'gentle', onExit }: FocusPageProps) {
     const [selectedTaskId, setSelectedTaskId] = useState<string | number>(initialTaskId || '')
     const [timeLeft, setTimeLeft] = useState(defaultDuration * 60)
     const [isActive, setIsActive] = useState(false)
@@ -63,6 +66,7 @@ export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, onExit }
             setIsPaused(false)
             if (timerRef.current) clearInterval(timerRef.current)
             exitFullscreen()
+            playFocusSound('end', endSoundType)
             if (Notification.permission === 'granted') {
                 new Notification('专注结束', { body: '恭喜你完成了专注时段！' })
             }
@@ -84,6 +88,7 @@ export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, onExit }
         if (initialTaskId && !isActive) {
             // Small delay to ensure everything is mounted
             const timer = setTimeout(() => {
+                playFocusSound('start', startSoundType)
                 setIsActive(true)
                 setIsPaused(false)
                 enterFullscreen()
@@ -94,6 +99,7 @@ export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, onExit }
 
     const toggleTimer = () => {
         if (!isActive) {
+            playFocusSound('start', startSoundType)
             setIsActive(true)
             setIsPaused(false)
             enterFullscreen()

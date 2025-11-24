@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { UserSettings } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
+import { SOUND_OPTIONS, playFocusSound } from '../../utils/focusSounds'
 
 export interface SettingsPageProps {
   swReady: boolean
@@ -454,6 +455,84 @@ export function SettingsPage({
             </div>
             <p className="mt-2 text-sm text-slate-400">
               点击任务专注按钮时使用的默认时长 (1-180分钟)
+            </p>
+          </div>
+
+          <div className="h-px bg-slate-700/50" />
+
+          {/* Focus Start Sound */}
+          <div>
+            <label className="text-base font-medium text-slate-200 block mb-2">专注开始音效</label>
+            <div className="flex items-center gap-3 max-w-md">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]">
+                  play_circle
+                </span>
+                <select
+                  className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all appearance-none"
+                  value={settings.focus_start_sound || 'gentle'}
+                  onChange={(e) => setSettings((s) => ({ ...s, focus_start_sound: e.target.value }))}
+                >
+                  {SOUND_OPTIONS.start.map(opt => (
+                    <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px] pointer-events-none">
+                  expand_more
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => playFocusSound('start', settings.focus_start_sound || 'gentle')}
+                className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white transition-colors flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[20px]">volume_up</span>
+                试听
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-400">
+              专注开始时播放的提示音
+            </p>
+          </div>
+
+          <div className="h-px bg-slate-700/50" />
+
+          {/* Focus End Sound */}
+          <div>
+            <label className="text-base font-medium text-slate-200 block mb-2">专注结束音效</label>
+            <div className="flex items-center gap-3 max-w-md">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]">
+                  notifications
+                </span>
+                <select
+                  className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all appearance-none"
+                  value={settings.focus_end_sound || 'gentle'}
+                  onChange={(e) => setSettings((s) => ({ ...s, focus_end_sound: e.target.value }))}
+                >
+                  {SOUND_OPTIONS.end.map(opt => (
+                    <option key={opt.value} value={opt.value} className="bg-slate-900 text-white">
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px] pointer-events-none">
+                  expand_more
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => playFocusSound('end', settings.focus_end_sound || 'gentle')}
+                className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-white transition-colors flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[20px]">volume_up</span>
+                试听
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-400">
+              专注完成时播放的提示音
             </p>
           </div>
         </div>

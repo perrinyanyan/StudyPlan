@@ -559,6 +559,26 @@ export default function App() {
               shareDays={shareDays}
               shareMsg={shareMsg}
               shares={shares}
+              setShareScope={setShareScope as any}
+              setShareDays={setShareDays}
+              createShare={createShare}
+              deleteShare={deleteShare}
+            />
+          ) : pathOnly === '/focus' ? (
+            <FocusPage
+              tasks={tasks.today || []}
+              initialTaskId={new URLSearchParams(current.split('?')[1] || '').get('taskId') || undefined}
+              defaultDuration={settings.focus_duration_minutes || 25}
+              startSoundType={settings.focus_start_sound || 'gentle'}
+              endSoundType={settings.focus_end_sound || 'gentle'}
+              onExit={() => location.hash = '#/planner'}
+            />
+          ) : (
+            <PlannerScreen
+              plannerView={plannerView}
+              date={date}
+              listRangeStart={listRangeStart}
+              listRangeEnd={listRangeEnd}
               listRangePickerOpen={listRangePickerOpen}
               state={{
                 listFilterType,

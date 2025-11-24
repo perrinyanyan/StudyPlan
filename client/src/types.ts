@@ -39,6 +39,8 @@ export type UserSettings = {
   daily_summary_time: string | null
   timezone: string | null
   focus_duration_minutes: number | null
+  focus_start_sound: string | null
+  focus_end_sound: string | null
 }
 
 export type SharedBlock = {
