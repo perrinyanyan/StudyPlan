@@ -7,10 +7,10 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
     const navItems = [
-        { label: 'Schools', path: '/admin/schools' },
-        { label: 'Classes', path: '/admin/classes' },
-        { label: 'Users', path: '/admin/users' },
-        { label: 'Roles', path: '/admin/roles' },
+        { label: '学校管理', path: '/admin/schools' },
+        { label: '班级管理', path: '/admin/classes' },
+        { label: '用户管理', path: '/admin/users' },
+        { label: '角色管理', path: '/admin/roles' },
     ];
 
     return (
@@ -18,7 +18,7 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
             {/* Sidebar */}
             <aside className="w-64 border-r border-white/10 bg-[#0f172a] flex flex-col fixed inset-y-0 left-0 z-10">
                 <div className="p-6 border-b border-white/10">
-                    <h1 className="text-xl font-bold text-white">Admin Panel</h1>
+                    <h1 className="text-xl font-bold text-white">管理后台</h1>
                 </div>
                 <nav className="flex-1 p-4 space-y-1">
                     {navItems.map((item) => (
@@ -26,8 +26,8 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
                             key={item.path}
                             href={`#${item.path}`}
                             className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors ${currentPath === item.path
-                                    ? 'bg-blue-600 text-white'
-                                    : 'hover:bg-white/5 text-slate-400 hover:text-white'
+                                ? 'bg-blue-600 text-white'
+                                : 'hover:bg-white/5 text-slate-400 hover:text-white'
                                 }`}
                         >
                             {item.label}
@@ -36,7 +36,7 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
                 </nav>
                 <div className="p-4 border-t border-white/10">
                     <a href="#/planner" className="block px-4 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 rounded-lg">
-                        Back to Planner
+                        返回计划表
                     </a>
                 </div>
             </aside>

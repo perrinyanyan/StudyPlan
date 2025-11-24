@@ -448,7 +448,7 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">设置</span>}
                 </a>
               </li>
-              {profile?.role === 'system_admin' && (
+              {(profile?.role === 'system_admin' || profile?.role === 'school_admin' || profile?.role === 'class_admin') && (
                 <li>
                   <a
                     href="#/admin/schools"

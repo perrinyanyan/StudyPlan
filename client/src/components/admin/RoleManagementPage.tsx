@@ -63,9 +63,9 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                 fetch('/admin/classes', { headers: headers() })
             ])
 
-            if (!uRes.ok) throw new Error('Failed to fetch users')
-            if (!sRes.ok) throw new Error('Failed to fetch schools')
-            if (!cRes.ok) throw new Error('Failed to fetch classes')
+            if (!uRes.ok) throw new Error('获取用户列表失败')
+            if (!sRes.ok) throw new Error('获取学校列表失败')
+            if (!cRes.ok) throw new Error('获取班级列表失败')
 
             const uData = await uRes.json()
             const sData = await sRes.json()
@@ -84,7 +84,7 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
     async function handleAddRole() {
         if (!selectedUserId) return
         if (newRole === 'student' && !newScopeId) {
-            alert('Student role requires a class selection')
+            alert('学生角色需要选择班级')
             return
         }
 
@@ -104,10 +104,10 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
 
             if (!res.ok) {
                 const data = await res.json()
-                throw new Error(data.error || 'Failed to add role')
+                throw new Error(data.error || '添加角色失败')
             }
 
-            setSuccessMsg('Role added successfully')
+            setSuccessMsg('角色添加成功')
             setShowModal(false)
             fetchData()
             setTimeout(() => setSuccessMsg(''), 3000)
@@ -117,7 +117,7 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
     }
 
     async function handleRemoveRole(userId: string, role: string, scopeId: string | null) {
-        if (!confirm('Are you sure you want to remove this role?')) return
+        if (!confirm('确定要移除该角色吗？')) return
 
         try {
             const res = await fetch(`/admin/users/${userId}/roles`, {
@@ -131,10 +131,10 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
 
             if (!res.ok) {
                 const data = await res.json()
-                throw new Error(data.error || 'Failed to remove role')
+                throw new Error(data.error || '移除角色失败')
             }
 
-            setSuccessMsg('Role removed successfully')
+            setSuccessMsg('角色移除成功')
             fetchData()
             setTimeout(() => setSuccessMsg(''), 3000)
         } catch (err: any) {
@@ -143,22 +143,22 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
     }
 
 
-    if (loading) return <div className="p-8 text-center text-slate-400">Loading...</div>
-    if (error) return <div className="p-8 text-center text-red-400">Error: {error}</div>
+    if (loading) return <div className="p-8 text-center text-slate-400">加载中...</div>
+    if (error) return <div className="p-8 text-center text-red-400">错误: {error}</div>
 
     if (currentUserRole && currentUserRole !== 'system_admin') {
-        return <div className="p-8 text-center text-red-400">Access Denied: System Admin only.</div>
+        return <div className="p-8 text-center text-red-400">访问拒绝：仅限系统管理员。</div>
     }
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-white">Role Management</h2>
+                <h2 className="text-2xl font-bold text-white">角色管理</h2>
                 <button
                     onClick={fetchData}
                     className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white"
                 >
-                    Refresh
+                    刷新
                 </button>
             </div>
 
@@ -172,19 +172,19 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                 <table className="w-full text-left text-sm text-slate-300">
                     <thead className="bg-white/5 text-xs uppercase font-semibold text-slate-400">
                         <tr>
-                            <th className="px-6 py-4">User</th>
-                            <th className="px-6 py-4">Email</th>
+                            <th className="px-6 py-4">用户</th>
+                            <th className="px-6 py-4">邮箱</th>
                             <th className="px-6 py-4">学校</th>
                             <th className="px-6 py-4">班级</th>
-                            <th className="px-6 py-4">Roles & Scopes</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
+                            <th className="px-6 py-4">角色 & 范围</th>
+                            <th className="px-6 py-4 text-right">操作</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                         {users.map(user => (
                             <tr key={user.id} className="hover:bg-white/5">
                                 <td className="px-6 py-4 font-medium text-white">
-                                    {user.nickname || 'No Name'}
+                                    {user.nickname || '无昵称'}
                                 </td>
                                 <td className="px-6 py-4">{user.email}</td>
                                 <td className="px-6 py-4">
@@ -236,8 +236,8 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                                                     }`}
                                             >
                                                 {r.role}
-                                                {r.scope_type === 'school' && <span className="opacity-70">@School</span>}
-                                                {r.scope_type === 'class' && <span className="opacity-70">@{r.class_name || 'Class'}</span>}
+                                                {r.scope_type === 'school' && <span className="opacity-70">@学校</span>}
+                                                {r.scope_type === 'class' && <span className="opacity-70">@{r.class_name || '班级'}</span>}
                                                 <button
                                                     onClick={() => handleRemoveRole(user.id, r.role, r.scope_id)}
                                                     className="ml-1 hover:text-red-400"
@@ -260,7 +260,7 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                                         }}
                                         className="text-blue-400 hover:text-blue-300 text-xs font-medium"
                                     >
-                                        Add Role
+                                        添加角色
                                     </button>
                                 </td>
                             </tr>
