@@ -50,4 +50,23 @@ router.post('/subscribe', async (req: Request, res: Response) => {
   res.json({ message: 'OK' });
 });
 
+const unsubSchema = z.object({
+  endpoint: z.string().url(),
+});
+
+router.post('/unsubscribe', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  const parsed = unsubSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  const { endpoint } = parsed.data;
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .delete()
+    .eq('user_id', userId)
+    .eq('endpoint', endpoint);
+  if (error) return res.status(500).json({ error: 'Failed to unsubscribe' });
+  res.json({ message: 'OK' });
+});
+
 export default router;

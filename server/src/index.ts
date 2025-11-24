@@ -63,8 +63,11 @@ app.use('/tasks', tasksRouter);
 app.use('/blocks', blocksRouter);
 app.use('/courses', coursesRouter);
 app.use('/focus', focusRouter);
+app.use('/push', pushSubLimiter, pushRouter);
+app.use('/notifications', notificationsRouter);
 app.use('/classes', classesRouter);
 app.use('/task-types', taskTypesRouter);
+app.use('/settings', settingsRouter);
 app.use('/admin', adminRouter);
 app.use('/plans', plansRouter);
 

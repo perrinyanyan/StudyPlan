@@ -9,6 +9,7 @@ export interface UsePushNotificationsResult {
   swReady: boolean
   ensureSW: () => Promise<ServiceWorkerRegistration | null>
   subscribePush: () => Promise<void>
+  unsubscribePush: () => Promise<void>
   testPush: () => Promise<void>
 }
 
@@ -91,11 +92,40 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
     setPushMsg('已触发测试通知')
   }
 
+  async function unsubscribePush(): Promise<void> {
+    setPushMsg('')
+    try {
+      const reg = await ensureSW()
+      if (!reg) return
+
+      const sub = await reg.pushManager.getSubscription()
+      if (!sub) {
+        setPushMsg('当前未订阅')
+        return
+      }
+
+      // Unsubscribe from server first
+      await fetch('/push/unsubscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers() },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      })
+
+      // Then unsubscribe from browser
+      await sub.unsubscribe()
+
+      setPushMsg('已取消订阅')
+    } catch (e: any) {
+      setPushMsg('取消订阅失败: ' + (e?.message || String(e)))
+    }
+  }
+
   return {
     pushMsg,
     swReady,
     ensureSW,
     subscribePush,
+    unsubscribePush,
     testPush,
   }
 }

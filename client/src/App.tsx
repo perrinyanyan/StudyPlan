@@ -40,7 +40,7 @@ export default function App() {
   } = useShares({ jwt, headers })
 
   // Push
-  const { pushMsg, swReady, ensureSW, subscribePush, testPush } = usePushNotifications({ headers })
+  const { pushMsg, swReady, ensureSW, subscribePush, unsubscribePush, testPush } = usePushNotifications({ headers })
 
   // Unscheduled pool
   const [unscheduled, setUnscheduled] = useState<Task[]>([])
@@ -547,6 +547,7 @@ export default function App() {
               tzPlaceholder={defaultTimeZone()}
               ensureSW={ensureSW}
               subscribePush={subscribePush}
+              unsubscribePush={unsubscribePush}
               testPush={testPush}
               saveSettings={saveSettings}
               setDailyEnabled={setDailyEnabled}

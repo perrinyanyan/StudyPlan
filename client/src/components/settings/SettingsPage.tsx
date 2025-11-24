@@ -14,6 +14,7 @@ export interface SettingsPageProps {
   tzPlaceholder: string
   ensureSW: () => void
   subscribePush: () => void
+  unsubscribePush: () => void
   testPush: () => void
   saveSettings: () => void | Promise<void>
   setDailyEnabled: (value: boolean) => void
@@ -30,6 +31,7 @@ export function SettingsPage({
   tzPlaceholder,
   ensureSW,
   subscribePush,
+  unsubscribePush,
   testPush,
   saveSettings,
   setDailyEnabled,
@@ -334,6 +336,14 @@ export function SettingsPage({
             >
               <span className="material-symbols-outlined text-[20px]">notifications_active</span>
               订阅通知
+            </button>
+            <button
+              onClick={unsubscribePush}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!swReady}
+            >
+              <span className="material-symbols-outlined text-[20px]">notifications_off</span>
+              关闭通知
             </button>
             <button
               onClick={testPush}
