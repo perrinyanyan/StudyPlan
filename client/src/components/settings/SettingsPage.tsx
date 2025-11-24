@@ -424,6 +424,38 @@ export function SettingsPage({
               用于正确显示时间和发送通知
             </p>
           </div>
+
+          <div className="h-px bg-slate-700/50" />
+
+          {/* Focus Duration */}
+          <div>
+            <label className="text-base font-medium text-slate-200 block mb-2">默认专注时长</label>
+            <div className="flex items-center gap-3 max-w-md">
+              <div className="relative flex-1">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]">
+                  timer
+                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="180"
+                  className="w-full pl-10 pr-16 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                  value={settings.focus_duration_minutes || 25}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value)
+                    setSettings((s) => ({ ...s, focus_duration_minutes: isNaN(val) ? null : val }))
+                  }}
+                  placeholder="25"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">
+                  分钟
+                </span>
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-slate-400">
+              点击任务专注按钮时使用的默认时长 (1-180分钟)
+            </p>
+          </div>
         </div>
 
         <div className="p-6 bg-slate-900/30 border-t border-slate-700/50 flex items-center justify-end gap-4">

@@ -4,15 +4,16 @@ import { Task } from '../../types'
 interface FocusPageProps {
     tasks: Task[]
     initialTaskId?: string
+    defaultDuration?: number  // in minutes
     onExit: () => void
 }
 
-export function FocusPage({ tasks, initialTaskId, onExit }: FocusPageProps) {
+export function FocusPage({ tasks, initialTaskId, defaultDuration = 25, onExit }: FocusPageProps) {
     const [selectedTaskId, setSelectedTaskId] = useState<string | number>(initialTaskId || '')
-    const [timeLeft, setTimeLeft] = useState(25 * 60)
+    const [timeLeft, setTimeLeft] = useState(defaultDuration * 60)
     const [isActive, setIsActive] = useState(false)
     const [isPaused, setIsPaused] = useState(false)
-    const [initialTime, setInitialTime] = useState(25 * 60)
+    const [initialTime, setInitialTime] = useState(defaultDuration * 60)
     const [isCustomDuration, setIsCustomDuration] = useState(false)
     const [customMinutes, setCustomMinutes] = useState('')
     const [isFullscreen, setIsFullscreen] = useState(false)
@@ -77,6 +78,19 @@ export function FocusPage({ tasks, initialTaskId, onExit }: FocusPageProps) {
             Notification.requestPermission()
         }
     }, [])
+
+    // Auto-start when coming from planner with a task
+    useEffect(() => {
+        if (initialTaskId && !isActive) {
+            // Small delay to ensure everything is mounted
+            const timer = setTimeout(() => {
+                setIsActive(true)
+                setIsPaused(false)
+                enterFullscreen()
+            }, 100)
+            return () => clearTimeout(timer)
+        }
+    }, [initialTaskId]) // Only run once on mount
 
     const toggleTimer = () => {
         if (!isActive) {
@@ -180,22 +194,31 @@ export function FocusPage({ tasks, initialTaskId, onExit }: FocusPageProps) {
                         </button>
                     </div>
 
-                    {/* Task Selector */}
-                    <div className="w-full">
-                        <label className="block text-sm text-white/60 mb-2">当前专注任务</label>
-                        <select
-                            value={selectedTaskId}
-                            onChange={(e) => setSelectedTaskId(e.target.value)}
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50 transition-colors appearance-none"
-                        >
-                            <option value="" className="bg-slate-900 text-white">选择一个任务...</option>
-                            {tasks.map(task => (
-                                <option key={task.id} value={task.id} className="bg-slate-900 text-white">
-                                    {task.title}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Task Selector - only show if no initial task */}
+                    {!initialTaskId && (
+                        <div className="w-full">
+                            <label className="block text-sm text-white/60 mb-2">当前专注任务</label>
+                            <select
+                                value={selectedTaskId}
+                                onChange={(e) => setSelectedTaskId(e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500/50 transition-colors appearance-none"
+                            >
+                                <option value="" className="bg-slate-900 text-white">选择一个任务...</option>
+                                {tasks.map(task => (
+                                    <option key={task.id} value={task.id} className="bg-slate-900 text-white">
+                                        {task.title}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* Show task info when there's a selected task */}
+                    {selectedTask && (
+                        <div className="w-full p-3 rounded-xl bg-white/5 border border-white/10">
+                            <h3 className="text-base font-semibold text-white/90">{selectedTask.title}</h3>
+                        </div>
+                    )}
 
                     {/* Timer Display */}
                     <div className="relative w-72 h-72 flex items-center justify-center">

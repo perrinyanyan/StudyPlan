@@ -38,6 +38,7 @@ export type Share = {
 export type UserSettings = {
   daily_summary_time: string | null
   timezone: string | null
+  focus_duration_minutes: number | null
 }
 
 export type SharedBlock = {
