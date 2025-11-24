@@ -1,0 +1,199 @@
+import { useState, useEffect } from 'react';
+
+interface School {
+    id: string;
+    name: string;
+}
+
+export function SchoolManagement() {
+    const [schools, setSchools] = useState<School[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [showModal, setShowModal] = useState(false);
+    const [editingSchool, setEditingSchool] = useState<School | null>(null);
+    const [name, setName] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const token = localStorage.getItem('jwt');
+
+    useEffect(() => {
+        fetchSchools();
+    }, []);
+
+    async function fetchSchools() {
+        try {
+            const res = await fetch('http://localhost:3000/admin/schools', {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Failed to fetch schools');
+            const data = await res.json();
+            setSchools(data.schools);
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        try {
+            const url = editingSchool
+                ? `http://localhost:3000/admin/schools/${editingSchool.id}`
+                : 'http://localhost:3000/admin/schools';
+            const method = editingSchool ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({ name }),
+            });
+
+            if (!res.ok) throw new Error('Failed to save school');
+
+            setShowModal(false);
+            setName('');
+            setEditingSchool(null);
+            fetchSchools();
+        } catch (err: any) {
+            alert(err.message);
+        }
+    }
+
+    async function handleDelete(id: string) {
+        if (!confirm('Are you sure?')) return;
+        try {
+            const res = await fetch(`http://localhost:3000/admin/schools/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) throw new Error('Failed to delete school');
+            fetchSchools();
+        } catch (err: any) {
+            alert(err.message);
+        }
+    }
+
+    const filteredSchools = schools.filter(school =>
+        school.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (loading) return <div>Loading...</div>;
+    if (error) return <div className="text-red-500">{error}</div>;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-bold text-white">School Management</h2>
+                <button
+                    onClick={() => {
+                        setEditingSchool(null);
+                        setName('');
+                        setShowModal(true);
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+                >
+                    Add School
+                </button>
+            </div>
+
+            <div className="flex gap-4 mb-4">
+                <div className="relative flex-1 max-w-md">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                        <span className="material-symbols-outlined text-sm">search</span>
+                    </span>
+                    <input
+                        type="text"
+                        placeholder="Search schools..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-[#1A2633] border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                </div>
+            </div>
+
+            <div className="bg-[#1A2633] rounded-xl border border-white/10 overflow-hidden">
+                <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-white/5 text-xs uppercase font-semibold text-slate-400">
+                        <tr>
+                            <th className="px-6 py-4">Name</th>
+                            <th className="px-6 py-4 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                        {filteredSchools.map((school) => (
+                            <tr key={school.id} className="hover:bg-white/5 transition-colors">
+                                <td className="px-6 py-4 font-medium text-white">{school.name}</td>
+                                <td className="px-6 py-4 text-right space-x-2">
+                                    <button
+                                        onClick={() => {
+                                            setEditingSchool(school);
+                                            setName(school.name);
+                                            setShowModal(true);
+                                        }}
+                                        className="text-blue-400 hover:text-blue-300"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(school.id)}
+                                        className="text-red-400 hover:text-red-300"
+                                    >
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                        {filteredSchools.length === 0 && (
+                            <tr>
+                                <td colSpan={2} className="px-6 py-8 text-center text-slate-500">
+                                    No schools found matching "{searchTerm}"
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+
+            {showModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-md bg-[#1A2633] border border-white/10 rounded-xl shadow-2xl p-6">
+                        <h3 className="text-lg font-bold text-white mb-4">
+                            {editingSchool ? 'Edit School' : 'Add School'}
+                        </h3>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs text-slate-400 mb-1">Name</label>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                    required
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowModal(false)}
+                                    className="px-4 py-2 text-sm text-slate-300 hover:text-white"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+                                >
+                                    Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

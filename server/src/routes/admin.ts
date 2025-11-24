@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase.js';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
@@ -193,6 +194,68 @@ router.delete('/users/:id/roles', requireSystemAdmin, async (req: Request, res: 
     res.json({ success: true });
 });
 
+// Create User (System Admin only)
+router.post('/users', requireSystemAdmin, async (req: Request, res: Response) => {
+    const schema = z.object({
+        email: z.string().email(),
+        password: z.string().min(6),
+        nickname: z.string().min(1),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+    const { email, password, nickname } = parsed.data;
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 10);
+
+    const { data, error } = await supabase
+        .from('users')
+        .insert({ email, password_hash, nickname })
+        .select('id, email, nickname, created_at')
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to create user: ' + error.message });
+    res.json(data);
+});
+
+// Update User (System Admin only)
+router.put('/users/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const schema = z.object({
+        email: z.string().email().optional(),
+        password: z.string().min(6).optional(),
+        nickname: z.string().min(1).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+    const { email, password, nickname } = parsed.data;
+
+    const updates: any = {};
+    if (email) updates.email = email;
+    if (nickname) updates.nickname = nickname;
+    if (password) updates.password_hash = await bcrypt.hash(password, 10);
+
+    if (Object.keys(updates).length === 0) return res.json({ success: true });
+
+    const { data, error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', id)
+        .select('id, email, nickname, created_at')
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to update user' });
+    res.json(data);
+});
+
+// Delete User (System Admin only)
+router.delete('/users/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const { error } = await supabase.from('users').delete().eq('id', id);
+    if (error) return res.status(500).json({ error: 'Failed to delete user' });
+    res.json({ success: true });
+});
+
 // List schools (System Admin or School Admin)
 router.get('/schools', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
@@ -236,6 +299,48 @@ router.get('/schools', async (req: Request, res: Response) => {
     res.json({ schools: data });
 });
 
+// Create School (System Admin only)
+router.post('/schools', requireSystemAdmin, async (req: Request, res: Response) => {
+    const schema = z.object({ name: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+    const { data, error } = await supabase
+        .from('schools')
+        .insert({ name: parsed.data.name })
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to create school' });
+    res.json(data);
+});
+
+// Update School (System Admin only)
+router.put('/schools/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const schema = z.object({ name: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+    const { data, error } = await supabase
+        .from('schools')
+        .update({ name: parsed.data.name })
+        .eq('id', id)
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to update school' });
+    res.json(data);
+});
+
+// Delete School (System Admin only)
+router.delete('/schools/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const { error } = await supabase.from('schools').delete().eq('id', id);
+    if (error) return res.status(500).json({ error: 'Failed to delete school' });
+    res.json({ success: true });
+});
+
 // List classes (System Admin or School Admin)
 router.get('/classes', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
@@ -277,6 +382,114 @@ router.get('/classes', async (req: Request, res: Response) => {
     const { data, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch classes' });
     res.json({ classes: data });
+});
+
+// Create Class (System Admin or School Admin)
+router.post('/classes', async (req: Request, res: Response) => {
+    // Auth check similar to list classes
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let userId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
+    const schema = z.object({ name: z.string().min(1), school_id: z.string().uuid() });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+    const { name, school_id } = parsed.data;
+
+    // Check permissions
+    const { data: roles } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const isSchoolAdmin = userRoles.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === school_id);
+
+    if (!isSystemAdmin && !isSchoolAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    // Generate join code
+    const join_code = Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    const { data, error } = await supabase
+        .from('classes')
+        .insert({ name, school_id, join_code })
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to create class' });
+    res.json(data);
+});
+
+// Update Class (System Admin or School Admin)
+router.put('/classes/:id', async (req: Request, res: Response) => {
+    const classId = req.params.id;
+    // Auth check
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let userId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
+    const schema = z.object({ name: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+    // Get class to check school_id
+    const { data: cls } = await supabase.from('classes').select('school_id').eq('id', classId).single();
+    if (!cls) return res.status(404).json({ error: 'Class not found' });
+
+    // Check permissions
+    const { data: roles } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const isSchoolAdmin = userRoles.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === cls.school_id);
+
+    if (!isSystemAdmin && !isSchoolAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    const { data, error } = await supabase
+        .from('classes')
+        .update({ name: parsed.data.name })
+        .eq('id', classId)
+        .select()
+        .single();
+
+    if (error) return res.status(500).json({ error: 'Failed to update class' });
+    res.json(data);
+});
+
+// Delete Class (System Admin or School Admin)
+router.delete('/classes/:id', async (req: Request, res: Response) => {
+    const classId = req.params.id;
+    // Auth check
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let userId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
+    // Get class to check school_id
+    const { data: cls } = await supabase.from('classes').select('school_id').eq('id', classId).single();
+    if (!cls) return res.status(404).json({ error: 'Class not found' });
+
+    // Check permissions
+    const { data: roles } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const isSchoolAdmin = userRoles.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === cls.school_id);
+
+    if (!isSystemAdmin && !isSchoolAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    const { error } = await supabase.from('classes').delete().eq('id', classId);
+    if (error) return res.status(500).json({ error: 'Failed to delete class' });
+    res.json({ success: true });
 });
 
 export default router;

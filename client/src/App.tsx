@@ -9,6 +9,10 @@ import { SettingsPage } from './components/settings/SettingsPage'
 import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
 import { RoleManagementPage } from './components/admin/RoleManagementPage'
+import { AdminLayout } from './components/admin/AdminLayout'
+import { SchoolManagement } from './components/admin/SchoolManagement'
+import { ClassManagement } from './components/admin/ClassManagement'
+import { UserManagement } from './components/admin/UserManagement'
 import { PlanLibraryPage } from './components/plans/PlanLibraryPage'
 import { FocusPage } from './components/focus/FocusPage'
 import type { Task, Block, DailyTasks, FetchState } from './types'
@@ -264,6 +268,23 @@ export default function App() {
     )
   }
 
+  if (pathOnly.startsWith('/admin')) {
+    return (
+      <AdminLayout currentPath={pathOnly}>
+        {pathOnly === '/admin/schools' && <SchoolManagement />}
+        {pathOnly === '/admin/classes' && <ClassManagement />}
+        {pathOnly === '/admin/users' && <UserManagement />}
+        {pathOnly === '/admin/roles' && (
+          <RoleManagementPage
+            jwt={jwt}
+            headers={headers}
+            currentUserRole={profile?.role}
+          />
+        )}
+      </AdminLayout>
+    )
+  }
+
   return (
     <div
       className="min-h-screen"
@@ -430,14 +451,14 @@ export default function App() {
               {profile?.role === 'system_admin' && (
                 <li>
                   <a
-                    href="#/admin/roles"
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/admin/roles'
+                    href="#/admin/schools"
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly.startsWith('/admin')
                       ? 'bg-white/10 text-white'
                       : 'text-white/80 hover:bg-white/10'
                       }`}
                   >
                     <span className="material-symbols-outlined">admin_panel_settings</span>
-                    {!sidebarCollapsed && <span className="font-medium">角色管理</span>}
+                    {!sidebarCollapsed && <span className="font-medium">管理后台</span>}
                   </a>
                 </li>
               )}
