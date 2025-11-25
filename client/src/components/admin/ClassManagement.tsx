@@ -6,6 +6,7 @@ interface Class {
     id: string;
     name: string;
     school_id: string;
+    student_count?: number;
 }
 
 interface School {
@@ -279,6 +280,7 @@ export function ClassManagement() {
                         <tr>
                             <th className="px-6 py-4">班级名称</th>
                             <th className="px-6 py-4">所属学校</th>
+                            <th className="px-6 py-4 text-center">学生数</th>
                             <th className="px-6 py-4 text-right">操作</th>
                         </tr>
                     </thead>
@@ -289,6 +291,7 @@ export function ClassManagement() {
                                 <tr key={cls.id} className="hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4 font-medium text-white">{cls.name}</td>
                                     <td className="px-6 py-4">{school?.name || '未知'}</td>
+                                    <td className="px-6 py-4 text-center text-slate-400">{cls.student_count || 0}</td>
                                     <td className="px-6 py-4 text-right">
                                         <ActionMenu>
                                             <ActionMenuItem
@@ -331,7 +334,7 @@ export function ClassManagement() {
                         })}
                         {filteredClasses.length === 0 && (
                             <tr>
-                                <td colSpan={3} className="px-6 py-8 text-center text-slate-500">
+                                <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
                                     未找到匹配 "{searchTerm}" 的班级
                                 </td>
                             </tr>

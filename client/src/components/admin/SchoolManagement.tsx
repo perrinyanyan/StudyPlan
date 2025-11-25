@@ -5,6 +5,8 @@ import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 interface School {
     id: string;
     name: string;
+    class_count?: number;
+    student_count?: number;
 }
 
 export function SchoolManagement() {
@@ -125,6 +127,8 @@ export function SchoolManagement() {
                     <thead className="bg-white/5 text-xs uppercase font-semibold text-slate-400">
                         <tr>
                             <th className="px-6 py-4">学校名称</th>
+                            <th className="px-6 py-4 text-center">班级数</th>
+                            <th className="px-6 py-4 text-center">学生数</th>
                             <th className="px-6 py-4 text-right">操作</th>
                         </tr>
                     </thead>
@@ -132,6 +136,8 @@ export function SchoolManagement() {
                         {filteredSchools.map((school) => (
                             <tr key={school.id} className="hover:bg-white/5 transition-colors">
                                 <td className="px-6 py-4 font-medium text-white">{school.name}</td>
+                                <td className="px-6 py-4 text-center text-slate-400">{school.class_count || 0}</td>
+                                <td className="px-6 py-4 text-center text-slate-400">{school.student_count || 0}</td>
                                 <td className="px-6 py-4 text-right">
                                     <ActionMenu>
                                         {isSystemAdmin && (
@@ -167,7 +173,7 @@ export function SchoolManagement() {
                         ))}
                         {filteredSchools.length === 0 && (
                             <tr>
-                                <td colSpan={2} className="px-6 py-8 text-center text-slate-500">
+                                <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
                                     未找到匹配 "{searchTerm}" 的学校
                                 </td>
                             </tr>

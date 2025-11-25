@@ -427,9 +427,43 @@ router.get('/schools', async (req: Request, res: Response) => {
         query = query.in('id', schoolAdminSchoolIds);
     }
 
-    const { data, error } = await query;
+    const { data: schools, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch schools' });
-    res.json({ schools: data });
+
+    // Fetch stats
+    const schoolIds = schools.map(s => s.id);
+
+    // 1. Get classes
+    const { data: classes } = await supabase
+        .from('classes')
+        .select('id, school_id')
+        .in('school_id', schoolIds);
+
+    const schoolClasses = classes || [];
+    const classIds = schoolClasses.map(c => c.id);
+
+    // 2. Get memberships (students)
+    // Note: This fetches all memberships for visible schools. If scale is large, this needs optimization (e.g. SQL view or RPC).
+    const { data: memberships } = await supabase
+        .from('class_memberships')
+        .select('class_id')
+        .in('class_id', classIds);
+
+    const allMemberships = memberships || [];
+
+    const schoolsWithCounts = schools.map(s => {
+        const myClasses = schoolClasses.filter(c => c.school_id === s.id);
+        const myClassIds = myClasses.map(c => c.id);
+        const studentCount = allMemberships.filter(m => myClassIds.includes(m.class_id)).length;
+
+        return {
+            ...s,
+            class_count: myClasses.length,
+            student_count: studentCount
+        };
+    });
+
+    res.json({ schools: schoolsWithCounts });
 });
 
 // Create School (System Admin only)
@@ -533,9 +567,28 @@ router.get('/classes', async (req: Request, res: Response) => {
         }
     }
 
-    const { data, error } = await query;
+    const { data: classes, error } = await query;
     if (error) return res.status(500).json({ error: 'Failed to fetch classes' });
-    res.json({ classes: data });
+
+    if (!classes || classes.length === 0) return res.json({ classes: [] });
+
+    const classIds = classes.map(c => c.id);
+    const { data: memberships } = await supabase
+        .from('class_memberships')
+        .select('class_id')
+        .in('class_id', classIds);
+
+    const allMemberships = memberships || [];
+
+    const classesWithCounts = classes.map(c => {
+        const count = allMemberships.filter(m => m.class_id === c.id).length;
+        return {
+            ...c,
+            student_count: count
+        };
+    });
+
+    res.json({ classes: classesWithCounts });
 });
 
 // Create Class (System Admin or School Admin)
