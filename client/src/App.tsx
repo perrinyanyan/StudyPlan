@@ -278,7 +278,7 @@ export default function App() {
           <RoleManagementPage
             jwt={jwt}
             headers={headers}
-            currentUserRole={profile?.role}
+            profile={profile}
           />
         )}
       </AdminLayout>
@@ -451,7 +451,7 @@ export default function App() {
               {(profile?.role === 'system_admin' || profile?.role === 'school_admin' || profile?.role === 'class_admin') && (
                 <li>
                   <a
-                    href="#/admin/schools"
+                    href={profile?.role === 'class_admin' ? '#/admin/users' : '#/admin/schools'}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly.startsWith('/admin')
                       ? 'bg-white/10 text-white'
                       : 'text-white/80 hover:bg-white/10'
@@ -555,7 +555,7 @@ export default function App() {
             <RoleManagementPage
               jwt={jwt}
               headers={headers}
-              currentUserRole={profile?.role}
+              profile={profile}
             />
           ) : pathOnly === '/settings' ? (
             <SettingsPage

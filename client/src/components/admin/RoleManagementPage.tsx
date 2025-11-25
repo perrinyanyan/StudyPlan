@@ -4,7 +4,19 @@ import { UserRole } from '../../types'
 interface RoleManagementPageProps {
     jwt: string
     headers: () => Record<string, string>
-    currentUserRole?: UserRole
+    profile: {
+        id: string | number
+        email: string
+        nickname?: string
+        avatar_url?: string
+        role?: UserRole
+        roles?: {
+            role: UserRole
+            scope_type: 'global' | 'school' | 'class'
+            scope_id: string | null
+            class_name?: string
+        }[]
+    } | null
 }
 
 interface User {
@@ -32,7 +44,7 @@ interface Class {
     school_id: string
 }
 
-export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManagementPageProps) {
+export function RoleManagementPage({ jwt, headers, profile }: RoleManagementPageProps) {
     const [users, setUsers] = useState<User[]>([])
     const [schools, setSchools] = useState<School[]>([])
     const [classes, setClasses] = useState<Class[]>([])
@@ -48,8 +60,10 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
     const [selectedSchoolId, setSelectedSchoolId] = useState('')
     const [newScopeId, setNewScopeId] = useState('')
 
+    const currentUserRole = profile?.role
+
     useEffect(() => {
-        if (currentUserRole === 'system_admin') {
+        if (currentUserRole === 'system_admin' || currentUserRole === 'school_admin' || currentUserRole === 'class_admin') {
             fetchData()
         }
     }, [currentUserRole])
@@ -64,16 +78,16 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
             ])
 
             if (!uRes.ok) throw new Error('获取用户列表失败')
-            if (!sRes.ok) throw new Error('获取学校列表失败')
-            if (!cRes.ok) throw new Error('获取班级列表失败')
+            // Schools and classes might fail or return empty if not authorized, but we should handle it gracefully
+            // Actually, for school_admin/class_admin, these endpoints should return scoped data.
 
             const uData = await uRes.json()
-            const sData = await sRes.json()
-            const cData = await cRes.json()
+            const sData = sRes.ok ? await sRes.json() : { schools: [] }
+            const cData = cRes.ok ? await cRes.json() : { classes: [] }
 
             setUsers(uData.users)
-            setSchools(sData.schools)
-            setClasses(cData.classes)
+            setSchools(sData.schools || [])
+            setClasses(cData.classes || [])
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -83,8 +97,12 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
 
     async function handleAddRole() {
         if (!selectedUserId) return
-        if (newRole === 'student' && !newScopeId) {
-            alert('学生角色需要选择班级')
+        if ((newRole === 'student' || newRole === 'class_admin') && !newScopeId) {
+            alert('请选择班级/学校')
+            return
+        }
+        if (newRole === 'school_admin' && !newScopeId) {
+            alert('请选择学校')
             return
         }
 
@@ -142,12 +160,28 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
         }
     }
 
+    // Filter available roles based on current user role
+    const availableRoles: UserRole[] = []
+    if (currentUserRole === 'system_admin') {
+        availableRoles.push('system_admin', 'school_admin', 'class_admin', 'student')
+    } else if (currentUserRole === 'school_admin') {
+        availableRoles.push('class_admin', 'student')
+    } else if (currentUserRole === 'class_admin') {
+        availableRoles.push('student')
+    }
+
+    // Filter available schools/classes based on current user scope
+    // For school_admin, they can only assign to their schools.
+    // For class_admin, they can only assign to their classes.
+    // The fetched `schools` and `classes` lists should already be filtered by the backend,
+    // but we can also use `profile.roles` to be sure if needed.
+    // Assuming backend returns all visible schools/classes.
 
     if (loading) return <div className="p-8 text-center text-slate-400">加载中...</div>
     if (error) return <div className="p-8 text-center text-red-400">错误: {error}</div>
 
-    if (currentUserRole && currentUserRole !== 'system_admin') {
-        return <div className="p-8 text-center text-red-400">访问拒绝：仅限系统管理员。</div>
+    if (!currentUserRole || (currentUserRole !== 'system_admin' && currentUserRole !== 'school_admin' && currentUserRole !== 'class_admin')) {
+        return <div className="p-8 text-center text-red-400">访问拒绝：仅限管理员。</div>
     }
 
     return (
@@ -254,7 +288,11 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                                             setSelectedUserId(user.id)
                                             setShowModal(true)
                                             setNewRole('student')
-                                            setNewScopeType('global')
+                                            // Default scope type based on current user role
+                                            if (currentUserRole === 'school_admin') setNewScopeType('school')
+                                            else if (currentUserRole === 'class_admin') setNewScopeType('class')
+                                            else setNewScopeType('global')
+
                                             setSelectedSchoolId('')
                                             setNewScopeId('')
                                         }}
@@ -293,10 +331,9 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
                                     }}
                                     className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                                 >
-                                    <option value="system_admin">System Admin</option>
-                                    <option value="school_admin">School Admin</option>
-                                    <option value="class_admin">Class Admin</option>
-                                    <option value="student">Student</option>
+                                    {availableRoles.map(r => (
+                                        <option key={r} value={r}>{r}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -316,36 +353,49 @@ export function RoleManagementPage({ jwt, headers, currentUserRole }: RoleManage
 
                             {(newRole === 'class_admin' || newRole === 'student') && (
                                 <>
-                                    <div>
-                                        <label className="block text-xs text-slate-400 mb-1">选择学校</label>
-                                        <select
-                                            value={selectedSchoolId}
-                                            onChange={e => {
-                                                setSelectedSchoolId(e.target.value)
-                                                setNewScopeId('') // Reset class selection when school changes
-                                            }}
-                                            className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                        >
-                                            <option value="">-- 请先选择学校 --</option>
-                                            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                        </select>
-                                    </div>
-
-                                    {selectedSchoolId && (
+                                    {/* Only show school selection if user has access to multiple schools or is system admin */}
+                                    {(currentUserRole === 'system_admin' || schools.length > 1) && (
                                         <div>
-                                            <label className="block text-xs text-slate-400 mb-1">选择班级</label>
+                                            <label className="block text-xs text-slate-400 mb-1">选择学校</label>
                                             <select
-                                                value={newScopeId}
-                                                onChange={e => setNewScopeId(e.target.value)}
+                                                value={selectedSchoolId}
+                                                onChange={e => {
+                                                    setSelectedSchoolId(e.target.value)
+                                                    setNewScopeId('') // Reset class selection when school changes
+                                                }}
                                                 className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                                             >
-                                                <option value="">-- 请选择班级 --</option>
-                                                {classes.filter(c => c.school_id === selectedSchoolId).map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
+                                                <option value="">-- 请先选择学校 --</option>
+                                                {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                             </select>
                                         </div>
                                     )}
+
+                                    {/* If only one school (e.g. school_admin of 1 school), auto-select it if not already */}
+                                    {/* Actually, if schools.length === 1, we can just use it. */}
+
+                                    <div>
+                                        <label className="block text-xs text-slate-400 mb-1">选择班级</label>
+                                        <select
+                                            value={newScopeId}
+                                            onChange={e => setNewScopeId(e.target.value)}
+                                            className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                        >
+                                            <option value="">-- 请选择班级 --</option>
+                                            {classes
+                                                .filter(c => {
+                                                    // If school selected, filter by it.
+                                                    // If no school selected (maybe hidden), check if we can infer it.
+                                                    // For system_admin, they must select school first.
+                                                    // For school_admin, they might only have 1 school.
+                                                    const sid = selectedSchoolId || (schools.length === 1 ? schools[0].id : '')
+                                                    return sid ? c.school_id === sid : true
+                                                })
+                                                .map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                                ))}
+                                        </select>
+                                    </div>
                                 </>
                             )}
                         </div>

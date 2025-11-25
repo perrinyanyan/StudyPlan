@@ -128,6 +128,10 @@ router.post('/login', async (req: Request, res: Response) => {
   if (!ok) return res.status(400).json({ error: 'Invalid credentials' });
   if (!user.email_verified_at) return res.status(403).json({ error: 'Email not verified' });
   const token = jwt.sign({ sub: user.id, email }, JWT_SECRET, { expiresIn: '7d' });
+
+  // Update last_sign_in_at
+  await supabase.from('users').update({ last_sign_in_at: new Date().toISOString() }).eq('id', user.id);
+
   res.json({ token });
 });
 

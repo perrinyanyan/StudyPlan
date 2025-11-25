@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
 interface User {
     id: string;
@@ -13,6 +14,17 @@ interface User {
         class_name?: string;
     }[];
     primaryRole: string;
+    last_sign_in_at?: string;
+}
+
+function formatDate(dateStr?: string) {
+    if (!dateStr) return '从未';
+    return new Date(dateStr).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 interface School {
@@ -114,6 +126,31 @@ export function UserManagement() {
 
             if (!res.ok) throw new Error('保存用户失败');
 
+            const savedUser = await res.json();
+
+            // Special handling for Class Admin: Auto-assign to their class
+            if (isClassAdmin && !editingUser && savedUser.id) {
+                const classRole = profile?.roles?.find((r: any) => r.role === 'class_admin' && r.scope_type === 'class');
+                if (classRole && classRole.scope_id) {
+                    try {
+                        await fetch(`http://localhost:3000/admin/users/${savedUser.id}/roles`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${jwt}`,
+                            },
+                            body: JSON.stringify({
+                                role: 'student',
+                                scope_type: 'class',
+                                scope_id: classRole.scope_id
+                            })
+                        });
+                    } catch (error) {
+                        console.error('Error auto-assigning role:', error);
+                    }
+                }
+            }
+
             setShowUserModal(false);
             setEmail('');
             setPassword('');
@@ -212,7 +249,7 @@ export function UserManagement() {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-white">用户管理</h2>
-                {isSystemAdmin && (
+                {(isSystemAdmin || isSchoolAdmin || isClassAdmin) && (
                     <button
                         onClick={() => {
                             setEditingUser(null);
@@ -250,6 +287,7 @@ export function UserManagement() {
                             <th className="px-6 py-4">昵称</th>
                             <th className="px-6 py-4">邮箱</th>
                             <th className="px-6 py-4">角色</th>
+                            <th className="px-6 py-4">上次活跃</th>
                             <th className="px-6 py-4 text-right">操作</th>
                         </tr>
                     </thead>
@@ -293,12 +331,16 @@ export function UserManagement() {
                                         >
                                             + 添加角色
                                         </button>
+
                                     </div>
                                 </td>
-                                <td className="px-6 py-4 text-right space-x-2">
-                                    {isSystemAdmin && (
-                                        <>
-                                            <button
+                                <td className="px-6 py-4 text-slate-400 text-xs">
+                                    {formatDate(user.last_sign_in_at)}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    {(isSystemAdmin || isSchoolAdmin || isClassAdmin) && (
+                                        <ActionMenu>
+                                            <ActionMenuItem
                                                 onClick={() => {
                                                     setEditingUser(user);
                                                     setEmail(user.email);
@@ -306,17 +348,18 @@ export function UserManagement() {
                                                     setPassword('');
                                                     setShowUserModal(true);
                                                 }}
-                                                className="text-blue-400 hover:text-blue-300"
                                             >
+                                                <span className="material-symbols-outlined text-lg">edit</span>
                                                 编辑
-                                            </button>
-                                            <button
+                                            </ActionMenuItem>
+                                            <ActionMenuItem
+                                                danger
                                                 onClick={() => handleDeleteUser(user.id)}
-                                                className="text-red-400 hover:text-red-300"
                                             >
+                                                <span className="material-symbols-outlined text-lg">delete</span>
                                                 删除
-                                            </button>
-                                        </>
+                                            </ActionMenuItem>
+                                        </ActionMenu>
                                     )}
                                 </td>
                             </tr>
@@ -330,168 +373,172 @@ export function UserManagement() {
                         )}
                     </tbody>
                 </table>
-            </div>
+            </div >
 
             {/* User Modal */}
-            {showUserModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-md bg-[#1A2633] border border-white/10 rounded-xl shadow-2xl p-6">
-                        <h3 className="text-lg font-bold text-white mb-4">
-                            {editingUser ? '编辑用户' : '添加用户'}
-                        </h3>
-                        <form onSubmit={handleUserSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-1">邮箱</label>
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-1">昵称</label>
-                                <input
-                                    type="text"
-                                    value={nickname}
-                                    onChange={(e) => setNickname(e.target.value)}
-                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-1">密码 {editingUser && '(留空保持不变)'}</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                    required={!editingUser}
-                                />
-                            </div>
-                            <div className="flex justify-end gap-3 pt-2">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowUserModal(false)}
-                                    className="px-4 py-2 text-sm text-slate-300 hover:text-white"
-                                >
-                                    取消
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
-                                >
-                                    保存
-                                </button>
-                            </div>
-                        </form>
+            {
+                showUserModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                        <div className="w-full max-w-md bg-[#1A2633] border border-white/10 rounded-xl shadow-2xl p-6">
+                            <h3 className="text-lg font-bold text-white mb-4">
+                                {editingUser ? '编辑用户' : '添加用户'}
+                            </h3>
+                            <form onSubmit={handleUserSubmit} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">邮箱</label>
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">昵称</label>
+                                    <input
+                                        type="text"
+                                        value={nickname}
+                                        onChange={(e) => setNickname(e.target.value)}
+                                        className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">密码 {editingUser && '(留空保持不变)'}</label>
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                        required={!editingUser}
+                                    />
+                                </div>
+                                <div className="flex justify-end gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowUserModal(false)}
+                                        className="px-4 py-2 text-sm text-slate-300 hover:text-white"
+                                    >
+                                        取消
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+                                    >
+                                        保存
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Role Modal */}
-            {showRoleModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-md bg-[#1A2633] border border-white/10 rounded-xl shadow-2xl p-6 space-y-4">
-                        <h3 className="text-lg font-bold text-white">添加角色</h3>
+            {
+                showRoleModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                        <div className="w-full max-w-md bg-[#1A2633] border border-white/10 rounded-xl shadow-2xl p-6 space-y-4">
+                            <h3 className="text-lg font-bold text-white">添加角色</h3>
 
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs text-slate-400 mb-1">角色</label>
-                                <select
-                                    value={newRole}
-                                    onChange={e => {
-                                        const r = e.target.value;
-                                        setSelectedSchoolId('');
-                                        setNewScopeId('');
-                                        setNewRole(r);
-                                        if (r === 'system_admin') setNewScopeType('global');
-                                        else if (r === 'school_admin') setNewScopeType('school');
-                                        else if (r === 'class_admin') setNewScopeType('class');
-                                        else if (r === 'student') setNewScopeType('class');
-                                    }}
-                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                >
-                                    {isSystemAdmin && <option value="system_admin">系统管理员</option>}
-                                    {(isSystemAdmin) && <option value="school_admin">学校管理员</option>}
-                                    {(isSystemAdmin || isSchoolAdmin) && <option value="class_admin">班级管理员</option>}
-                                    <option value="student">学生</option>
-                                </select>
-                            </div>
-
-                            {newRole === 'school_admin' && (
+                            <div className="space-y-3">
                                 <div>
-                                    <label className="block text-xs text-slate-400 mb-1">选择学校</label>
+                                    <label className="block text-xs text-slate-400 mb-1">角色</label>
                                     <select
-                                        value={newScopeId}
-                                        onChange={e => setNewScopeId(e.target.value)}
+                                        value={newRole}
+                                        onChange={e => {
+                                            const r = e.target.value;
+                                            setSelectedSchoolId('');
+                                            setNewScopeId('');
+                                            setNewRole(r);
+                                            if (r === 'system_admin') setNewScopeType('global');
+                                            else if (r === 'school_admin') setNewScopeType('school');
+                                            else if (r === 'class_admin') setNewScopeType('class');
+                                            else if (r === 'student') setNewScopeType('class');
+                                        }}
                                         className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                                     >
-                                        <option value="">-- 选择学校 --</option>
-                                        {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        {isSystemAdmin && <option value="system_admin">系统管理员</option>}
+                                        {(isSystemAdmin) && <option value="school_admin">学校管理员</option>}
+                                        {(isSystemAdmin || isSchoolAdmin) && <option value="class_admin">班级管理员</option>}
+                                        <option value="student">学生</option>
                                     </select>
                                 </div>
-                            )}
 
-                            {(newRole === 'class_admin' || newRole === 'student') && (
-                                <>
-                                    {/* Only show School select if user has access to multiple schools (System Admin) or if we want to filter classes by school */}
-                                    {/* For School Admin, they only see their school(s), so this dropdown is still useful to filter classes if they have >1 school */}
-                                    {/* For Class Admin, they shouldn't see schools if they don't have access. */}
-                                    {schools.length > 0 && (
-                                        <div>
-                                            <label className="block text-xs text-slate-400 mb-1">选择学校</label>
-                                            <select
-                                                value={selectedSchoolId}
-                                                onChange={e => {
-                                                    setSelectedSchoolId(e.target.value);
-                                                    setNewScopeId('');
-                                                }}
-                                                className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
-                                            >
-                                                <option value="">-- 选择学校 --</option>
-                                                {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
-
+                                {newRole === 'school_admin' && (
                                     <div>
-                                        <label className="block text-xs text-slate-400 mb-1">选择班级</label>
+                                        <label className="block text-xs text-slate-400 mb-1">选择学校</label>
                                         <select
                                             value={newScopeId}
                                             onChange={e => setNewScopeId(e.target.value)}
                                             className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                                         >
-                                            <option value="">-- 选择班级 --</option>
-                                            {classes
-                                                .filter(c => !selectedSchoolId || c.school_id === selectedSchoolId)
-                                                .map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
+                                            <option value="">-- 选择学校 --</option>
+                                            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                                         </select>
                                     </div>
-                                </>
-                            )}
-                        </div>
+                                )}
 
-                        <div className="flex justify-end gap-3 pt-2">
-                            <button
-                                onClick={() => setShowRoleModal(false)}
-                                className="px-4 py-2 text-sm text-slate-300 hover:text-white"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleAddRole}
-                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
-                            >
-                                添加角色
-                            </button>
+                                {(newRole === 'class_admin' || newRole === 'student') && (
+                                    <>
+                                        {/* Only show School select if user has access to multiple schools (System Admin) or if we want to filter classes by school */}
+                                        {/* For School Admin, they only see their school(s), so this dropdown is still useful to filter classes if they have >1 school */}
+                                        {/* For Class Admin, they shouldn't see schools if they don't have access. */}
+                                        {schools.length > 0 && (
+                                            <div>
+                                                <label className="block text-xs text-slate-400 mb-1">选择学校</label>
+                                                <select
+                                                    value={selectedSchoolId}
+                                                    onChange={e => {
+                                                        setSelectedSchoolId(e.target.value);
+                                                        setNewScopeId('');
+                                                    }}
+                                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="">-- 选择学校 --</option>
+                                                    {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        <div>
+                                            <label className="block text-xs text-slate-400 mb-1">选择班级</label>
+                                            <select
+                                                value={newScopeId}
+                                                onChange={e => setNewScopeId(e.target.value)}
+                                                className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                            >
+                                                <option value="">-- 选择班级 --</option>
+                                                {classes
+                                                    .filter(c => !selectedSchoolId || c.school_id === selectedSchoolId)
+                                                    .map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    onClick={() => setShowRoleModal(false)}
+                                    className="px-4 py-2 text-sm text-slate-300 hover:text-white"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleAddRole}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
+                                >
+                                    添加角色
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

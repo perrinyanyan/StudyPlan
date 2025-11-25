@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
 interface Class {
     id: string;
@@ -288,39 +289,42 @@ export function ClassManagement() {
                                 <tr key={cls.id} className="hover:bg-white/5 transition-colors">
                                     <td className="px-6 py-4 font-medium text-white">{cls.name}</td>
                                     <td className="px-6 py-4">{school?.name || '未知'}</td>
-                                    <td className="px-6 py-4 text-right space-x-2">
-                                        <button
-                                            onClick={() => {
-                                                setSelectedClass(cls);
-                                                fetchClassMembers(cls.id);
-                                                fetchAllUsers();
-                                                setShowMembersModal(true);
-                                            }}
-                                            className="text-emerald-400 hover:text-emerald-300"
-                                        >
-                                            学生管理
-                                        </button>
-                                        {canManageClasses && (
-                                            <>
-                                                <button
-                                                    onClick={() => {
-                                                        setEditingClass(cls);
-                                                        setName(cls.name);
-                                                        setSchoolId(cls.school_id);
-                                                        setShowModal(true);
-                                                    }}
-                                                    className="text-blue-400 hover:text-blue-300"
-                                                >
-                                                    编辑
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDelete(cls.id)}
-                                                    className="text-red-400 hover:text-red-300"
-                                                >
-                                                    删除
-                                                </button>
-                                            </>
-                                        )}
+                                    <td className="px-6 py-4 text-right">
+                                        <ActionMenu>
+                                            <ActionMenuItem
+                                                onClick={() => {
+                                                    setSelectedClass(cls);
+                                                    fetchClassMembers(cls.id);
+                                                    fetchAllUsers();
+                                                    setShowMembersModal(true);
+                                                }}
+                                            >
+                                                <span className="material-symbols-outlined text-lg">group</span>
+                                                学生管理
+                                            </ActionMenuItem>
+                                            {canManageClasses && (
+                                                <>
+                                                    <ActionMenuItem
+                                                        onClick={() => {
+                                                            setEditingClass(cls);
+                                                            setName(cls.name);
+                                                            setSchoolId(cls.school_id);
+                                                            setShowModal(true);
+                                                        }}
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">edit</span>
+                                                        编辑
+                                                    </ActionMenuItem>
+                                                    <ActionMenuItem
+                                                        danger
+                                                        onClick={() => handleDelete(cls.id)}
+                                                    >
+                                                        <span className="material-symbols-outlined text-lg">delete</span>
+                                                        删除
+                                                    </ActionMenuItem>
+                                                </>
+                                            )}
+                                        </ActionMenu>
                                     </td>
                                 </tr>
                             );

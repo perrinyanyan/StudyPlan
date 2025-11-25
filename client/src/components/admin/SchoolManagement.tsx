@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
 interface School {
     id: string;
@@ -131,33 +132,36 @@ export function SchoolManagement() {
                         {filteredSchools.map((school) => (
                             <tr key={school.id} className="hover:bg-white/5 transition-colors">
                                 <td className="px-6 py-4 font-medium text-white">{school.name}</td>
-                                <td className="px-6 py-4 text-right space-x-2">
-                                    {isSystemAdmin && (
-                                        <button
-                                            onClick={() => {
-                                                setEditingSchool(school);
-                                                setName(school.name);
-                                                setShowModal(true);
-                                            }}
-                                            className="text-blue-400 hover:text-blue-300"
+                                <td className="px-6 py-4 text-right">
+                                    <ActionMenu>
+                                        {isSystemAdmin && (
+                                            <ActionMenuItem
+                                                onClick={() => {
+                                                    setEditingSchool(school);
+                                                    setName(school.name);
+                                                    setShowModal(true);
+                                                }}
+                                            >
+                                                <span className="material-symbols-outlined text-lg">edit</span>
+                                                编辑
+                                            </ActionMenuItem>
+                                        )}
+                                        <ActionMenuItem
+                                            onClick={() => window.location.hash = `#/admin/classes?school_id=${school.id}`}
                                         >
-                                            编辑
-                                        </button>
-                                    )}
-                                    <a
-                                        href={`#/admin/classes?school_id=${school.id}`}
-                                        className="text-cyan-400 hover:text-cyan-300"
-                                    >
-                                        管理班级
-                                    </a>
-                                    {isSystemAdmin && (
-                                        <button
-                                            onClick={() => handleDelete(school.id)}
-                                            className="text-red-400 hover:text-red-300"
-                                        >
-                                            删除
-                                        </button>
-                                    )}
+                                            <span className="material-symbols-outlined text-lg">school</span>
+                                            管理班级
+                                        </ActionMenuItem>
+                                        {isSystemAdmin && (
+                                            <ActionMenuItem
+                                                danger
+                                                onClick={() => handleDelete(school.id)}
+                                            >
+                                                <span className="material-symbols-outlined text-lg">delete</span>
+                                                删除
+                                            </ActionMenuItem>
+                                        )}
+                                    </ActionMenu>
                                 </td>
                             </tr>
                         ))}

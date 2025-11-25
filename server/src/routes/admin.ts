@@ -79,7 +79,7 @@ router.get('/users', async (req: Request, res: Response) => {
     // 1. Fetch all users (base query)
     let userQuery = supabase
         .from('users')
-        .select('id, email, nickname, created_at')
+        .select('id, email, nickname, created_at, last_sign_in_at')
         .order('created_at', { ascending: false });
 
     // Scope restrictions
