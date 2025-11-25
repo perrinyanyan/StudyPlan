@@ -268,23 +268,6 @@ export default function App() {
     )
   }
 
-  if (pathOnly.startsWith('/admin')) {
-    return (
-      <AdminLayout currentPath={pathOnly}>
-        {pathOnly === '/admin/schools' && <SchoolManagement />}
-        {pathOnly === '/admin/classes' && <ClassManagement />}
-        {pathOnly === '/admin/users' && <UserManagement />}
-        {pathOnly === '/admin/roles' && (
-          <RoleManagementPage
-            jwt={jwt}
-            headers={headers}
-            profile={profile}
-          />
-        )}
-      </AdminLayout>
-    )
-  }
-
   return (
     <div
       className="min-h-screen"
@@ -314,7 +297,7 @@ export default function App() {
         </div>
       )}
 
-      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall && (
+      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly.startsWith('/admin') || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall && (
         <aside
           className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
             } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
@@ -486,7 +469,7 @@ export default function App() {
 
       <div
         className={
-          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall
+          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly.startsWith('/admin') || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall
             ? sidebarCollapsed
               ? 'pl-16'
               : 'pl-64'
@@ -494,7 +477,7 @@ export default function App() {
         }
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          {pathOnly !== '/planner' && pathOnly !== '/plans' && pathOnly !== '/admin/roles' && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
+          {pathOnly !== '/planner' && pathOnly !== '/plans' && !pathOnly.startsWith('/admin') && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h1 className="text-xl font-semibold">Study Planner</h1>
@@ -549,14 +532,21 @@ export default function App() {
 
           {!jwt ? (
             <LoginForm onLogin={doLogin} msg={loginMsg} />
+          ) : pathOnly.startsWith('/admin') ? (
+            <AdminLayout currentPath={pathOnly}>
+              {pathOnly === '/admin/schools' && <SchoolManagement />}
+              {pathOnly === '/admin/classes' && <ClassManagement />}
+              {pathOnly === '/admin/users' && <UserManagement />}
+              {pathOnly === '/admin/roles' && (
+                <RoleManagementPage
+                  jwt={jwt}
+                  headers={headers}
+                  profile={profile}
+                />
+              )}
+            </AdminLayout>
           ) : pathOnly === '/plans' ? (
             <PlanLibraryPage />
-          ) : pathOnly === '/admin/roles' ? (
-            <RoleManagementPage
-              jwt={jwt}
-              headers={headers}
-              profile={profile}
-            />
           ) : pathOnly === '/settings' ? (
             <SettingsPage
               swReady={swReady}
