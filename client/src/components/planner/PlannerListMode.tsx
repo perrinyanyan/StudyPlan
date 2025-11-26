@@ -1,4 +1,5 @@
 import type { Task } from '../../types'
+import { useState, useMemo } from 'react'
 import { PlannerListView } from './PlannerListView'
 
 export interface PlannerListModeProps {
@@ -52,12 +53,114 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     setShowCreateTask,
   } = actions || {}
 
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
+
+  const filteredItems = useMemo(() => {
+    const baseBlocks = rangeBlocks !== null ? rangeBlocks : blocks || []
+    let arr = [...baseBlocks].sort(
+      (a: any, b: any) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+    )
+    if (listFilterOverdue !== 'all') {
+      arr = arr.filter((b: any) => {
+        const status = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
+        const over = new Date(b.end_at).getTime() < now.getTime()
+        const isOverdue = over && status !== 'done'
+        return listFilterOverdue === 'yes' ? isOverdue : !isOverdue
+      })
+    }
+    if (listFilterDone !== 'all') {
+      arr = arr.filter((b: any) => {
+        const st = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
+        return listFilterDone === 'done' ? st === 'done' : st !== 'done'
+      })
+    }
+    if (
+      listFilterType !== 'all' ||
+      listFilterPriority !== 'all' ||
+      listFilterTag !== 'all'
+    ) {
+      arr = arr.filter((b: any) => {
+        if (!b.task_id) return false
+        const taskIdStr = String(b.task_id)
+        const meta = taskMetaMap[taskIdStr]
+        if (!meta) return false
+        if (listFilterPriority !== 'all') {
+          const p = meta.priority ?? null
+          if (String(p ?? '') !== listFilterPriority) return false
+        }
+        if (listFilterType !== 'all') {
+          const t = meta.type || ''
+          if (t !== listFilterType) return false
+        }
+        if (listFilterTag !== 'all') {
+          const tags = meta.tags || []
+          if (!tags.includes(listFilterTag)) return false
+        }
+        return true
+      })
+    }
+    return arr
+  }, [rangeBlocks, blocks, listFilterOverdue, listFilterDone, listFilterType, listFilterPriority, listFilterTag, taskStatusMap, taskMetaMap, now])
+
+  const visibleTaskIds = useMemo(() => {
+    const ids = new Set<string>()
+    filteredItems.forEach((b: any) => {
+      if (b.task_id) ids.add(String(b.task_id))
+    })
+    return ids
+  }, [filteredItems])
+
+  const toggleSelectAll = () => {
+    if (visibleTaskIds.size > 0 && Array.from(visibleTaskIds).every(id => selectedTaskIds.has(id))) {
+      setSelectedTaskIds(new Set())
+    } else {
+      setSelectedTaskIds(new Set(visibleTaskIds))
+    }
+  }
+
+  const toggleSelect = (taskId: string) => {
+    const newSet = new Set(selectedTaskIds)
+    if (newSet.has(taskId)) {
+      newSet.delete(taskId)
+    } else {
+      newSet.add(taskId)
+    }
+    setSelectedTaskIds(newSet)
+  }
+
+  const handleBulkComplete = async () => {
+    if (!completeTask) return
+    if (!confirm(`确定要完成选中的 ${selectedTaskIds.size} 个任务吗？`)) return
+
+    // Execute in parallel
+    await Promise.all(Array.from(selectedTaskIds).map(id => completeTask(id)))
+    setSelectedTaskIds(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    if (!deleteTask) return
+    if (!confirm(`确定要删除选中的 ${selectedTaskIds.size} 个任务吗？此操作不可撤销。`)) return
+
+    // Execute in parallel
+    await Promise.all(Array.from(selectedTaskIds).map(id => deleteTask(id)))
+    setSelectedTaskIds(new Set())
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
       <div className="md:col-span-3 lg:col-span-4">
         <div className="rounded-xl border border-white/10 bg-slate-800/50 overflow-hidden">
           <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
-            <div className="flex flex-wrap gap-3 text-white/90 text-sm">
+            <div className="flex flex-wrap gap-3 text-white/90 text-sm items-center">
+              <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                <input
+                  type="checkbox"
+                  className="rounded border-slate-600 bg-slate-700 text-[#137fec] focus:ring-[#137fec] h-4 w-4"
+                  checked={visibleTaskIds.size > 0 && Array.from(visibleTaskIds).every(id => selectedTaskIds.has(id))}
+                  onChange={toggleSelectAll}
+                />
+                <span className="text-xs text-white/70">全选</span>
+              </div>
               <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
                 <span className="text-xs text-white/70">类型</span>
                 <select
@@ -153,61 +256,18 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           </div>
           <div className="space-y-4 p-3 text-white">
             {(() => {
-              const baseBlocks = rangeBlocks !== null ? rangeBlocks : blocks || []
-              let arr = [...baseBlocks].sort(
-                (a, b) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
-              )
-              if (listFilterOverdue !== 'all') {
-                arr = arr.filter((b) => {
-                  const status = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
-                  const over = new Date(b.end_at).getTime() < now.getTime()
-                  const isOverdue = over && status !== 'done'
-                  return listFilterOverdue === 'yes' ? isOverdue : !isOverdue
-                })
-              }
-              if (listFilterDone !== 'all') {
-                arr = arr.filter((b) => {
-                  const st = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
-                  return listFilterDone === 'done' ? st === 'done' : st !== 'done'
-                })
-              }
-              if (
-                listFilterType !== 'all' ||
-                listFilterPriority !== 'all' ||
-                listFilterTag !== 'all'
-              ) {
-                arr = arr.filter((b) => {
-                  if (!b.task_id) return false
-                  const taskIdStr = String(b.task_id)
-                  const meta = taskMetaMap[taskIdStr]
-                  if (!meta) return false
-                  if (listFilterPriority !== 'all') {
-                    const p = meta.priority ?? null
-                    if (String(p ?? '') !== listFilterPriority) return false
-                  }
-                  if (listFilterType !== 'all') {
-                    const t = meta.type || ''
-                    if (t !== listFilterType) return false
-                  }
-                  if (listFilterTag !== 'all') {
-                    const tags = meta.tags || []
-                    if (!tags.includes(listFilterTag)) return false
-                  }
-                  return true
-                })
-              }
               if (rangeBlocksLoading && rangeBlocks === null)
                 return <div className="text-sm text-white/60">加载中...</div>
-              if (arr.length === 0)
+              if (filteredItems.length === 0)
                 return <div className="text-sm text-white/60">该日期范围内暂无条目</div>
 
-              const sections: { key: string; date: Date; items: typeof arr }[] = []
-              for (const b of arr) {
+              const sections: { key: string; date: Date; items: typeof filteredItems }[] = []
+              for (const b of filteredItems) {
                 const d = new Date(b.start_at)
                 const key = todayStr ? todayStr(d) : d.toISOString().slice(0, 10)
                 let sec = sections.find((s2) => s2.key === key)
                 if (!sec) {
-                  sec = { key, date: d, items: [] as typeof arr }
+                  sec = { key, date: d, items: [] as typeof filteredItems }
                   sections.push(sec)
                 }
                 sec.items.push(b)
@@ -239,10 +299,10 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                         prio === 2
                           ? 'bg-red-500/20 text-red-300'
                           : prio === 1
-                          ? 'bg-yellow-500/20 text-yellow-300'
-                          : prio === 0
-                          ? 'bg-green-500/20 text-green-300'
-                          : 'bg-slate-500/20 text-slate-300'
+                            ? 'bg-yellow-500/20 text-yellow-300'
+                            : prio === 0
+                              ? 'bg-green-500/20 text-green-300'
+                              : 'bg-slate-500/20 text-slate-300'
                       const type = meta?.type || null
                       const tags = meta?.tags || []
                       const isMenuOpen = listMenuOpenId === blockId
@@ -261,13 +321,23 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                       return (
                         <div
                           key={blockId}
-                          className={`relative flex flex-col gap-1 rounded-lg bg-white/5 p-2.5 border ${
-                            isCurrentNow
-                              ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-500/10'
-                              : 'border-transparent'
-                          }`}
+                          className={`relative flex flex-col gap-1 rounded-lg bg-white/5 p-2.5 border ${isCurrentNow
+                            ? 'border-amber-400 ring-2 ring-amber-400 bg-amber-500/10'
+                            : 'border-transparent'
+                            }`}
                         >
                           <div className="flex items-center gap-2.5">
+                            <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-600 bg-slate-700 text-[#137fec] focus:ring-[#137fec] h-4 w-4"
+                                checked={!!taskIdStr && selectedTaskIds.has(taskIdStr)}
+                                onChange={(e) => {
+                                  if (taskIdStr) toggleSelect(taskIdStr)
+                                }}
+                                disabled={!taskIdStr}
+                              />
+                            </div>
                             <div
                               className="w-1.5 h-10 rounded-full"
                               style={{ backgroundColor: (meta?.color || '#60A5FA') + 'CC' }}
@@ -281,9 +351,8 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                     </span>
                                   )}
                                   <p
-                                    className={`font-medium ${
-                                      status === 'done' ? 'line-through opacity-60' : ''
-                                    }`}
+                                    className={`font-medium ${status === 'done' ? 'line-through opacity-60' : ''
+                                      }`}
                                   >
                                     {name || '时间块'}
                                   </p>
@@ -309,9 +378,8 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                 </div>
                               </div>
                               <div
-                                className={`flex items-center text-white/80 gap-2 text-xs ${
-                                  status === 'done' ? 'opacity-60' : ''
-                                }`}
+                                className={`flex items-center text-white/80 gap-2 text-xs ${status === 'done' ? 'opacity-60' : ''
+                                  }`}
                               >
                                 {isCurrentNow && (
                                   <button
@@ -376,18 +444,18 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                           onClick={() => {
                                             if (!taskIdStr) return
                                             const candidates: Task[] = []
-                                            ;(tasks.today || []).forEach((x: Task) =>
-                                              candidates.push(x),
-                                            )
-                                            ;(tasks.overdue || []).forEach((x: Task) =>
-                                              candidates.push(x),
-                                            )
-                                            ;(unscheduled || []).forEach((x: Task) =>
-                                              candidates.push(x),
-                                            )
-                                            ;(rangeTasks || []).forEach((x: Task) =>
-                                              candidates.push(x),
-                                            )
+                                              ; (tasks.today || []).forEach((x: Task) =>
+                                                candidates.push(x),
+                                              )
+                                              ; (tasks.overdue || []).forEach((x: Task) =>
+                                                candidates.push(x),
+                                              )
+                                              ; (unscheduled || []).forEach((x: Task) =>
+                                                candidates.push(x),
+                                              )
+                                              ; (rangeTasks || []).forEach((x: Task) =>
+                                                candidates.push(x),
+                                              )
                                             const t = candidates.find(
                                               (x) => String(x.id) === taskIdStr,
                                             )
@@ -524,6 +592,37 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           }}
         />
       </div>
-    </div>
+
+      {
+        selectedTaskIds.size > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur border border-slate-700 shadow-2xl rounded-full px-6 py-3 flex items-center gap-6 z-50 animate-in fade-in slide-in-from-bottom-4">
+            <span className="text-white font-medium">已选择 {selectedTaskIds.size} 项</span>
+            <div className="h-4 w-px bg-slate-700"></div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBulkComplete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors text-sm font-medium"
+              >
+                <span className="material-symbols-outlined text-lg">check_circle</span>
+                完成
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors text-sm font-medium"
+              >
+                <span className="material-symbols-outlined text-lg">delete</span>
+                删除
+              </button>
+            </div>
+            <button
+              onClick={() => setSelectedTaskIds(new Set())}
+              className="ml-2 text-slate-400 hover:text-white"
+            >
+              <span className="material-symbols-outlined text-lg">close</span>
+            </button>
+          </div>
+        )
+      }
+    </div >
   )
 }
