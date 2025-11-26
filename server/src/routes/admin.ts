@@ -79,7 +79,7 @@ router.get('/users', async (req: Request, res: Response) => {
     // 1. Fetch all users (base query)
     let userQuery = supabase
         .from('users')
-        .select('id, email, nickname, created_at, last_sign_in_at')
+        .select('id, email, nickname, avatar_url, created_at, last_sign_in_at')
         .order('created_at', { ascending: false });
 
     // Scope restrictions
@@ -95,9 +95,27 @@ router.get('/users', async (req: Request, res: Response) => {
             }
 
             if (!hasAccess) return res.status(403).json({ error: 'Forbidden access to this class' });
+        } else {
+            // If no classId is provided, restrict Class Admins to their class members
+            // (School Admins currently see all users, or we could restrict them to their school's users, 
+            // but for now we focus on the specific request for Class Admins)
+            if (schoolAdminSchoolIds.length === 0 && classAdminClassIds.length > 0) {
+                const { data: members, error: mErr } = await supabase
+                    .from('class_memberships')
+                    .select('user_id')
+                    .in('class_id', classAdminClassIds);
+
+                if (mErr) {
+                    console.error('Failed to fetch scoped users for class admin:', mErr);
+                    return res.status(500).json({ error: 'Failed to fetch scoped users' });
+                }
+
+                const memberIds = members.map(m => m.user_id);
+                if (memberIds.length === 0) return res.json({ users: [] });
+
+                userQuery = userQuery.in('id', memberIds);
+            }
         }
-        // If no classId, we currently allow fetching all users to support "Add Student" search.
-        // In a stricter environment, we would restrict this.
     }
 
     // If filtering by class (explicit filter)
@@ -135,7 +153,7 @@ router.get('/users', async (req: Request, res: Response) => {
     // 3. Fetch all class memberships (for student role)
     const { data: memberships, error: mErr } = await supabase
         .from('class_memberships')
-        .select('user_id, class_id, classes(name)');
+        .select('user_id, class_id, classes(name, schools(name))');
 
     if (mErr) return res.status(500).json({ error: 'Failed to fetch memberships' });
 
@@ -151,7 +169,8 @@ router.get('/users', async (req: Request, res: Response) => {
             role: 'student',
             scope_type: 'class',
             scope_id: m.class_id,
-            class_name: (m.classes as any)?.name
+            class_name: (m.classes as any)?.name,
+            school_name: (m.classes as any)?.schools?.name
         }));
 
         // Determine primary role for display

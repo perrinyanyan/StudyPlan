@@ -12,9 +12,11 @@ interface User {
         scope_type: string;
         scope_id: string | null;
         class_name?: string;
+        school_name?: string;
     }[];
     primaryRole: string;
     last_sign_in_at?: string;
+    avatar_url?: string;
 }
 
 function formatDate(dateStr?: string) {
@@ -286,6 +288,8 @@ export function UserManagement() {
                         <tr>
                             <th className="px-6 py-4">昵称</th>
                             <th className="px-6 py-4">邮箱</th>
+                            {isSystemAdmin && <th className="px-6 py-4">学校</th>}
+                            {(isSystemAdmin || isSchoolAdmin) && <th className="px-6 py-4">班级</th>}
                             <th className="px-6 py-4">角色</th>
                             <th className="px-6 py-4">上次活跃</th>
                             <th className="px-6 py-4 text-right">操作</th>
@@ -294,8 +298,29 @@ export function UserManagement() {
                     <tbody className="divide-y divide-white/5">
                         {filteredUsers.map((user) => (
                             <tr key={user.id} className="hover:bg-white/5 transition-colors">
-                                <td className="px-6 py-4 font-medium text-white">{user.nickname}</td>
+                                <td className="px-6 py-4 font-medium text-white">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                                            {user.avatar_url ? (
+                                                <img src={user.avatar_url} alt={user.nickname} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-xs text-slate-300">{(user.nickname || user.email || '?')[0].toUpperCase()}</span>
+                                            )}
+                                        </div>
+                                        <span>{user.nickname}</span>
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4">{user.email}</td>
+                                {isSystemAdmin && (
+                                    <td className="px-6 py-4">
+                                        {Array.from(new Set(user.roles.map(r => r.school_name).filter(Boolean))).join(', ') || '-'}
+                                    </td>
+                                )}
+                                {(isSystemAdmin || isSchoolAdmin) && (
+                                    <td className="px-6 py-4">
+                                        {Array.from(new Set(user.roles.map(r => r.class_name).filter(Boolean))).join(', ') || '-'}
+                                    </td>
+                                )}
                                 <td className="px-6 py-4">
                                     <div className="flex flex-wrap gap-2">
                                         {user.roles.map((r, idx) => (

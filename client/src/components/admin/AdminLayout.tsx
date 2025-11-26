@@ -1,4 +1,5 @@
 import React from 'react';
+import { useAuth } from '../../hooks/useAuth';
 
 interface AdminLayoutProps {
     currentPath: string;
@@ -6,12 +7,27 @@ interface AdminLayoutProps {
 }
 
 export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
-    const navItems = [
-        { label: '学校管理', path: '/admin/schools' },
-        { label: '班级管理', path: '/admin/classes' },
-        { label: '用户管理', path: '/admin/users' },
-        { label: '角色管理', path: '/admin/roles' },
+    const { profile } = useAuth();
+
+    let navItems = [
+        { label: '学校管理', path: '/admin/schools', roles: ['system_admin', 'school_admin'] },
+        { label: '班级管理', path: '/admin/classes', roles: ['system_admin', 'school_admin', 'class_admin'] }, // Class admin might need this? User said "only User Management"
+        { label: '用户管理', path: '/admin/users', roles: ['system_admin', 'school_admin', 'class_admin'] },
+        { label: '角色管理', path: '/admin/roles', roles: ['system_admin', 'school_admin'] },
     ];
+
+    // User request: Class Admin can ONLY see User Management
+    if (profile?.role === 'class_admin') {
+        navItems = navItems.filter(item => item.path === '/admin/users');
+    } else if (profile?.role === 'school_admin') {
+        // School admin usually sees everything except maybe global settings? 
+        // But for now let's keep all for school admin, or maybe exclude Role Management if they can't manage roles?
+        // Previous requirements said School Admin can manage roles.
+        // So School Admin sees all.
+    } else if (profile?.role !== 'system_admin') {
+        // Fallback for unknown roles
+        navItems = [];
+    }
 
     return (
         <div className="flex flex-col h-full min-h-screen bg-[#0b1020]">
@@ -27,8 +43,8 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
                                 key={item.path}
                                 href={`#${item.path}`}
                                 className={`px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${currentPath === item.path
-                                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25 translate-y-[-1px]'
-                                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                    ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25 translate-y-[-1px]'
+                                    : 'text-slate-400 hover:text-white hover:bg-white/5'
                                     }`}
                             >
                                 {item.label}
