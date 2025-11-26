@@ -111,6 +111,11 @@ router.get('/', async (req: Request, res: Response) => {
             return p.created_by === userId;
         }
 
+        // Workaround: Personal plans stored as global + scope_id=userId
+        if (p.scope_type === 'global' && p.scope_id) {
+            return p.scope_id === userId;
+        }
+
         // Check if there are visibility rules for this plan
         const rules = visibilityMap.get(p.id);
 
@@ -340,11 +345,21 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
         const category = firstRow.category || 'General';
 
         // Determine scope from request body or default to personal
-        const scopeType = req.body.scope_type || 'personal';
-        const scopeId = req.body.scope_id || null;
+        const reqScopeType = req.body.scope_type || 'personal';
+        const reqScopeId = req.body.scope_id || null;
+
+        let dbScopeType = reqScopeType;
+        let dbScopeId = reqScopeId;
+
+        // Workaround: Map 'personal' to 'global' with scope_id = userId
+        // because 'personal' is not in the database enum
+        if (reqScopeType === 'personal') {
+            dbScopeType = 'global';
+            dbScopeId = userId;
+        }
 
         // Validate permissions for the requested scope
-        if (scopeType !== 'personal') {
+        if (reqScopeType !== 'personal') {
             // Fetch user roles
             const { data: userRoles, error: roleErr } = await supabase
                 .from('user_roles')
@@ -356,26 +371,26 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             const isSystemAdmin = userRoles?.some(r => r.role === 'system_admin');
 
             if (!isSystemAdmin) {
-                if (scopeType === 'global') {
+                if (reqScopeType === 'global') {
                     return res.status(403).json({ error: 'Only System Admins can create Global plans' });
                 }
 
-                if (scopeType === 'school') {
-                    if (!scopeId) return res.status(400).json({ error: 'School ID required for school scope' });
+                if (reqScopeType === 'school') {
+                    if (!reqScopeId) return res.status(400).json({ error: 'School ID required for school scope' });
                     const isSchoolAdmin = userRoles?.some(r =>
-                        r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === scopeId
+                        r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === reqScopeId
                     );
                     if (!isSchoolAdmin) {
                         return res.status(403).json({ error: 'You are not an admin of this school' });
                     }
                 }
 
-                if (scopeType === 'class') {
-                    if (!scopeId) return res.status(400).json({ error: 'Class ID required for class scope' });
+                if (reqScopeType === 'class') {
+                    if (!reqScopeId) return res.status(400).json({ error: 'Class ID required for class scope' });
 
                     // Check if class admin
                     const isClassAdmin = userRoles?.some(r =>
-                        r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === scopeId
+                        r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === reqScopeId
                     );
 
                     if (!isClassAdmin) {
@@ -383,7 +398,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                         const { data: cls, error: clsErr } = await supabase
                             .from('classes')
                             .select('school_id')
-                            .eq('id', scopeId)
+                            .eq('id', reqScopeId)
                             .single();
 
                         if (clsErr || !cls) return res.status(400).json({ error: 'Invalid class ID' });
@@ -406,8 +421,8 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                 name: planName,
                 category,
                 description: `Imported from CSV on ${new Date().toLocaleDateString()}`,
-                scope_type: scopeType,
-                scope_id: scopeId,
+                scope_type: dbScopeType,
+                scope_id: dbScopeId,
                 created_by: userId,
                 status: 'published'
             })
@@ -459,33 +474,47 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                 });
             }
 
-            // Create session and track its ID
-            const { data: newSession, error: sErr } = await supabase
+            // Check if session exists
+            const { data: existingSession } = await supabase
                 .from('course_sessions')
-                .insert({
-                    course_id: courseId!,
-                    date: row.date,
-                    start_time: row.start_time,
-                    end_time: row.end_time,
-                    location: row.location || 'TBD'
-                })
                 .select('id')
-                .single();
+                .eq('course_id', courseId!)
+                .eq('date', row.date)
+                .eq('start_time', row.start_time)
+                .eq('end_time', row.end_time)
+                .maybeSingle();
 
-            if (sErr) {
-                console.error('Failed to create session:', sErr);
-            } else if (newSession) {
-                sessionIds.push(newSession.id);
+            if (existingSession) {
+                sessionIds.push(existingSession.id);
+            } else {
+                // Create session and track its ID
+                const { data: newSession, error: sErr } = await supabase
+                    .from('course_sessions')
+                    .insert({
+                        course_id: courseId!,
+                        date: row.date,
+                        start_time: row.start_time,
+                        end_time: row.end_time,
+                        location: row.location || 'TBD'
+                    })
+                    .select('id')
+                    .single();
+
+                if (sErr) {
+                    console.error('Failed to create session:', sErr);
+                } else if (newSession) {
+                    sessionIds.push(newSession.id);
+                }
             }
         }
 
         // Store session IDs in plan metadata or description
-        await supabase
-            .from('optional_plans')
-            .update({
-                description: `Imported from CSV on ${new Date().toLocaleDateString()}. Sessions: ${sessionIds.join(',')}`
-            })
-            .eq('id', plan.id);
+        // await supabase
+        //     .from('optional_plans')
+        //     .update({
+        //         description: `Imported from CSV on ${new Date().toLocaleDateString()}. Sessions: ${sessionIds.join(',')}`
+        //     })
+        //     .eq('id', plan.id);
 
         res.json({ success: true, planId: plan.id });
 
@@ -838,7 +867,16 @@ router.delete('/:id', async (req: Request, res: Response) => {
         return res.status(403).json({ error: 'You do not have permission to delete this plan' });
     }
 
-    // 3. Delete
+    // 3. Cleanup: Get associated courses
+    const { data: items } = await supabase
+        .from('optional_plan_items')
+        .select('ref_id')
+        .eq('optional_plan_id', id)
+        .eq('kind', 'course');
+
+    const courseIds = items?.map(i => i.ref_id) || [];
+
+    // 4. Delete Plan
     const { error: delErr } = await supabase
         .from('optional_plans')
         .delete()
@@ -846,6 +884,24 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     if (delErr) {
         return res.status(500).json({ error: delErr.message });
+    }
+
+    // 5. Check and delete orphaned courses
+    for (const courseId of courseIds) {
+        // Check if any other plan uses this course
+        const { count } = await supabase
+            .from('optional_plan_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('ref_id', courseId)
+            .eq('kind', 'course');
+
+        if (count === 0) {
+            // Delete course (cascade deletes sessions)
+            await supabase
+                .from('courses')
+                .delete()
+                .eq('id', courseId);
+        }
     }
 
     res.json({ success: true });

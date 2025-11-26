@@ -55,6 +55,49 @@ export function SettingsPage({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [avatarMsg, setAvatarMsg] = useState('')
 
+  // Clear Data State
+  const [showClearModal, setShowClearModal] = useState(false)
+  const [confirmEmail, setConfirmEmail] = useState('')
+  const [clearMsg, setClearMsg] = useState('')
+  const [clearLoading, setClearLoading] = useState(false)
+
+  const handleClearData = async () => {
+    if (!confirmEmail) return
+    setClearLoading(true)
+    setClearMsg('')
+
+    try {
+      const token = localStorage.getItem('jwt')
+      const res = await fetch('/settings/clear-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ email: confirmEmail })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setClearMsg(data.error || '操作失败')
+      } else {
+        setClearMsg('清空成功')
+        setTimeout(() => {
+          setShowClearModal(false)
+          setConfirmEmail('')
+          setClearMsg('')
+          // Optional: Reload page or clear local state if needed
+          window.location.reload()
+        }, 1500)
+      }
+    } catch (err) {
+      setClearMsg('网络错误')
+    } finally {
+      setClearLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (profile?.nickname) setNickData(profile.nickname)
   }, [profile])
@@ -561,6 +604,90 @@ export function SettingsPage({
           </button>
         </div>
       </section>
+
+      {/* Danger Zone */}
+      <section className="bg-red-900/10 border border-red-500/20 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:border-red-500/30">
+        <div className="p-6 border-b border-red-500/20">
+          <div className="flex items-center gap-3">
+            <span className="p-2 rounded-lg bg-red-500/10 text-red-400">
+              <span className="material-symbols-outlined">warning</span>
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold text-red-400">危险区域</h2>
+              <p className="text-sm text-red-400/70">不可逆的操作</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-medium text-white mb-1">清空所有规划</h3>
+              <p className="text-sm text-slate-400">这将永久删除您的所有任务和时间块，无法恢复。</p>
+            </div>
+            <button
+              onClick={() => setShowClearModal(true)}
+              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors border border-red-500/50 shadow-lg shadow-red-900/20"
+            >
+              清空规划
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Clear Data Confirmation Modal */}
+      {showClearModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
+            <div className="flex items-center gap-3 mb-4 text-red-400">
+              <span className="material-symbols-outlined text-3xl">warning</span>
+              <h3 className="text-xl font-bold">确认清空规划？</h3>
+            </div>
+
+            <p className="text-slate-300 mb-6">
+              此操作将<span className="text-red-400 font-bold">永久删除</span>您的所有任务、日程和时间块数据。此操作无法撤销！
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
+                <input
+                  type="email"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
+                  placeholder={profile?.email}
+                  value={confirmEmail}
+                  onChange={e => setConfirmEmail(e.target.value)}
+                />
+              </div>
+              {clearMsg && (
+                <p className={`text-sm ${clearMsg.includes('成功') ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {clearMsg}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowClearModal(false)
+                  setConfirmEmail('')
+                  setClearMsg('')
+                }}
+                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleClearData}
+                disabled={clearLoading || !confirmEmail}
+                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {clearLoading ? '执行中...' : '确认清空'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
