@@ -187,6 +187,13 @@ router.get('/users', async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Failed to fetch roles: ' + rErr.message });
     }
 
+    // Fetch classes and schools for lookup
+    const { data: classes } = await supabase.from('classes').select('id, name, school_id');
+    const { data: schools } = await supabase.from('schools').select('id, name');
+
+    const classMap = new Map(classes?.map(c => [c.id, c]) || []);
+    const schoolMap = new Map(schools?.map(s => [s.id, s]) || []);
+
     // 3. Fetch all class memberships (for student role)
     const { data: memberships, error: mErr } = await supabase
         .from('class_memberships')
@@ -196,11 +203,30 @@ router.get('/users', async (req: Request, res: Response) => {
 
     // 4. Merge data
     const result = users.map(u => {
-        const userRoles = roles.filter(r => r.user_id === u.id).map(r => ({
-            role: r.role,
-            scope_type: r.scope_type,
-            scope_id: r.scope_id
-        }));
+        const userRoles = roles.filter(r => r.user_id === u.id).map(r => {
+            let className = undefined;
+            let schoolName = undefined;
+
+            if (r.scope_type === 'class' && r.scope_id) {
+                const cls = classMap.get(r.scope_id);
+                if (cls) {
+                    className = cls.name;
+                    const school = schoolMap.get(cls.school_id);
+                    if (school) schoolName = school.name;
+                }
+            } else if (r.scope_type === 'school' && r.scope_id) {
+                const school = schoolMap.get(r.scope_id);
+                if (school) schoolName = school.name;
+            }
+
+            return {
+                role: r.role,
+                scope_type: r.scope_type,
+                scope_id: r.scope_id,
+                class_name: className,
+                school_name: schoolName
+            };
+        });
 
         const userMemberships = memberships.filter(m => m.user_id === u.id).map(m => ({
             role: 'student',
