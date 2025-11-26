@@ -11,9 +11,9 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
 
     let navItems = [
         { label: '学校管理', path: '/admin/schools', roles: ['system_admin', 'school_admin'] },
-        { label: '班级管理', path: '/admin/classes', roles: ['system_admin', 'school_admin', 'class_admin'] }, // Class admin might need this? User said "only User Management"
+        { label: '班级管理', path: '/admin/classes', roles: ['system_admin', 'school_admin', 'class_admin'] },
         { label: '用户管理', path: '/admin/users', roles: ['system_admin', 'school_admin', 'class_admin'] },
-        { label: '角色管理', path: '/admin/roles', roles: ['system_admin', 'school_admin'] },
+        // Role Management removed
     ];
 
     // User request: Class Admin can ONLY see User Management

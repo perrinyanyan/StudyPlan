@@ -8,7 +8,7 @@ import { AppHeader } from './components/layout/AppHeader'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
-import { RoleManagementPage } from './components/admin/RoleManagementPage'
+
 import { AdminLayout } from './components/admin/AdminLayout'
 import { SchoolManagement } from './components/admin/SchoolManagement'
 import { ClassManagement } from './components/admin/ClassManagement'
@@ -543,13 +543,6 @@ export default function App() {
               {pathOnly === '/admin/schools' && <SchoolManagement />}
               {pathOnly === '/admin/classes' && <ClassManagement />}
               {pathOnly === '/admin/users' && <UserManagement />}
-              {pathOnly === '/admin/roles' && (
-                <RoleManagementPage
-                  jwt={jwt}
-                  headers={headers}
-                  profile={profile}
-                />
-              )}
             </AdminLayout>
           ) : pathOnly === '/plans' ? (
             <PlanLibraryPage />
