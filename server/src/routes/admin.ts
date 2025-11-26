@@ -96,24 +96,61 @@ router.get('/users', async (req: Request, res: Response) => {
 
             if (!hasAccess) return res.status(403).json({ error: 'Forbidden access to this class' });
         } else {
-            // If no classId is provided, restrict Class Admins to their class members
-            // (School Admins currently see all users, or we could restrict them to their school's users, 
-            // but for now we focus on the specific request for Class Admins)
-            if (schoolAdminSchoolIds.length === 0 && classAdminClassIds.length > 0) {
+            // If no classId is provided, restrict based on admin role
+            let allowedUserIds: Set<string> = new Set();
+            let hasRestriction = false;
+
+            if (schoolAdminSchoolIds.length > 0) {
+                hasRestriction = true;
+                // 1. Get classes in these schools
+                const { data: classes } = await supabase
+                    .from('classes')
+                    .select('id')
+                    .in('school_id', schoolAdminSchoolIds);
+                const classIds = classes?.map(c => c.id) || [];
+
+                // 2. Get students in these classes
+                if (classIds.length > 0) {
+                    const { data: members } = await supabase
+                        .from('class_memberships')
+                        .select('user_id')
+                        .in('class_id', classIds);
+                    members?.forEach(m => allowedUserIds.add(m.user_id));
+
+                    // 3. Get Class Admins for these classes
+                    const { data: cAdmins } = await supabase
+                        .from('user_roles')
+                        .select('user_id')
+                        .eq('role', 'class_admin')
+                        .eq('scope_type', 'class')
+                        .in('scope_id', classIds);
+                    cAdmins?.forEach(u => allowedUserIds.add(u.user_id));
+                }
+
+                // 4. Get School Admins for these schools
+                const { data: sAdmins } = await supabase
+                    .from('user_roles')
+                    .select('user_id')
+                    .eq('role', 'school_admin')
+                    .eq('scope_type', 'school')
+                    .in('scope_id', schoolAdminSchoolIds);
+                sAdmins?.forEach(u => allowedUserIds.add(u.user_id));
+
+            } else if (classAdminClassIds.length > 0) {
+                hasRestriction = true;
                 const { data: members, error: mErr } = await supabase
                     .from('class_memberships')
                     .select('user_id')
                     .in('class_id', classAdminClassIds);
 
-                if (mErr) {
-                    console.error('Failed to fetch scoped users for class admin:', mErr);
-                    return res.status(500).json({ error: 'Failed to fetch scoped users' });
+                if (!mErr && members) {
+                    members.forEach(m => allowedUserIds.add(m.user_id));
                 }
+            }
 
-                const memberIds = members.map(m => m.user_id);
-                if (memberIds.length === 0) return res.json({ users: [] });
-
-                userQuery = userQuery.in('id', memberIds);
+            if (hasRestriction) {
+                if (allowedUserIds.size === 0) return res.json({ users: [] });
+                userQuery = userQuery.in('id', Array.from(allowedUserIds));
             }
         }
     }
@@ -346,8 +383,25 @@ router.delete('/users/:id/roles', async (req: Request, res: Response) => {
     res.json({ success: true });
 });
 
-// Create User (System Admin only)
-router.post('/users', requireSystemAdmin, async (req: Request, res: Response) => {
+// Create User (System Admin, School Admin, Class Admin)
+router.post('/users', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let requesterId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        requesterId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
+    const userRoles = await getUserRoles(requesterId);
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const isSchoolAdmin = userRoles.some(r => r.role === 'school_admin');
+    const isClassAdmin = userRoles.some(r => r.role === 'class_admin');
+
+    if (!isSystemAdmin && !isSchoolAdmin && !isClassAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     const schema = z.object({
         email: z.string().email(),
         password: z.string().min(6),

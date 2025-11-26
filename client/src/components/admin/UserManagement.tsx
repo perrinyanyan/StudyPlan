@@ -55,6 +55,10 @@ export function UserManagement() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [nickname, setNickname] = useState('');
+    const [userRole, setUserRole] = useState('student');
+    const [userScopeType, setUserScopeType] = useState('class');
+    const [userScopeId, setUserScopeId] = useState('');
+    const [userSchoolId, setUserSchoolId] = useState('');
 
     // Role Modal
     const [showRoleModal, setShowRoleModal] = useState(false);
@@ -74,7 +78,6 @@ export function UserManagement() {
 
     async function fetchData() {
         try {
-            // We use allSettled or just individual catches to handle 403s gracefully
             const headers = { Authorization: `Bearer ${jwt}` };
 
             const uRes = await fetch('http://localhost:3000/admin/users', { headers });
@@ -82,7 +85,6 @@ export function UserManagement() {
             const uData = await uRes.json();
             setUsers(uData.users);
 
-            // Fetch schools (might be empty/403 for Class Admin)
             try {
                 const sRes = await fetch('http://localhost:3000/admin/schools', { headers });
                 if (sRes.ok) {
@@ -91,7 +93,6 @@ export function UserManagement() {
                 }
             } catch (e) { console.log('Schools fetch failed (expected for class_admin)', e); }
 
-            // Fetch classes
             try {
                 const cRes = await fetch('http://localhost:3000/admin/classes', { headers });
                 if (cRes.ok) {
@@ -127,14 +128,25 @@ export function UserManagement() {
             });
 
             if (!res.ok) throw new Error('保存用户失败');
-
             const savedUser = await res.json();
 
-            // Special handling for Class Admin: Auto-assign to their class
-            if (isClassAdmin && !editingUser && savedUser.id) {
-                const classRole = profile?.roles?.find((r: any) => r.role === 'class_admin' && r.scope_type === 'class');
-                if (classRole && classRole.scope_id) {
-                    try {
+            // Assign role if creating new user
+            if (!editingUser && savedUser.id) {
+                try {
+                    let finalScopeId = userScopeId;
+                    let finalScopeType = userScopeType;
+                    let finalRole = userRole;
+
+                    if (isClassAdmin) {
+                        const classRole = profile?.roles?.find((r: any) => r.role === 'class_admin' && r.scope_type === 'class');
+                        if (classRole?.scope_id) {
+                            finalScopeId = classRole.scope_id;
+                            finalScopeType = 'class';
+                            finalRole = 'student';
+                        }
+                    }
+
+                    if (finalRole && (finalRole !== 'student' || finalScopeId)) {
                         await fetch(`http://localhost:3000/admin/users/${savedUser.id}/roles`, {
                             method: 'POST',
                             headers: {
@@ -142,22 +154,22 @@ export function UserManagement() {
                                 Authorization: `Bearer ${jwt}`,
                             },
                             body: JSON.stringify({
-                                role: 'student',
-                                scope_type: 'class',
-                                scope_id: classRole.scope_id
+                                role: finalRole,
+                                scope_type: finalScopeType,
+                                scope_id: finalScopeId
                             })
                         });
-                    } catch (error) {
-                        console.error('Error auto-assigning role:', error);
                     }
+                } catch (error) {
+                    console.error('Error assigning role:', error);
+                    alert('User created but failed to assign role');
                 }
             }
 
-            setShowUserModal(false);
-            setEmail('');
             setPassword('');
             setNickname('');
             setEditingUser(null);
+            setShowUserModal(false);
             fetchData();
         } catch (err: any) {
             alert(err.message);
@@ -172,6 +184,30 @@ export function UserManagement() {
                 headers: { Authorization: `Bearer ${jwt}` },
             });
             if (!res.ok) throw new Error('删除用户失败');
+            fetchData();
+        } catch (err: any) {
+            alert(err.message);
+        }
+    }
+
+    async function handleRemoveRole(userId: string, role: string, scopeId: string | null) {
+        if (!confirm('确定要移除该角色吗？')) return;
+
+        try {
+            const res = await fetch(`http://localhost:3000/admin/users/${userId}/roles`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${jwt}`,
+                },
+                body: JSON.stringify({ role, scope_id: scopeId })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.error || '移除角色失败');
+            }
+
             fetchData();
         } catch (err: any) {
             alert(err.message);
@@ -211,30 +247,6 @@ export function UserManagement() {
         }
     }
 
-    async function handleRemoveRole(userId: string, role: string, scopeId: string | null) {
-        if (!confirm('确定要移除该角色吗？')) return;
-
-        try {
-            const res = await fetch(`http://localhost:3000/admin/users/${userId}/roles`, {
-                method: 'DELETE',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${jwt}`,
-                },
-                body: JSON.stringify({ role, scope_id: scopeId })
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                throw new Error(data.error || '移除角色失败');
-            }
-
-            fetchData();
-        } catch (err: any) {
-            alert(err.message);
-        }
-    }
-
     const filteredUsers = users.filter(user => {
         const searchLower = searchTerm.toLowerCase();
         return (
@@ -258,6 +270,22 @@ export function UserManagement() {
                             setEmail('');
                             setPassword('');
                             setNickname('');
+                            setUserRole('student');
+                            setUserScopeType('class');
+                            setUserScopeId('');
+                            setUserSchoolId('');
+
+                            if (isClassAdmin) {
+                                const classRole = profile?.roles?.find((r: any) => r.role === 'class_admin' && r.scope_type === 'class');
+                                if (classRole?.scope_id) {
+                                    setUserScopeId(classRole.scope_id);
+                                }
+                            }
+
+                            if (isSchoolAdmin && schools.length > 0) {
+                                setUserSchoolId(schools[0].id);
+                            }
+
                             setShowUserModal(true);
                         }}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
@@ -348,7 +376,7 @@ export function UserManagement() {
                                                 setSelectedUserId(user.id);
                                                 setShowRoleModal(true);
                                                 setNewRole('student');
-                                                setNewScopeType('class'); // Default to class for safety
+                                                setNewScopeType('class');
                                                 setSelectedSchoolId('');
                                                 setNewScopeId('');
                                             }}
@@ -439,6 +467,87 @@ export function UserManagement() {
                                         required={!editingUser}
                                     />
                                 </div>
+                                {!editingUser && (
+                                    <div className="space-y-3 pt-2 border-t border-white/10">
+                                        <div>
+                                            <label className="block text-xs text-slate-400 mb-1">角色</label>
+                                            <select
+                                                value={userRole}
+                                                onChange={e => {
+                                                    const r = e.target.value;
+                                                    setUserRole(r);
+                                                    setUserSchoolId('');
+                                                    setUserScopeId('');
+                                                    if (r === 'system_admin') setUserScopeType('global');
+                                                    else if (r === 'school_admin') setUserScopeType('school');
+                                                    else if (r === 'class_admin') setUserScopeType('class');
+                                                    else if (r === 'student') setUserScopeType('class');
+                                                }}
+                                                disabled={isClassAdmin}
+                                                className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500 disabled:opacity-50"
+                                            >
+                                                {isSystemAdmin && <option value="system_admin">系统管理员</option>}
+                                                {(isSystemAdmin) && <option value="school_admin">学校管理员</option>}
+                                                {(isSystemAdmin || isSchoolAdmin) && <option value="class_admin">班级管理员</option>}
+                                                <option value="student">学生</option>
+                                            </select>
+                                        </div>
+
+                                        {userRole === 'school_admin' && (
+                                            <div>
+                                                <label className="block text-xs text-slate-400 mb-1">选择学校</label>
+                                                <select
+                                                    value={userScopeId}
+                                                    onChange={e => setUserScopeId(e.target.value)}
+                                                    className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                    required
+                                                >
+                                                    <option value="">-- 选择学校 --</option>
+                                                    {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                </select>
+                                            </div>
+                                        )}
+
+                                        {(userRole === 'class_admin' || userRole === 'student') && (
+                                            <>
+                                                {schools.length > 0 && !isClassAdmin && (isSystemAdmin || schools.length > 1) && (
+                                                    <div>
+                                                        <label className="block text-xs text-slate-400 mb-1">选择学校</label>
+                                                        <select
+                                                            value={userSchoolId}
+                                                            onChange={e => {
+                                                                setUserSchoolId(e.target.value);
+                                                                setUserScopeId('');
+                                                            }}
+                                                            className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+                                                        >
+                                                            <option value="">-- 选择学校 --</option>
+                                                            {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                                        </select>
+                                                    </div>
+                                                )}
+
+                                                <div>
+                                                    <label className="block text-xs text-slate-400 mb-1">选择班级</label>
+                                                    <select
+                                                        value={userScopeId}
+                                                        onChange={e => setUserScopeId(e.target.value)}
+                                                        disabled={isClassAdmin}
+                                                        className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500 disabled:opacity-50"
+                                                        required
+                                                    >
+                                                        <option value="">-- 选择班级 --</option>
+                                                        {classes
+                                                            .filter(c => !userSchoolId || c.school_id === userSchoolId)
+                                                            .map(c => (
+                                                                <option key={c.id} value={c.id}>{c.name}</option>
+                                                            ))}
+                                                    </select>
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                                 <div className="flex justify-end gap-3 pt-2">
                                     <button
                                         type="button"
@@ -507,9 +616,6 @@ export function UserManagement() {
 
                                 {(newRole === 'class_admin' || newRole === 'student') && (
                                     <>
-                                        {/* Only show School select if user has access to multiple schools (System Admin) or if we want to filter classes by school */}
-                                        {/* For School Admin, they only see their school(s), so this dropdown is still useful to filter classes if they have >1 school */}
-                                        {/* For Class Admin, they shouldn't see schools if they don't have access. */}
                                         {schools.length > 0 && (
                                             <div>
                                                 <label className="block text-xs text-slate-400 mb-1">选择学校</label>

@@ -149,7 +149,7 @@ router.get('/me', async (req: Request, res: Response) => {
   // Fetch roles
   const { data: roles } = await supabase
     .from('user_roles')
-    .select('role')
+    .select('role, scope_type, scope_id')
     .eq('user_id', userId);
 
   // Determine primary role for frontend (system_admin > school_admin > class_admin > student)
