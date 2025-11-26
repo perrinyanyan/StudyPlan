@@ -243,7 +243,12 @@ export function ClassManagement() {
                         onClick={() => {
                             setEditingClass(null);
                             setName('');
-                            setSchoolId(filterSchoolId || ''); // Pre-select school if filtered
+                            // Auto-select school for School Admin
+                            if (profile?.role === 'school_admin' && schools.length > 0) {
+                                setSchoolId(schools[0].id);
+                            } else {
+                                setSchoolId(filterSchoolId || '');
+                            }
                             setShowModal(true);
                         }}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
@@ -360,7 +365,7 @@ export function ClassManagement() {
                                     required
                                 />
                             </div>
-                            {!editingClass && (
+                            {!editingClass && (profile?.role === 'system_admin' || (profile?.role === 'school_admin' && schools.length > 1)) && (
                                 <div>
                                     <label className="block text-xs text-slate-400 mb-1">所属学校</label>
                                     <select

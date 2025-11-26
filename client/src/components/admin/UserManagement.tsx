@@ -318,7 +318,7 @@ export function UserManagement() {
                             <th className="px-6 py-4">邮箱</th>
                             {isSystemAdmin && <th className="px-6 py-4">学校</th>}
                             {(isSystemAdmin || isSchoolAdmin) && <th className="px-6 py-4">班级</th>}
-                            <th className="px-6 py-4">角色</th>
+                            {!isClassAdmin && <th className="px-6 py-4">角色</th>}
                             <th className="px-6 py-4">上次活跃</th>
                             <th className="px-6 py-4 text-right">操作</th>
                         </tr>
@@ -349,44 +349,48 @@ export function UserManagement() {
                                         {Array.from(new Set(user.roles.map(r => r.class_name).filter(Boolean))).join(', ') || '-'}
                                     </td>
                                 )}
-                                <td className="px-6 py-4">
-                                    <div className="flex flex-wrap gap-2">
-                                        {user.roles.map((r, idx) => (
-                                            <span
-                                                key={idx}
-                                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${r.role === 'system_admin' ? 'bg-purple-900/30 border-purple-500/30 text-purple-300' :
-                                                    r.role === 'school_admin' ? 'bg-blue-900/30 border-blue-500/30 text-blue-300' :
-                                                        r.role === 'class_admin' ? 'bg-cyan-900/30 border-cyan-500/30 text-cyan-300' :
-                                                            'bg-slate-700/50 border-slate-600 text-slate-300'
-                                                    }`}
-                                            >
-                                                {r.role}
-                                                {r.scope_type === 'school' && <span className="opacity-70">@学校</span>}
-                                                {r.scope_type === 'class' && <span className="opacity-70">@{r.class_name || '班级'}</span>}
-                                                <button
-                                                    onClick={() => handleRemoveRole(user.id, r.role, r.scope_id)}
-                                                    className="ml-1 hover:text-red-400"
+                                {!isClassAdmin && (
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-wrap gap-2">
+                                            {user.roles.map((r, idx) => (
+                                                <span
+                                                    key={idx}
+                                                    className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs border ${r.role === 'system_admin' ? 'bg-purple-900/30 border-purple-500/30 text-purple-300' :
+                                                        r.role === 'school_admin' ? 'bg-blue-900/30 border-blue-500/30 text-blue-300' :
+                                                            r.role === 'class_admin' ? 'bg-cyan-900/30 border-cyan-500/30 text-cyan-300' :
+                                                                'bg-slate-700/50 border-slate-600 text-slate-300'
+                                                        }`}
                                                 >
-                                                    ×
-                                                </button>
-                                            </span>
-                                        ))}
-                                        <button
-                                            onClick={() => {
-                                                setSelectedUserId(user.id);
-                                                setShowRoleModal(true);
-                                                setNewRole('student');
-                                                setNewScopeType('class');
-                                                setSelectedSchoolId('');
-                                                setNewScopeId('');
-                                            }}
-                                            className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1"
-                                        >
-                                            + 添加角色
-                                        </button>
+                                                    {r.role}
+                                                    {r.scope_type === 'school' && <span className="opacity-70">@学校</span>}
+                                                    {r.scope_type === 'class' && <span className="opacity-70">@{r.class_name || '班级'}</span>}
+                                                    {(isSystemAdmin || (isSchoolAdmin && user.roles.length > 1)) && (
+                                                        <button
+                                                            onClick={() => handleRemoveRole(user.id, r.role, r.scope_id)}
+                                                            className="ml-1 hover:text-red-400"
+                                                        >
+                                                            ×
+                                                        </button>
+                                                    )}
+                                                </span>
+                                            ))}
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedUserId(user.id);
+                                                    setShowRoleModal(true);
+                                                    setNewRole('student');
+                                                    setNewScopeType('class');
+                                                    setSelectedSchoolId('');
+                                                    setNewScopeId('');
+                                                }}
+                                                className="text-xs text-blue-400 hover:text-blue-300 px-2 py-1"
+                                            >
+                                                +
+                                            </button>
 
-                                    </div>
-                                </td>
+                                        </div>
+                                    </td>
+                                )}
                                 <td className="px-6 py-4 text-slate-400 text-xs">
                                     {formatDate(user.last_sign_in_at)}
                                 </td>
@@ -405,13 +409,15 @@ export function UserManagement() {
                                                 <span className="material-symbols-outlined text-lg">edit</span>
                                                 编辑
                                             </ActionMenuItem>
-                                            <ActionMenuItem
-                                                danger
-                                                onClick={() => handleDeleteUser(user.id)}
-                                            >
-                                                <span className="material-symbols-outlined text-lg">delete</span>
-                                                删除
-                                            </ActionMenuItem>
+                                            {(isSystemAdmin || isSchoolAdmin) && (
+                                                <ActionMenuItem
+                                                    danger
+                                                    onClick={() => handleDeleteUser(user.id)}
+                                                >
+                                                    <span className="material-symbols-outlined text-lg">delete</span>
+                                                    删除
+                                                </ActionMenuItem>
+                                            )}
                                         </ActionMenu>
                                     )}
                                 </td>

@@ -20,10 +20,8 @@ export function AdminLayout({ currentPath, children }: AdminLayoutProps) {
     if (profile?.role === 'class_admin') {
         navItems = navItems.filter(item => item.path === '/admin/users');
     } else if (profile?.role === 'school_admin') {
-        // School admin usually sees everything except maybe global settings? 
-        // But for now let's keep all for school admin, or maybe exclude Role Management if they can't manage roles?
-        // Previous requirements said School Admin can manage roles.
-        // So School Admin sees all.
+        // Hide School Management for School Admin
+        navItems = navItems.filter(item => item.path !== '/admin/schools');
     } else if (profile?.role !== 'system_admin') {
         // Fallback for unknown roles
         navItems = [];
