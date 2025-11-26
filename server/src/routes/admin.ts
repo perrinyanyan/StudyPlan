@@ -424,21 +424,80 @@ router.post('/users', async (req: Request, res: Response) => {
     res.json(data);
 });
 
-// Update User (System Admin only)
-router.put('/users/:id', requireSystemAdmin, async (req: Request, res: Response) => {
+// Update User (System Admin, School Admin, Class Admin)
+router.put('/users/:id', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let requesterId: string;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        requesterId = payload.sub;
+    } catch { return res.status(401).json({ error: 'Invalid token' }); }
+
     const id = req.params.id;
     const schema = z.object({
         email: z.string().email().optional(),
         password: z.string().min(6).optional(),
         nickname: z.string().min(1).optional(),
+        avatar_url: z.string().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
-    const { email, password, nickname } = parsed.data;
+    const { email, password, nickname, avatar_url } = parsed.data;
+
+    // Permission Check
+    const userRoles = await getUserRoles(requesterId);
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+
+    if (!isSystemAdmin) {
+        const schoolAdminSchoolIds = userRoles.filter(r => r.role === 'school_admin' && r.scope_type === 'school').map(r => r.scope_id);
+        const classAdminClassIds = userRoles.filter(r => r.role === 'class_admin' && r.scope_type === 'class').map(r => r.scope_id);
+
+        if (schoolAdminSchoolIds.length === 0 && classAdminClassIds.length === 0) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        let hasAccess = false;
+
+        // Check School Admin access
+        if (schoolAdminSchoolIds.length > 0) {
+            // 1. Get classes in these schools
+            const { data: classes } = await supabase.from('classes').select('id').in('school_id', schoolAdminSchoolIds);
+            const classIds = classes?.map(c => c.id) || [];
+
+            if (classIds.length > 0) {
+                // Check if target is student in these classes
+                const { data: member } = await supabase.from('class_memberships').select('user_id').eq('user_id', id).in('class_id', classIds).single();
+                if (member) hasAccess = true;
+
+                // Check if target is Class Admin in these classes
+                if (!hasAccess) {
+                    const { data: ca } = await supabase.from('user_roles').select('user_id').eq('user_id', id).eq('role', 'class_admin').eq('scope_type', 'class').in('scope_id', classIds).single();
+                    if (ca) hasAccess = true;
+                }
+            }
+
+            // Check if target is School Admin in these schools (optional, but consistent with GET /users)
+            if (!hasAccess) {
+                const { data: sa } = await supabase.from('user_roles').select('user_id').eq('user_id', id).eq('role', 'school_admin').eq('scope_type', 'school').in('scope_id', schoolAdminSchoolIds).single();
+                if (sa) hasAccess = true;
+            }
+        }
+
+        // Check Class Admin access
+        if (!hasAccess && classAdminClassIds.length > 0) {
+            const { data: member } = await supabase.from('class_memberships').select('user_id').eq('user_id', id).in('class_id', classAdminClassIds).single();
+            if (member) hasAccess = true;
+        }
+
+        if (!hasAccess) return res.status(403).json({ error: 'Forbidden: You do not have permission to edit this user' });
+    }
 
     const updates: any = {};
     if (email) updates.email = email;
     if (nickname) updates.nickname = nickname;
+    if (avatar_url !== undefined) updates.avatar_url = avatar_url;
     if (password) updates.password_hash = await bcrypt.hash(password, 10);
 
     if (Object.keys(updates).length === 0) return res.json({ success: true });
@@ -447,7 +506,7 @@ router.put('/users/:id', requireSystemAdmin, async (req: Request, res: Response)
         .from('users')
         .update(updates)
         .eq('id', id)
-        .select('id, email, nickname, created_at')
+        .select('id, email, nickname, avatar_url, created_at')
         .single();
 
     if (error) return res.status(500).json({ error: 'Failed to update user' });

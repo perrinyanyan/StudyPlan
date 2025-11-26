@@ -18,6 +18,7 @@ import taskTypesRouter from './routes/task-types.js';
 import tagsRouter from './routes/tags.js';
 import settingsRouter from './routes/settings.js';
 import adminRouter from './routes/admin.js';
+import uploadRouter from './routes/upload.js';
 import { getOpenApiSpec } from './openapi.js';
 import { validateEnv } from './utils/env-check.js';
 
@@ -69,6 +70,7 @@ app.use('/classes', classesRouter);
 app.use('/task-types', taskTypesRouter);
 app.use('/settings', settingsRouter);
 app.use('/admin', adminRouter);
+app.use('/upload', uploadRouter);
 app.use('/plans', plansRouter);
 
 if (process.env.NODE_ENV !== 'production') {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
@@ -48,13 +48,17 @@ export function UserManagement() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [searchTerm, setSearchTerm] = useState('');
-
     // User Modal
     const [showUserModal, setShowUserModal] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
     const [nickname, setNickname] = useState('');
+    const [password, setPassword] = useState('');
+    const [avatarUrl, setAvatarUrl] = useState('');
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     const [userRole, setUserRole] = useState('student');
     const [userScopeType, setUserScopeType] = useState('class');
     const [userScopeId, setUserScopeId] = useState('');
@@ -80,21 +84,21 @@ export function UserManagement() {
         try {
             const headers = { Authorization: `Bearer ${jwt}` };
 
-            const uRes = await fetch('http://localhost:3000/admin/users', { headers });
+            const uRes = await fetch('/admin/users', { headers });
             if (!uRes.ok) throw new Error('获取用户列表失败');
             const uData = await uRes.json();
             setUsers(uData.users);
 
             try {
-                const sRes = await fetch('http://localhost:3000/admin/schools', { headers });
+                const sRes = await fetch('/admin/schools', { headers });
                 if (sRes.ok) {
                     const sData = await sRes.json();
                     setSchools(sData.schools);
                 }
-            } catch (e) { console.log('Schools fetch failed (expected for class_admin)', e); }
+            } catch (e) { console.log('Schools fetch failed', e); }
 
             try {
-                const cRes = await fetch('http://localhost:3000/admin/classes', { headers });
+                const cRes = await fetch('/admin/classes', { headers });
                 if (cRes.ok) {
                     const cData = await cRes.json();
                     setClasses(cData.classes);
@@ -110,12 +114,54 @@ export function UserManagement() {
 
     async function handleUserSubmit(e: React.FormEvent) {
         e.preventDefault();
+
+        let finalAvatarUrl = avatarUrl;
+        if (avatarFile) {
+            setUploadingAvatar(true);
+            try {
+                const formData = new FormData();
+                formData.append('file', avatarFile);
+                const res = await fetch('/upload/avatar', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${jwt}`
+                        // Do NOT set Content-Type - browser will set it with boundary
+                    },
+                    body: formData
+                });
+
+                console.log('Upload response status:', res.status);
+                console.log('Upload response headers:', res.headers);
+
+                if (!res.ok) {
+                    const responseText = await res.text();
+                    console.error('Upload failed response:', responseText);
+                    let errorMessage = `Upload failed (${res.status})`;
+                    try {
+                        const errorData = JSON.parse(responseText);
+                        errorMessage = errorData.error || errorMessage;
+                    } catch (e) {
+                        errorMessage = responseText || errorMessage;
+                    }
+                    throw new Error(errorMessage);
+                }
+                const data = await res.json();
+                finalAvatarUrl = data.url;
+            } catch (err) {
+                console.error('Upload error:', err);
+                alert('头像上传失败: ' + ((err as any).message || '未知错误'));
+                setUploadingAvatar(false);
+                return;
+            }
+            setUploadingAvatar(false);
+        }
+
         try {
             const url = editingUser
-                ? `http://localhost:3000/admin/users/${editingUser.id}`
-                : 'http://localhost:3000/admin/users';
+                ? `/admin/users/${editingUser.id}`
+                : '/admin/users';
             const method = editingUser ? 'PUT' : 'POST';
-            const body: any = { email, nickname };
+            const body: any = { email, nickname, avatar_url: finalAvatarUrl };
             if (password) body.password = password;
 
             const res = await fetch(url, {
@@ -147,7 +193,7 @@ export function UserManagement() {
                     }
 
                     if (finalRole && (finalRole !== 'student' || finalScopeId)) {
-                        await fetch(`http://localhost:3000/admin/users/${savedUser.id}/roles`, {
+                        await fetch(`/admin/users/${savedUser.id}/roles`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -402,6 +448,9 @@ export function UserManagement() {
                                                     setEditingUser(user);
                                                     setEmail(user.email);
                                                     setNickname(user.nickname);
+                                                    setNickname(user.nickname);
+                                                    setAvatarUrl(user.avatar_url || '');
+                                                    setAvatarFile(null);
                                                     setPassword('');
                                                     setShowUserModal(true);
                                                 }}
@@ -462,6 +511,44 @@ export function UserManagement() {
                                         className="w-full bg-slate-900 border border-white/10 rounded px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
                                         required
                                     />
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-slate-400 mb-1">头像</label>
+                                    <div className="flex items-center gap-4">
+                                        <div
+                                            className="w-12 h-12 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center overflow-hidden cursor-pointer hover:border-blue-500 transition-colors"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            {avatarUrl ? (
+                                                <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="material-symbols-outlined text-slate-500">person</span>
+                                            )}
+                                        </div>
+                                        <div className="flex-1">
+                                            <input
+                                                type="file"
+                                                ref={fileInputRef}
+                                                onChange={(e) => {
+                                                    if (e.target.files && e.target.files[0]) {
+                                                        const file = e.target.files[0];
+                                                        setAvatarFile(file);
+                                                        setAvatarUrl(URL.createObjectURL(file));
+                                                    }
+                                                }}
+                                                accept="image/*"
+                                                className="hidden"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="text-sm text-blue-400 hover:text-blue-300"
+                                            >
+                                                {avatarFile ? '更换图片' : '上传头像'}
+                                            </button>
+                                            <div className="text-xs text-slate-500 mt-1">支持 JPG, PNG, GIF</div>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="block text-xs text-slate-400 mb-1">密码 {editingUser && '(留空保持不变)'}</label>
@@ -566,12 +653,12 @@ export function UserManagement() {
                                         type="submit"
                                         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm rounded font-medium"
                                     >
-                                        保存
+                                        {uploadingAvatar ? '上传中...' : '保存'}
                                     </button>
                                 </div>
                             </form>
                         </div>
-                    </div>
+                    </div >
                 )
             }
 
