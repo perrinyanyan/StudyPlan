@@ -73,8 +73,18 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
   const [tagInput, setTagInput] = useState('')
   const [typeModalOpen, setTypeModalOpen] = useState(false)
   const [newTypeName, setNewTypeName] = useState('')
-  const [newTypeColor, setNewTypeColor] = useState('#4FD1C5')
-  const TYPE_COLOR_OPTIONS = ['#4FD1C5', '#A78BFA', '#68D391', '#F6AD55', '#E89EC1', '#50E3C2']
+  const [newTypeColor, setNewTypeColor] = useState('#F87171')
+  const TYPE_COLOR_OPTIONS = [
+    '#F87171', // Red
+    '#FB923C', // Orange
+    '#FACC15', // Yellow
+    '#4ADE80', // Green
+    '#2DD4BF', // Teal
+    '#60A5FA', // Blue
+    '#818CF8', // Indigo
+    '#A78BFA', // Purple
+    '#F472B6', // Pink
+  ]
 
   async function loadTypes(selectId?: string) {
     try {
@@ -90,7 +100,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
           setTypeIdx(0)
         }
       }
-    } catch {}
+    } catch { }
   }
 
   useEffect(() => {
@@ -190,10 +200,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
       recurrence === 'daily'
         ? 'DAILY'
         : recurrence === 'weekly'
-        ? 'WEEKLY'
-        : recurrence === 'monthly'
-        ? 'MONTHLY'
-        : undefined
+          ? 'WEEKLY'
+          : recurrence === 'monthly'
+            ? 'MONTHLY'
+            : undefined
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
     const selectedType = typeIdx >= 0 ? types[typeIdx] : undefined
     const basePayload: any = {
@@ -207,14 +217,14 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
 
     const payload = isEdit
       ? {
-          ...basePayload,
-          type: selectedType ? selectedType.name : undefined,
-          color: selectedType ? selectedType.color : undefined,
-        }
+        ...basePayload,
+        type: selectedType ? selectedType.name : undefined,
+        color: selectedType ? selectedType.color : undefined,
+      }
       : {
-          ...basePayload,
-          type_id: selectedType ? selectedType.id : undefined,
-        }
+        ...basePayload,
+        type_id: selectedType ? selectedType.id : undefined,
+      }
 
     const ok = await onSave(payload)
     if (!ok) return
@@ -435,11 +445,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                     <button
                       key={name}
                       type="button"
-                      className={`px-2 py-1 rounded-full text-xs border ${
-                        active
-                          ? 'bg-[#137fec]/20 border-[#137fec] text-[#137fec]'
-                          : 'border-slate-600 text-slate-300 hover:border-[#137fec] hover:text-[#137fec]'
-                      }`}
+                      className={`px-2 py-1 rounded-full text-xs border ${active
+                        ? 'bg-[#137fec]/20 border-[#137fec] text-[#137fec]'
+                        : 'border-slate-600 text-slate-300 hover:border-[#137fec] hover:text-[#137fec]'
+                        }`}
                       onClick={() =>
                         setTags((prev) =>
                           prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name]
@@ -528,9 +537,8 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                     <button
                       key={c}
                       type="button"
-                      className={`w-7 h-7 rounded-full border-2 ${
-                        newTypeColor === c ? 'border-white ring-2 ring-[#137fec]' : 'border-transparent'
-                      }`}
+                      className={`w-7 h-7 rounded-full border-2 ${newTypeColor === c ? 'border-white ring-2 ring-[#137fec]' : 'border-transparent'
+                        }`}
                       style={{ backgroundColor: c }}
                       onClick={() => setNewTypeColor(c)}
                     />

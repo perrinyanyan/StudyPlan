@@ -601,6 +601,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                     user_id: userId,
                     title: courseName,
                     type: settings.type || 'Class',
+                    color: settings.color,
                     due_at: endAt.toISOString(),
                     estimate_min: durationMin,
                     priority: settings.priority ?? 1,
