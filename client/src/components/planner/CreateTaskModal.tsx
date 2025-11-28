@@ -17,13 +17,18 @@ export type CreateTaskPayload = {
 export type CreateTaskModalProps = {
   defaultDate: string
   onClose: () => void
-  onSave: (p: CreateTaskPayload) => Promise<boolean>
+  onSuccess: () => void
+  onSchedule?: (task: Task) => void
   authHeaders: Record<string, string>
   availableTags: string[]
   initialTask?: Task | null
+  actions: {
+    createTaskAdvanced: (payload: any) => Promise<boolean>
+    updateTaskAdvanced: (id: string, payload: any) => Promise<boolean>
+  }
 }
 
-export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, availableTags, initialTask }: CreateTaskModalProps) {
+export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, authHeaders, availableTags, initialTask, actions }: CreateTaskModalProps) {
   const isEdit = !!initialTask
 
   function toInputLocal(d: Date): string {
@@ -149,6 +154,17 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
     setEndAt((prev) => (prev ? prev : startAt))
   }, [timeMode, startAt])
 
+  // Reset recurrence when timeMode changes
+  useEffect(() => {
+    if (timeMode === 'undecided') {
+      setRecurrence('pool')
+    } else {
+      if (recurrence === 'pool') {
+        setRecurrence('none')
+      }
+    }
+  }, [timeMode])
+
   async function addType(name: string, color: string): Promise<boolean> {
     const trimmed = name.trim()
     if (!trimmed) {
@@ -181,14 +197,24 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
     setNewTypeName('')
   }
 
-  async function submit() {
+  async function submit(mode: 'save' | 'schedule' | 'pool' = 'save') {
+    // If we are saving (not explicitly scheduling) and the task was originally in the pool (or unscheduled),
+    // we should keep it in the pool.
+    let effectiveMode = mode
+    if (mode === 'save' && isEdit && initialTask) {
+      const wasPool = initialTask.recurrence_rule === 'POOL' || !initialTask.due_at
+      if (wasPool) {
+        effectiveMode = 'pool'
+      }
+    }
+
     if (!title.trim()) {
       alert('请输入任务名称')
       return
     }
     let dueISO: string | undefined
     let estimateMin: number | undefined
-    if (timeMode === 'duration') {
+    if (timeMode === 'duration' && effectiveMode !== 'pool') {
       if (!startAt.trim()) {
         alert('请选择开始时间')
         return
@@ -202,7 +228,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
       const end = new Date(start.getTime() + est * 60000)
       dueISO = end.toISOString()
       estimateMin = est
-    } else if (timeMode === 'end') {
+    } else if (timeMode === 'end' && effectiveMode !== 'pool') {
       if (!startAt.trim() || !endAt.trim()) {
         alert('请选择开始与结束时间')
         return
@@ -228,18 +254,17 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
           ? 'WEEKLY'
           : recurrence === 'monthly'
             ? 'MONTHLY'
-            : recurrence === 'pool'
+            : recurrence === 'pool' || effectiveMode === 'pool'
               ? 'POOL'
               : undefined
 
-    // console.log('DEBUG: recurrence', recurrence, 'recurrenceEndDate', recurrenceEndDate)
-    if (recurrence !== 'none' && recurrence !== 'pool' && !recurrenceEndDate) {
+    if (recurrence !== 'none' && recurrence !== 'pool' && effectiveMode !== 'pool' && !recurrenceEndDate) {
       alert('请选择重复截止日期')
       return
     }
 
     let finalRecur = recur
-    if (recur && recurrence !== 'pool') {
+    if (recur && recurrence !== 'pool' && effectiveMode !== 'pool') {
       const parts: string[] = [recur]
       if (recurrence === 'weekly' && recurrenceDays.length > 0) {
         parts.push(`BYDAY=${recurrenceDays.join(',')}`)
@@ -258,26 +283,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
         parts.push('PINNED')
       }
       finalRecur = parts.join(';')
-    } else if (recurrence === 'pool') {
+    } else if (recurrence === 'pool' || effectiveMode === 'pool') {
       finalRecur = 'POOL'
       if (pinned) finalRecur += ';PINNED'
     } else if (pinned) {
-      // Even if recurrence is none, we might want to support pinning?
-      // The requirement says "Task Pool's ... menu add Pin".
-      // Usually non-recurring tasks can also be pinned if we want them to stay in pool?
-      // But user said "Task Pool's ... menu".
-      // Let's assume pinning is orthogonal to recurrence, but stored in recurrence_rule for now as requested.
-      // If recurrence is none but pinned, we need a rule.
-      // Let's use "PINNED" as the rule if no other rule exists?
-      // Or maybe "NONE;PINNED"?
-      // Backend expects recurrence_rule to be present for POOL logic?
-      // If recurrence is none, recurrence_rule is undefined.
-      // If pinned, we should probably set it to 'PINNED' or similar.
-      // Let's stick to the plan: append PINNED.
-      // If recurrence is none, finalRecur is undefined.
-      // If pinned is true and recurrence is none, we should probably treat it as POOL?
-      // Or just a special PINNED rule.
-      // Let's set it to 'PINNED' if recurrence is none but pinned.
       finalRecur = 'PINNED'
     }
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
@@ -302,9 +311,15 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
         type_id: selectedType ? selectedType.id : undefined,
       }
 
-    const ok = await onSave(payload)
+    const ok = await (isEdit ? actions.updateTaskAdvanced(initialTask!.id, payload) : actions.createTaskAdvanced(payload))
     if (!ok) return
-    onClose()
+
+    if (effectiveMode === 'schedule' && onSchedule && isEdit && initialTask) {
+      onSchedule({ ...initialTask, ...basePayload, ...payload, id: initialTask.id } as Task)
+      onClose()
+    } else {
+      onSuccess()
+    }
   }
 
   function addTagFromInput() {
@@ -318,7 +333,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-slate-900 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h2 className="text-white text-lg font-semibold">{isEdit ? '编辑任务' : '创建新任务'}</h2>
+          <h2 className="text-white text-lg font-semibold">{isEdit ? '编辑任务池' : '创建新任务'}</h2>
           <button className="text-white/60 hover:text-white" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -504,6 +519,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                 onChange={(e) => setRecurrence(e.target.value as any)}
               >
                 <option value="none">不重复</option>
+                <option value="pool">滞留任务池</option>
                 <option value="daily">每日</option>
                 <option value="weekly">每周</option>
                 <option value="monthly">每月</option>
@@ -602,7 +618,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                     <button
                       key={name}
                       type="button"
-                      className={`px-2 py-1 rounded-full text-xs border ${active
+                      className={`px-2 py-1 rounded-md text-xs font-medium border ${active
                         ? 'bg-[#137fec]/20 border-[#137fec] text-[#137fec]'
                         : 'border-slate-600 text-slate-300 hover:border-[#137fec] hover:text-[#137fec]'
                         }`}
@@ -612,31 +628,16 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                         )
                       }
                     >
-                      #{name}
+                      {name}
                     </button>
                   )
                 })}
               </div>
             )}
-            <div className="flex items-center flex-wrap gap-2 w-full min-h-14 rounded-lg border border-slate-700 bg-slate-900/70 p-2 focus-within:ring-2 focus-within:ring-[#137fec]/60 focus-within:border-[#137fec]">
-              {tags.map((t) => (
-                <span
-                  key={t}
-                  className="flex items-center gap-1.5 bg-[#137fec]/20 text-[#137fec] text-sm font-medium px-2 py-1 rounded"
-                >
-                  #{t}
-                  <button
-                    className="text-[#137fec]/70 hover:text-[#137fec]"
-                    type="button"
-                    onClick={() => setTags((arr) => arr.filter((x) => x !== t))}
-                  >
-                    <span className="material-symbols-outlined text-base">close</span>
-                  </button>
-                </span>
-              ))}
+            <div className="flex gap-2">
               <input
-                className="form-input flex-1 bg-transparent border-0 focus:ring-0 p-1.5 text-white placeholder:text-slate-500"
-                placeholder="添加一个标签..."
+                className="form-input h-9 flex-1 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                placeholder="添加新标签..."
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -646,7 +647,33 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                   }
                 }}
               />
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-slate-700 hover:bg-slate-600"
+                onClick={addTagFromInput}
+              >
+                添加
+              </button>
             </div>
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {tags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white/10 text-xs text-slate-200"
+                  >
+                    #{t}
+                    <button
+                      type="button"
+                      className="text-slate-400 hover:text-white"
+                      onClick={() => setTags((prev) => prev.filter((x) => x !== t))}
+                    >
+                      <span className="material-symbols-outlined text-[14px]">close</span>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </label>
         </div>
         <div className="flex justify-end gap-3 px-4 py-3 border-t border-white/10 bg-slate-900">
@@ -656,11 +683,27 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
           >
             取消
           </button>
+          {isEdit && onSchedule && (
+            <button
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500"
+              onClick={() => submit('schedule')}
+            >
+              安排到日程
+            </button>
+          )}
+          {!isEdit && (
+            <button
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-amber-600 hover:bg-amber-500"
+              onClick={() => submit('pool')}
+            >
+              保存到任务池
+            </button>
+          )}
           <button
             className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-[#137fec] hover:bg-[#0f6cc8]"
-            onClick={submit}
+            onClick={() => submit('save')}
           >
-            保存任务
+            {isEdit ? '保存到任务池' : '保存任务'}
           </button>
         </div>
       </div>

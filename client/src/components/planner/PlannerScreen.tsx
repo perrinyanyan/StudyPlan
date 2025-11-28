@@ -200,53 +200,7 @@ export function PlannerScreen({
             rangeTasks,
             unschedMenuOpenId,
           }}
-          actions={{
-            setListFilterType,
-            setListFilterPriority,
-            setListFilterTag,
-            setListFilterOverdue,
-            setListFilterDone,
-            setListMenuOpenId,
-            setListEdit,
-            setCenterAlert,
-            updateTaskMeta,
-            completeTask,
-            deleteTask,
-            fmtHHmm,
-            todayStr,
-            formatYmdWeek,
-            fetchUnscheduled,
-            setUnschedMenuOpenId,
-            setEditTask,
-            setScheduleFor,
-            setShowCreateTask,
-            updateTaskAdvanced,
-          }}
-        />
-      ) : plannerView === 'week' ? (
-        <PlannerWeekView
-          state={{
-            tasks,
-            unscheduled,
-            rangeBlocks,
-            rangeTasks,
-            now,
-            currentBlock,
-            taskTitleMap,
-            taskStatusMap,
-            taskMetaMap,
-            listMenuOpenId,
-            listFilterType,
-            listFilterPriority,
-            listFilterTag,
-            listFilterOverdue,
-            listFilterDone,
-            listTypeOptions,
-            listTagOptions,
-            fmtHHmm,
-            unschedMenuOpenId,
-            date,
-          }}
+
           actions={{
             deleteTask,
             completeTask,
@@ -375,9 +329,17 @@ export function PlannerScreen({
         <CreateTaskModal
           defaultDate={date}
           onClose={() => setShowCreateTask && setShowCreateTask(false)}
-          onSave={createTaskAdvanced || (() => Promise.resolve(false))}
+          onSuccess={() => {
+            setShowCreateTask && setShowCreateTask(false)
+            fetchDaily && fetchDaily()
+            fetchUnscheduled && fetchUnscheduled()
+          }}
           authHeaders={headers ? headers() : {}}
           availableTags={listTagOptions || []}
+          actions={{
+            createTaskAdvanced: createTaskAdvanced!,
+            updateTaskAdvanced: updateTaskAdvanced!,
+          }}
         />
       )}
 
@@ -385,12 +347,22 @@ export function PlannerScreen({
         <CreateTaskModal
           defaultDate={date}
           onClose={() => setEditTask && setEditTask(null)}
-          onSave={(p) =>
-            updateTaskAdvanced ? updateTaskAdvanced((editTask as Task).id, p) : Promise.resolve(false)
-          }
+          onSuccess={() => {
+            setEditTask && setEditTask(null)
+            fetchDaily && fetchDaily()
+            fetchUnscheduled && fetchUnscheduled()
+          }}
+          onSchedule={(t) => {
+            setEditTask && setEditTask(null)
+            setScheduleFor && setScheduleFor(t)
+          }}
           authHeaders={headers ? headers() : {}}
           availableTags={listTagOptions || []}
           initialTask={editTask as Task}
+          actions={{
+            createTaskAdvanced: createTaskAdvanced!,
+            updateTaskAdvanced: updateTaskAdvanced!,
+          }}
         />
       )}
 

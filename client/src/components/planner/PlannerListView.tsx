@@ -87,7 +87,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             setUnschedMenuOpenId && setUnschedMenuOpenId(null)
                           }}
                         >
-                          修改
+                          修改/安排
                         </button>
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
@@ -113,15 +113,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                         >
                           {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
                         </button>
-                        <button
-                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                          onClick={() => {
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            setScheduleFor && setScheduleFor(t)
-                          }}
-                        >
-                          安排
-                        </button>
+
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
                           onClick={async () => {
