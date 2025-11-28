@@ -7,7 +7,7 @@ export interface PlannerListViewProps {
 
 export function PlannerListView({ state, actions }: PlannerListViewProps) {
   const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
-  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask } = actions || {}
+  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced } = actions || {}
 
   const list: Task[] = unscheduled || []
 
@@ -34,7 +34,12 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                 <div className="flex items-center gap-3">
                   <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
                   <div className="flex-1 space-y-1.5">
-                    <p className="text-white text-sm font-medium leading-tight">{t.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      {t.recurrence_rule?.includes('PINNED') && (
+                        <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
+                      )}
+                      <p className="text-white text-sm font-medium leading-tight">{t.title}</p>
+                    </div>
                     <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
                       {t.type && (
                         <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
@@ -83,6 +88,30 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                           }}
                         >
                           修改
+                        </button>
+                        <button
+                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                          onClick={async () => {
+                            if (!updateTaskAdvanced) return
+                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                            const isPinned = t.recurrence_rule?.includes('PINNED')
+                            let newRule = t.recurrence_rule || 'POOL'
+                            if (isPinned) {
+                              newRule = newRule.replace(';PINNED', '').replace('PINNED', '')
+                              if (newRule === '') newRule = 'POOL' // Fallback if it was just PINNED
+                            } else {
+                              newRule += ';PINNED'
+                            }
+                            // Clean up potential double semicolons or leading/trailing
+                            newRule = newRule.replace(/;;/g, ';').replace(/^;/, '').replace(/;$/, '')
+
+                            await updateTaskAdvanced(t.id, {
+                              title: t.title,
+                              recurrence_rule: newRule
+                            })
+                          }}
+                        >
+                          {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
                         </button>
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"

@@ -51,6 +51,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     setEditTask,
     setScheduleFor,
     setShowCreateTask,
+    updateTaskAdvanced,
   } = actions || {}
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
@@ -589,6 +590,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
             deleteTask,
             setShowCreateTask,
             updateTaskMeta,
+            updateTaskAdvanced,
           }}
         />
       </div>

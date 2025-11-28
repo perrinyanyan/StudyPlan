@@ -62,12 +62,37 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
     if (!initialTask || initialTask.priority == null) return 'medium'
     return initialTask.priority === 2 ? 'high' : initialTask.priority === 1 ? 'medium' : 'low'
   })
-  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly'>(() => {
+  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'pool'>(() => {
     if (!initialTask || !initialTask.recurrence_rule) return 'none'
-    if (initialTask.recurrence_rule === 'DAILY') return 'daily'
-    if (initialTask.recurrence_rule === 'WEEKLY') return 'weekly'
-    if (initialTask.recurrence_rule === 'MONTHLY') return 'monthly'
+    if (initialTask.recurrence_rule === 'POOL') return 'pool'
+    if (initialTask.recurrence_rule.startsWith('DAILY')) return 'daily'
+    if (initialTask.recurrence_rule.startsWith('WEEKLY')) return 'weekly'
+    if (initialTask.recurrence_rule.startsWith('MONTHLY')) return 'monthly'
     return 'none'
+  })
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<string>(() => {
+    if (!initialTask || !initialTask.recurrence_rule) return ''
+    // Parse UNTIL=YYYYMMDD
+    const match = initialTask.recurrence_rule.match(/UNTIL=(\d{8})/)
+    if (match) {
+      const s = match[1]
+      return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
+    }
+    return ''
+  })
+  const [recurrenceDays, setRecurrenceDays] = useState<string[]>(() => {
+    if (!initialTask || !initialTask.recurrence_rule) return []
+    const match = initialTask.recurrence_rule.match(/BYDAY=([^;]+)/)
+    return match ? match[1].split(',') : []
+  })
+  const [recurrenceMonthDays, setRecurrenceMonthDays] = useState<string[]>(() => {
+    if (!initialTask || !initialTask.recurrence_rule) return []
+    const match = initialTask.recurrence_rule.match(/BYMONTHDAY=([^;]+)/)
+    return match ? match[1].split(',') : []
+  })
+  const [pinned, setPinned] = useState<boolean>(() => {
+    if (!initialTask || !initialTask.recurrence_rule) return false
+    return initialTask.recurrence_rule.includes('PINNED')
   })
   const [tags, setTags] = useState<string[]>(() => initialTask?.tags || [])
   const [tagInput, setTagInput] = useState('')
@@ -203,7 +228,58 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
           ? 'WEEKLY'
           : recurrence === 'monthly'
             ? 'MONTHLY'
-            : undefined
+            : recurrence === 'pool'
+              ? 'POOL'
+              : undefined
+
+    // console.log('DEBUG: recurrence', recurrence, 'recurrenceEndDate', recurrenceEndDate)
+    if (recurrence !== 'none' && recurrence !== 'pool' && !recurrenceEndDate) {
+      alert('请选择重复截止日期')
+      return
+    }
+
+    let finalRecur = recur
+    if (recur && recurrence !== 'pool') {
+      const parts: string[] = [recur]
+      if (recurrence === 'weekly' && recurrenceDays.length > 0) {
+        parts.push(`BYDAY=${recurrenceDays.join(',')}`)
+      }
+      if (recurrence === 'monthly' && recurrenceMonthDays.length > 0) {
+        parts.push(`BYMONTHDAY=${recurrenceMonthDays.join(',')}`)
+      }
+      if (recurrenceEndDate) {
+        const d = new Date(recurrenceEndDate)
+        const yyyy = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        parts.push(`UNTIL=${yyyy}${mm}${dd}`)
+      }
+      if (pinned) {
+        parts.push('PINNED')
+      }
+      finalRecur = parts.join(';')
+    } else if (recurrence === 'pool') {
+      finalRecur = 'POOL'
+      if (pinned) finalRecur += ';PINNED'
+    } else if (pinned) {
+      // Even if recurrence is none, we might want to support pinning?
+      // The requirement says "Task Pool's ... menu add Pin".
+      // Usually non-recurring tasks can also be pinned if we want them to stay in pool?
+      // But user said "Task Pool's ... menu".
+      // Let's assume pinning is orthogonal to recurrence, but stored in recurrence_rule for now as requested.
+      // If recurrence is none but pinned, we need a rule.
+      // Let's use "PINNED" as the rule if no other rule exists?
+      // Or maybe "NONE;PINNED"?
+      // Backend expects recurrence_rule to be present for POOL logic?
+      // If recurrence is none, recurrence_rule is undefined.
+      // If pinned, we should probably set it to 'PINNED' or similar.
+      // Let's stick to the plan: append PINNED.
+      // If recurrence is none, finalRecur is undefined.
+      // If pinned is true and recurrence is none, we should probably treat it as POOL?
+      // Or just a special PINNED rule.
+      // Let's set it to 'PINNED' if recurrence is none but pinned.
+      finalRecur = 'PINNED'
+    }
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
     const selectedType = typeIdx >= 0 ? types[typeIdx] : undefined
     const basePayload: any = {
@@ -211,7 +287,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
       due_at: dueISO,
       estimate_min: estimateMin,
       priority: prio,
-      recurrence_rule: recur,
+      recurrence_rule: finalRecur,
       tags: finalTags,
     }
 
@@ -433,6 +509,87 @@ export function CreateTaskModal({ defaultDate, onClose, onSave, authHeaders, ava
                 <option value="monthly">每月</option>
               </select>
             </div>
+            {recurrence === 'weekly' && (
+              <div className="flex flex-col w-full animate-in fade-in slide-in-from-left-2">
+                <p className="text-sm font-medium text-white pb-1.5">重复时间</p>
+                <div className="flex flex-wrap gap-2">
+                  {['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'].map((day) => {
+                    const active = recurrenceDays.includes(day)
+                    const label =
+                      day === 'MO'
+                        ? '周一'
+                        : day === 'TU'
+                          ? '周二'
+                          : day === 'WE'
+                            ? '周三'
+                            : day === 'TH'
+                              ? '周四'
+                              : day === 'FR'
+                                ? '周五'
+                                : day === 'SA'
+                                  ? '周六'
+                                  : '周日'
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium border ${active
+                          ? 'bg-[#137fec]/20 border-[#137fec] text-[#137fec]'
+                          : 'border-slate-600 text-slate-300 hover:border-[#137fec] hover:text-[#137fec]'
+                          }`}
+                        onClick={() =>
+                          setRecurrenceDays((prev) =>
+                            prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+                          )
+                        }
+                      >
+                        {label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {recurrence === 'monthly' && (
+              <div className="flex flex-col w-full animate-in fade-in slide-in-from-left-2">
+                <p className="text-sm font-medium text-white pb-1.5">重复日期</p>
+                <div className="grid grid-cols-7 gap-2">
+                  {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((d) => {
+                    const active = recurrenceMonthDays.includes(d)
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`h-8 w-8 flex items-center justify-center rounded-md text-xs font-medium border ${active
+                          ? 'bg-[#137fec]/20 border-[#137fec] text-[#137fec]'
+                          : 'border-slate-600 text-slate-300 hover:border-[#137fec] hover:text-[#137fec]'
+                          }`}
+                        onClick={() =>
+                          setRecurrenceMonthDays((prev) =>
+                            prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]
+                          )
+                        }
+                      >
+                        {d}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {recurrence !== 'none' && recurrence !== 'pool' && (
+              <div className="flex flex-col min-w-40 flex-1 animate-in fade-in slide-in-from-left-2">
+                <p className="text-sm font-medium text-white pb-1.5">
+                  截止日期 <span className="text-red-400">*</span>
+                </p>
+                <input
+                  className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60 w-full"
+                  type="date"
+                  value={recurrenceEndDate}
+                  onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
           <label className="flex flex-col gap-1.5">

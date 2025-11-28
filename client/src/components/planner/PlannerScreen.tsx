@@ -220,6 +220,7 @@ export function PlannerScreen({
             setEditTask,
             setScheduleFor,
             setShowCreateTask,
+            updateTaskAdvanced,
           }}
         />
       ) : plannerView === 'week' ? (

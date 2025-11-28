@@ -254,7 +254,7 @@ export function usePlanner(props: UsePlannerProps) {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) return
       const items = (j.items || []) as Task[]
-      setUnscheduled(items.filter((t) => (t.scheduling_status || 'unscheduled') !== 'scheduled'))
+      setUnscheduled(items.filter((t) => (t.scheduling_status || 'unscheduled') !== 'scheduled' || t.recurrence_rule === 'POOL' || t.recurrence_rule?.includes('PINNED')))
     } catch {
     }
   }
