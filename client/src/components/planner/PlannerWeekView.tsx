@@ -51,8 +51,28 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         setListFilterOverdue,
         setListFilterDone,
         setListMenuOpenId,
+
         setCenterAlert,
+        createTaskAdvanced,
     } = actions || {}
+
+    const handleCopyToPool = async (task: any) => {
+        if (!createTaskAdvanced || !task) return
+        const payload = {
+            title: task.title,
+            type: task.type,
+            color: task.color,
+            priority: task.priority,
+            tags: task.tags,
+            recurrence_rule: 'POOL',
+            estimate_min: task.estimate_min,
+            // No due_at for pool tasks
+        }
+        await createTaskAdvanced(payload)
+        if (setCenterAlert) {
+            setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
+        }
+    }
 
     // Calculate week days
     const weekDays = []
@@ -272,8 +292,8 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                     <div
                                                         key={String(b.id)}
                                                         className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden ${isCurrent
-                                                                ? 'border-2 border-amber-400 shadow-lg shadow-amber-500/50 z-30 ring-2 ring-amber-400/30 animate-pulse'
-                                                                : `border ${isMenuOpen ? 'z-50' : 'z-10'}`
+                                                            ? 'border-2 border-amber-400 shadow-lg shadow-amber-500/50 z-30 ring-2 ring-amber-400/30 animate-pulse'
+                                                            : `border ${isMenuOpen ? 'z-50' : 'z-10'}`
                                                             }`}
                                                         style={{
                                                             top: Math.max(0, top),
@@ -447,6 +467,16 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                             }}
                                         >
                                             完成
+                                        </button>
+                                        <button
+                                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
+                                            onClick={() => {
+                                                handleCopyToPool(hoveredTask)
+                                                setCardMenuOpen(false)
+                                                setHoveredTask(null)
+                                            }}
+                                        >
+                                            到任务池
                                         </button>
                                         <button
                                             className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"

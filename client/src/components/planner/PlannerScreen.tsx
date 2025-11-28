@@ -98,11 +98,12 @@ export function PlannerScreen({
     expandAllHours,
     collapseAllHours,
     setOverdueCollapsed,
+    createTaskAdvanced,
     setShowFutureOnly,
     toggleHourCollapsed,
     // 数据加载 / 创建 / 更新
     fetchDaily,
-    createTaskAdvanced,
+
     updateTaskAdvanced,
     headers,
   } = actions || {}
@@ -220,6 +221,7 @@ export function PlannerScreen({
             setListFilterDone,
             setListMenuOpenId,
             setCenterAlert,
+            createTaskAdvanced,
           }}
         />
       ) : plannerView === 'month' ? (
@@ -261,6 +263,7 @@ export function PlannerScreen({
             setListFilterOverdue,
             setListFilterDone,
             setListMenuOpenId,
+            createTaskAdvanced,
           }}
         />
       ) : (
@@ -321,6 +324,7 @@ export function PlannerScreen({
             toggleHourCollapsed,
             setListMenuOpenId,
             setCenterAlert,
+            createTaskAdvanced,
           }}
         />
       )}

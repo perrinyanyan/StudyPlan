@@ -39,11 +39,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   type TypeRow = { id: string; name: string; color: string }
   const [types, setTypes] = useState<TypeRow[]>([])
   const [typeIdx, setTypeIdx] = useState<number>(-1)
-  const [timeMode, setTimeMode] = useState<'duration' | 'end' | 'undecided'>(() => {
+  const [timeMode, setTimeMode] = useState<'duration' | 'end'>(() => {
     if (!initialTask) return 'duration'
     if (initialTask.due_at && typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) return 'duration'
-    if (initialTask.due_at) return 'end'
-    return 'undecided'
+    return 'end'
   })
   const [startAt, setStartAt] = useState<string>(() => {
     if (!initialTask || !initialTask.due_at) return `${defaultDate}T20:00`
@@ -67,9 +66,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     if (!initialTask || initialTask.priority == null) return 'medium'
     return initialTask.priority === 2 ? 'high' : initialTask.priority === 1 ? 'medium' : 'low'
   })
-  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly' | 'pool'>(() => {
+  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekly' | 'monthly'>(() => {
     if (!initialTask || !initialTask.recurrence_rule) return 'none'
-    if (initialTask.recurrence_rule === 'POOL') return 'pool'
+    // If it was POOL, we default to none in the UI, but Keep Changes will preserve it.
+    if (initialTask.recurrence_rule === 'POOL') return 'none'
     if (initialTask.recurrence_rule.startsWith('DAILY')) return 'daily'
     if (initialTask.recurrence_rule.startsWith('WEEKLY')) return 'weekly'
     if (initialTask.recurrence_rule.startsWith('MONTHLY')) return 'monthly'
@@ -154,16 +154,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     setEndAt((prev) => (prev ? prev : startAt))
   }, [timeMode, startAt])
 
-  // Reset recurrence when timeMode changes
-  useEffect(() => {
-    if (timeMode === 'undecided') {
-      setRecurrence('pool')
-    } else {
-      if (recurrence === 'pool') {
-        setRecurrence('none')
-      }
-    }
-  }, [timeMode])
+
 
   async function addType(name: string, color: string): Promise<boolean> {
     const trimmed = name.trim()
@@ -241,10 +232,6 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       }
       dueISO = e.toISOString()
       estimateMin = Math.round((e.getTime() - s.getTime()) / 60000)
-    } else {
-      // 未定：不设置 due_at / estimate_min，进入未排程任务池
-      dueISO = undefined
-      estimateMin = undefined
     }
     const prio = priority === 'high' ? 2 : priority === 'medium' ? 1 : 0
     const recur =
@@ -254,17 +241,17 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
           ? 'WEEKLY'
           : recurrence === 'monthly'
             ? 'MONTHLY'
-            : recurrence === 'pool' || effectiveMode === 'pool'
+            : effectiveMode === 'pool'
               ? 'POOL'
               : undefined
 
-    if (recurrence !== 'none' && recurrence !== 'pool' && effectiveMode !== 'pool' && !recurrenceEndDate) {
+    if (recurrence !== 'none' && effectiveMode !== 'pool' && !recurrenceEndDate) {
       alert('请选择重复截止日期')
       return
     }
 
     let finalRecur = recur
-    if (recur && recurrence !== 'pool' && effectiveMode !== 'pool') {
+    if (recur && effectiveMode !== 'pool') {
       const parts: string[] = [recur]
       if (recurrence === 'weekly' && recurrenceDays.length > 0) {
         parts.push(`BYDAY=${recurrenceDays.join(',')}`)
@@ -283,7 +270,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
         parts.push('PINNED')
       }
       finalRecur = parts.join(';')
-    } else if (recurrence === 'pool' || effectiveMode === 'pool') {
+    } else if (effectiveMode === 'pool') {
       finalRecur = 'POOL'
       if (pinned) finalRecur += ';PINNED'
     } else if (pinned) {
@@ -413,57 +400,41 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                     开始 & 结束
                   </div>
                 </label>
-                <label>
-                  <input
-                    className="sr-only peer"
-                    name="time-mode"
-                    type="radio"
-                    value="undecided"
-                    checked={timeMode === 'undecided'}
-                    onChange={() => setTimeMode('undecided')}
-                  />
-                  <div className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 peer-checked:bg-[#137fec] peer-checked:text-white cursor-pointer">
-                    未定
-                  </div>
-                </label>
+
               </div>
             </div>
-            {timeMode !== 'undecided' ? (
-              <div className="flex flex-wrap items-end gap-4">
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex flex-col min-w-40 flex-1">
+                <p className="text-xs text-slate-300 pb-1.5">开始时间</p>
+                <input
+                  className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                  type="datetime-local"
+                  value={startAt}
+                  onChange={(e) => setStartAt(e.target.value)}
+                />
+              </label>
+              {timeMode === 'duration' ? (
                 <label className="flex flex-col min-w-40 flex-1">
-                  <p className="text-xs text-slate-300 pb-1.5">开始时间</p>
+                  <p className="text-xs text-slate-300 pb-1.5">预计时长</p>
+                  <input
+                    className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white placeholder-slate-500 px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                    placeholder="例如, 1h 30m 或 90"
+                    value={duration}
+                    onChange={(e) => setDuration(e.target.value)}
+                  />
+                </label>
+              ) : (
+                <label className="flex flex-col min-w-40 flex-1">
+                  <p className="text-xs text-slate-300 pb-1.5">结束时间</p>
                   <input
                     className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
                     type="datetime-local"
-                    value={startAt}
-                    onChange={(e) => setStartAt(e.target.value)}
+                    value={endAt}
+                    onChange={(e) => setEndAt(e.target.value)}
                   />
                 </label>
-                {timeMode === 'duration' ? (
-                  <label className="flex flex-col min-w-40 flex-1">
-                    <p className="text-xs text-slate-300 pb-1.5">预计时长</p>
-                    <input
-                      className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white placeholder-slate-500 px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                      placeholder="例如, 1h 30m 或 90"
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                    />
-                  </label>
-                ) : (
-                  <label className="flex flex-col min-w-40 flex-1">
-                    <p className="text-xs text-slate-300 pb-1.5">结束时间</p>
-                    <input
-                      className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                      type="datetime-local"
-                      value={endAt}
-                      onChange={(e) => setEndAt(e.target.value)}
-                    />
-                  </label>
-                )}
-              </div>
-            ) : (
-              <div className="text-xs text-slate-400">时间未定：保存后会进入未排程任务池</div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="flex flex-wrap items-end gap-4">
@@ -519,7 +490,6 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                 onChange={(e) => setRecurrence(e.target.value as any)}
               >
                 <option value="none">不重复</option>
-                <option value="pool">滞留任务池</option>
                 <option value="daily">每日</option>
                 <option value="weekly">每周</option>
                 <option value="monthly">每月</option>
@@ -593,7 +563,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                 </div>
               </div>
             )}
-            {recurrence !== 'none' && recurrence !== 'pool' && (
+            {recurrence !== 'none' && (
               <div className="flex flex-col min-w-40 flex-1 animate-in fade-in slide-in-from-left-2">
                 <p className="text-sm font-medium text-white pb-1.5">
                   截止日期 <span className="text-red-400">*</span>

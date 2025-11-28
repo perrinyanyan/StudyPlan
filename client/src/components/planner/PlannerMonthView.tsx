@@ -46,7 +46,28 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
         setListFilterOverdue,
         setListFilterDone,
         setListMenuOpenId,
+
+        createTaskAdvanced,
+        setCenterAlert,
     } = actions || {}
+
+    const handleCopyToPool = async (task: any) => {
+        if (!createTaskAdvanced || !task) return
+        const payload = {
+            title: task.title,
+            type: task.type,
+            color: task.color,
+            priority: task.priority,
+            tags: task.tags,
+            recurrence_rule: 'POOL',
+            estimate_min: task.estimate_min,
+            // No due_at for pool tasks
+        }
+        await createTaskAdvanced(payload)
+        if (setCenterAlert) {
+            setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
+        }
+    }
 
     // Calculate month days (including padding)
     const monthDays = []
@@ -393,6 +414,16 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                             }}
                                         >
                                             完成
+                                        </button>
+                                        <button
+                                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
+                                            onClick={() => {
+                                                handleCopyToPool(hoveredTask)
+                                                setCardMenuOpen(false)
+                                                setHoveredTask(null)
+                                            }}
+                                        >
+                                            到任务池
                                         </button>
                                         <button
                                             className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"

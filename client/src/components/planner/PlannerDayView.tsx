@@ -59,8 +59,28 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setListFilterDone,
     toggleHourCollapsed,
     setListMenuOpenId,
+
     setCenterAlert,
+    createTaskAdvanced,
   } = actions || {}
+
+  const handleCopyToPool = async (task: any) => {
+    if (!createTaskAdvanced || !task) return
+    const payload = {
+      title: task.title,
+      type: task.type,
+      color: task.color,
+      priority: task.priority,
+      tags: task.tags,
+      recurrence_rule: 'POOL',
+      estimate_min: task.estimate_min,
+      // No due_at for pool tasks
+    }
+    await createTaskAdvanced(payload)
+    if (setCenterAlert) {
+      setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
+    }
+  }
 
   const timelineBlocks = (filteredBlocks || []).filter((b: any) => {
     const s = new Date(b.start_at)
@@ -668,6 +688,35 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                       完成
                                                     </button>
                                                     <button
+                                                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer"
+                                                      onClick={() => {
+                                                        if (!taskIdStr) return
+                                                        if (!tasks) return
+                                                        const candidates: Task[] = []
+                                                          ; (tasks.today || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (tasks.overdue || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (unscheduled || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (rangeTasks || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                        const t = candidates.find(
+                                                          (x) => String(x.id) === taskIdStr,
+                                                        )
+                                                        if (t) {
+                                                          handleCopyToPool(t)
+                                                        }
+                                                        setListMenuOpenId && setListMenuOpenId(null)
+                                                      }}
+                                                    >
+                                                      到任务池
+                                                    </button>
+                                                    <button
                                                       className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800 cursor-pointer"
                                                       onClick={async () => {
                                                         if (!taskIdStr || !deleteTask) return
@@ -813,6 +862,16 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                       }}
                     >
                       完成
+                    </button>
+                    <button
+                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
+                      onClick={() => {
+                        handleCopyToPool(hoveredTask)
+                        setCardMenuOpen(false)
+                        setHoveredTask(null)
+                      }}
+                    >
+                      到任务池
                     </button>
                     <button
                       className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
