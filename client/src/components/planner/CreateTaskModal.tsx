@@ -205,7 +205,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     }
     let dueISO: string | undefined
     let estimateMin: number | undefined
-    if (timeMode === 'duration' && effectiveMode !== 'pool') {
+    if (timeMode === 'duration') {
       if (!startAt.trim()) {
         alert('请选择开始时间')
         return
@@ -219,7 +219,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       const end = new Date(start.getTime() + est * 60000)
       dueISO = end.toISOString()
       estimateMin = est
-    } else if (timeMode === 'end' && effectiveMode !== 'pool') {
+    } else if (timeMode === 'end') {
       if (!startAt.trim() || !endAt.trim()) {
         alert('请选择开始与结束时间')
         return
@@ -283,7 +283,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       due_at: dueISO,
       estimate_min: estimateMin,
       priority: prio,
-      recurrence_rule: finalRecur,
+      recurrence_rule: finalRecur ?? null,
       tags: finalTags,
     }
 
@@ -298,10 +298,21 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
         type_id: selectedType ? selectedType.id : undefined,
       }
 
-    const ok = await (isEdit ? actions.updateTaskAdvanced(initialTask!.id, payload) : actions.createTaskAdvanced(payload))
+    let ok = false
+    const isPinned = initialTask?.recurrence_rule?.includes('PINNED')
+    const shouldCopy = isEdit && initialTask && effectiveMode === 'schedule' && isPinned
+
+    if (shouldCopy) {
+      // Create a new task (copy) instead of updating
+      ok = await actions.createTaskAdvanced(payload)
+    } else {
+      // Normal behavior: update existing or create new
+      ok = await (isEdit ? actions.updateTaskAdvanced(initialTask!.id, payload) : actions.createTaskAdvanced(payload))
+    }
+
     if (!ok) return
 
-    if (effectiveMode === 'schedule' && onSchedule && isEdit && initialTask) {
+    if (effectiveMode === 'schedule' && onSchedule && isEdit && initialTask && !shouldCopy) {
       onSchedule({ ...initialTask, ...basePayload, ...payload, id: initialTask.id } as Task)
       onClose()
     } else {

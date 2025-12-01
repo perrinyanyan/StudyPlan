@@ -159,7 +159,7 @@ router.post('/', async (req: Request, res: Response) => {
       title: payload.title,
       type: typeName,
       color: typeColor,
-      due_at: payload.recurrence_rule === 'POOL' ? null : date.toISOString(),
+      due_at: payload.due_at ? new Date(payload.due_at).toISOString() : null,
       estimate_min: payload.estimate_min ?? null,
       priority: payload.priority ?? null,
       recurrence_rule: payload.recurrence_rule ?? null,
@@ -388,7 +388,19 @@ router.patch('/:id', async (req: Request, res: Response) => {
   const payload = parsed.data;
   let autoStart: string | null = null;
   let autoEnd: string | null = null;
-  if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0) {
+  // Check if it's a pool task (either in payload or existing)
+  let isPool = false;
+  if (payload.recurrence_rule !== undefined) {
+    isPool = (payload.recurrence_rule || '').startsWith('POOL');
+  } else {
+    // Fetch existing to check
+    const { data: existing } = await supabase.from('tasks').select('recurrence_rule').eq('id', id).single();
+    if (existing && existing.recurrence_rule && existing.recurrence_rule.startsWith('POOL')) {
+      isPool = true;
+    }
+  }
+
+  if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0 && !isPool) {
     autoEnd = new Date(payload.due_at).toISOString();
     autoStart = new Date(new Date(payload.due_at).getTime() - payload.estimate_min * 60000).toISOString();
     const { data: conflicts, error: cErr } = await supabase
@@ -417,7 +429,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
     .eq('user_id', userId);
   if (error) return res.status(500).json({ error: 'Failed to update task' });
 
-  if (autoStart && autoEnd) {
+  if (isPool) {
+    // If it's a pool task, ensure NO time blocks exist (so it doesn't block others)
+    // and ensure status is unscheduled
+    await supabase.from('time_blocks').delete().eq('task_id', id).eq('user_id', userId);
+    await supabase.from('tasks').update({ scheduling_status: 'unscheduled' }).eq('id', id).eq('user_id', userId);
+  } else if (autoStart && autoEnd) {
     const { data: blocks, error: bSelErr } = await supabase
       .from('time_blocks')
       .select('id')
