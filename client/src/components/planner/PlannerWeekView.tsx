@@ -54,6 +54,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
 
         setCenterAlert,
         createTaskAdvanced,
+        updateTaskAdvanced,
     } = actions || {}
 
     const handleCopyToPool = async (task: any) => {
@@ -371,6 +372,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                         deleteTask,
                         setShowCreateTask,
                         updateTaskMeta,
+                        updateTaskAdvanced,
                     }}
                 />
             </div>

@@ -62,6 +62,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
     setCenterAlert,
     createTaskAdvanced,
+    updateTaskAdvanced,
   } = actions || {}
 
   const handleCopyToPool = async (task: any) => {
@@ -766,6 +767,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
             deleteTask,
             setShowCreateTask,
             updateTaskMeta,
+            updateTaskAdvanced,
           }}
         />
       </div>

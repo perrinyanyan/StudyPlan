@@ -48,6 +48,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
         setListMenuOpenId,
 
         createTaskAdvanced,
+        updateTaskAdvanced,
         setCenterAlert,
     } = actions || {}
 

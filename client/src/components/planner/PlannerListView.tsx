@@ -92,23 +92,33 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
                           onClick={async () => {
-                            if (!updateTaskAdvanced) return
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            const isPinned = t.recurrence_rule?.includes('PINNED')
-                            let newRule = t.recurrence_rule || 'POOL'
-                            if (isPinned) {
-                              newRule = newRule.replace(';PINNED', '').replace('PINNED', '')
-                              if (newRule === '') newRule = 'POOL' // Fallback if it was just PINNED
-                            } else {
-                              newRule += ';PINNED'
+                            console.log('Pin button clicked', { updateTaskAdvanced: !!updateTaskAdvanced })
+                            if (!updateTaskAdvanced) {
+                              alert('updateTaskAdvanced 函数不可用')
+                              return
                             }
-                            // Clean up potential double semicolons or leading/trailing
-                            newRule = newRule.replace(/;;/g, ';').replace(/^;/, '').replace(/;$/, '')
+                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                            const parts = (t.recurrence_rule || 'POOL').split(';')
+                            const isPinned = parts.includes('PINNED')
+                            let newParts = parts.filter(p => p !== 'PINNED')
+                            if (!isPinned) {
+                              newParts.push('PINNED')
+                            }
+                            if (newParts.length === 0) newParts.push('POOL')
+                            const newRule = newParts.join(';')
 
-                            await updateTaskAdvanced(t.id, {
-                              title: t.title,
-                              recurrence_rule: newRule
+                            console.log('Pin toggle:', {
+                              oldRule: t.recurrence_rule,
+                              newRule,
+                              taskId: t.id,
+                              isPinned
                             })
+
+                            const result = await updateTaskAdvanced(t.id, {
+                              title: t.title,
+                              recurrence_rule: newRule,
+                            })
+                            console.log('Update result:', result)
                           }}
                         >
                           {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
@@ -212,6 +222,6 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
         <span className="material-symbols-outlined text-xl">add_circle</span>
         添加新任务
       </button>
-    </section>
+    </section >
   )
 }

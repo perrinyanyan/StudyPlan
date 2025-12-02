@@ -222,6 +222,7 @@ export function PlannerScreen({
             setListMenuOpenId,
             setCenterAlert,
             createTaskAdvanced,
+            updateTaskAdvanced,
           }}
         />
       ) : plannerView === 'month' ? (
@@ -264,6 +265,50 @@ export function PlannerScreen({
             setListFilterDone,
             setListMenuOpenId,
             createTaskAdvanced,
+            updateTaskAdvanced,
+          }}
+        />
+      ) : plannerView === 'week' ? (
+        <PlannerWeekView
+          state={{
+            rangeBlocks,
+            now,
+            currentBlock,
+            taskTitleMap,
+            taskStatusMap,
+            taskMetaMap,
+            listMenuOpenId,
+            listFilterType,
+            listFilterPriority,
+            listFilterTag,
+            listFilterOverdue,
+            listFilterDone,
+            listTypeOptions,
+            listTagOptions,
+            unscheduled,
+            unschedMenuOpenId,
+            listEdit,
+            date,
+          }}
+          actions={{
+            deleteTask,
+            completeTask,
+            updateTaskMeta,
+            fetchUnscheduled,
+            setUnschedMenuOpenId,
+            setEditTask,
+            setScheduleFor,
+            setListEdit,
+            setShowCreateTask,
+            deleteBlock,
+            setListFilterType,
+            setListFilterPriority,
+            setListFilterTag,
+            setListFilterOverdue,
+            setListFilterDone,
+            setListMenuOpenId,
+            createTaskAdvanced,
+            updateTaskAdvanced,
           }}
         />
       ) : (
@@ -325,6 +370,7 @@ export function PlannerScreen({
             setListMenuOpenId,
             setCenterAlert,
             createTaskAdvanced,
+            updateTaskAdvanced,
           }}
         />
       )}

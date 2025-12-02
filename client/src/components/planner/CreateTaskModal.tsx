@@ -191,9 +191,9 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   async function submit(mode: 'save' | 'schedule' | 'pool' = 'save') {
     // If we are saving (not explicitly scheduling) and the task was originally in the pool (or unscheduled),
     // we should keep it in the pool.
-    let effectiveMode = mode
+    let effectiveMode: 'save' | 'schedule' | 'pool' = mode
     if (mode === 'save' && isEdit && initialTask) {
-      const wasPool = initialTask.recurrence_rule === 'POOL' || !initialTask.due_at
+      const wasPool = initialTask.recurrence_rule?.startsWith('POOL') || initialTask.scheduling_status === 'unscheduled'
       if (wasPool) {
         effectiveMode = 'pool'
       }
@@ -266,24 +266,29 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
         const dd = String(d.getDate()).padStart(2, '0')
         parts.push(`UNTIL=${yyyy}${mm}${dd}`)
       }
-      if (pinned) {
+      if (pinned && effectiveMode === 'pool') {
         parts.push('PINNED')
       }
       finalRecur = parts.join(';')
     } else if (effectiveMode === 'pool') {
       finalRecur = 'POOL'
       if (pinned) finalRecur += ';PINNED'
-    } else if (pinned) {
+    } else if (pinned && effectiveMode === 'pool') {
       finalRecur = 'PINNED'
     }
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
     const selectedType = typeIdx >= 0 ? types[typeIdx] : undefined
+
+    const isPinned = initialTask?.recurrence_rule?.includes('PINNED')
+    const isPoolTask = initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled'
+    const shouldCopy = isEdit && initialTask && effectiveMode === 'schedule' && isPinned && isPoolTask
+
     const basePayload: any = {
       title: title.trim(),
       due_at: dueISO,
       estimate_min: estimateMin,
       priority: prio,
-      recurrence_rule: finalRecur ?? null,
+      recurrence_rule: finalRecur ?? ((isEdit && !shouldCopy) ? null : undefined),
       tags: finalTags,
     }
 
@@ -299,8 +304,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       }
 
     let ok = false
-    const isPinned = initialTask?.recurrence_rule?.includes('PINNED')
-    const shouldCopy = isEdit && initialTask && effectiveMode === 'schedule' && isPinned
+
 
     if (shouldCopy) {
       // Create a new task (copy) instead of updating
@@ -312,12 +316,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
 
     if (!ok) return
 
-    if (effectiveMode === 'schedule' && onSchedule && isEdit && initialTask && !shouldCopy) {
-      onSchedule({ ...initialTask, ...basePayload, ...payload, id: initialTask.id } as Task)
-      onClose()
-    } else {
-      onSuccess()
-    }
+    onSuccess()
   }
 
   function addTagFromInput() {
@@ -331,7 +330,11 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-slate-900 shadow-2xl flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <h2 className="text-white text-lg font-semibold">{isEdit ? '编辑任务池' : '创建新任务'}</h2>
+          <h2 className="text-white text-lg font-semibold">
+            {isEdit
+              ? ((initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled') ? '编辑任务池' : '修改任务')
+              : '创建新任务'}
+          </h2>
           <button className="text-white/60 hover:text-white" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -669,7 +672,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
               className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500"
               onClick={() => submit('schedule')}
             >
-              安排到日程
+              {(initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled') ? '安排到日程' : '保存修改'}
             </button>
           )}
           {!isEdit && (
@@ -680,12 +683,14 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
               保存到任务池
             </button>
           )}
-          <button
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-[#137fec] hover:bg-[#0f6cc8]"
-            onClick={() => submit('save')}
-          >
-            {isEdit ? '保存到任务池' : '保存任务'}
-          </button>
+          {(!isEdit || (isEdit && (initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled'))) && (
+            <button
+              className="px-4 py-2 rounded-lg text-xs font-semibold text-white bg-[#137fec] hover:bg-[#0f6cc8]"
+              onClick={() => submit('save')}
+            >
+              {isEdit ? '保存到任务池' : '保存任务'}
+            </button>
+          )}
         </div>
       </div>
       {typeModalOpen && (

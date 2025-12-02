@@ -178,8 +178,26 @@ router.post('/', async (req: Request, res: Response) => {
       const autoEnd = date.toISOString();
       const autoStart = new Date(date.getTime() - payload.estimate_min * 60000).toISOString();
 
-      // Skip conflict check for bulk to avoid noise/perf hit, or maybe we should?
-      // Let's just try to insert.
+      // Check for conflicts
+      const { data: conflicts, error: cErr } = await supabase
+        .from('time_blocks')
+        .select('id')
+        .eq('user_id', userId)
+        .lt('start_at', autoEnd)
+        .gt('end_at', autoStart);
+
+      if (cErr) {
+        console.error('Failed to check conflicts', cErr);
+      } else if (conflicts && conflicts.length > 0) {
+        // If conflict, we should probably rollback the task creation?
+        // Or just return error and let the user handle it?
+        // Since we are inside a loop (for recurrence), failing one might be tricky.
+        // But for "Schedule to Calendar" it's usually a single date.
+        // Let's delete the task and return 409.
+        await supabase.from('tasks').delete().eq('id', taskId);
+        return res.status(409).json({ error: 'Time conflict' });
+      }
+
       const { error: bErr } = await supabase
         .from('time_blocks')
         .insert({ user_id: userId, start_at: autoStart, end_at: autoEnd, task_id: taskId });
@@ -399,6 +417,14 @@ router.patch('/:id', async (req: Request, res: Response) => {
       isPool = true;
     }
   }
+
+  console.log('PATCH /:id debug:', {
+    id,
+    payloadRecur: payload.recurrence_rule,
+    isPool,
+    due_at: payload.due_at,
+    estimate_min: payload.estimate_min
+  });
 
   if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0 && !isPool) {
     autoEnd = new Date(payload.due_at).toISOString();
