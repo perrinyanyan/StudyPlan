@@ -37,22 +37,17 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
       <h2 className="font-semibold mb-3">任务池</h2>
       <div className="mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm text-slate-300">未排程任务</h3>
-          <button
-            className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
-            onClick={() => fetchUnscheduled && fetchUnscheduled()}
-          >
-            刷新
-          </button>
-        </div>
         <div className="flex flex-col gap-2">
           {list.length === 0 && <div className="text-xs text-slate-400">暂无未排程任务</div>}
           {list.map((t, index) => {
             const isLast = index === list.length - 1
             const menuPositionClass = isLast ? 'bottom-full mb-1' : 'top-full mt-1'
+            const isTodayMust = t.recurrence_rule?.includes('TODAY_MUST')
             return (
-              <div key={String(t.id)} className="bg-white/5 p-3 rounded-lg">
+              <div
+                key={String(t.id)}
+                className={`p-3 rounded-lg ${isTodayMust ? 'bg-amber-500/10' : 'bg-white/5'}`}
+              >
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <div className="flex flex-col items-center justify-center w-4 gap-1">
