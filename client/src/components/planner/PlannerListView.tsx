@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { Task } from '../../types'
 
 export interface PlannerListViewProps {
@@ -8,7 +8,9 @@ export interface PlannerListViewProps {
 
 export function PlannerListView({ state, actions }: PlannerListViewProps) {
   const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
-  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced } = actions || {}
+  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta } = actions || {}
+
+  const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
   const list = useMemo(() => {
     const raw = (unscheduled || []) as Task[]
@@ -32,6 +34,23 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
       return (a.title || '').localeCompare(b.title || '')
     })
   }, [unscheduled])
+
+  const handleSave = async (id: string, field: string, value: any) => {
+    if (field === 'title') {
+      await updateTaskAdvanced(id, { title: value })
+    } else {
+      // For meta fields (priority, type, tags)
+      const t = list.find(t => String(t.id) === id)
+      if (!t) return
+      const updates: any = {}
+      if (field === 'priority') updates.priority = value
+      if (field === 'type') updates.type = value
+      if (field === 'tags') updates.tags = value
+
+      await updateTaskMeta(id, updates)
+    }
+    setEditingCell(null)
+  }
 
   return (
     <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
@@ -64,30 +83,117 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                   </div>
                   <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <p className="text-white text-sm font-medium leading-tight">{t.title}</p>
+                      {editingCell?.id === String(t.id) && editingCell.field === 'title' ? (
+                        <input
+                          autoFocus
+                          className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full"
+                          value={editingCell.value}
+                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onBlur={() => handleSave(String(t.id), 'title', editingCell.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSave(String(t.id), 'title', editingCell.value)
+                            if (e.key === 'Escape') setEditingCell(null)
+                          }}
+                        />
+                      ) : (
+                        <p
+                          className="text-white text-sm font-medium leading-tight cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                          onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'title', value: t.title })}
+                        >
+                          {t.title}
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                      {t.type && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
-                          <span>{t.type}</span>
-                        </span>
+                      {/* Type */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'type' ? (
+                        <input
+                          autoFocus
+                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-20"
+                          value={editingCell.value}
+                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onBlur={() => handleSave(String(t.id), 'type', editingCell.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSave(String(t.id), 'type', editingCell.value)
+                            if (e.key === 'Escape') setEditingCell(null)
+                          }}
+                        />
+                      ) : (
+                        t.type && (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'type', value: t.type })}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                            <span>{t.type}</span>
+                          </span>
+                        )
                       )}
-                      {typeof t.priority === 'number' && (
-                        <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${t.priority === 2
-                            ? 'bg-red-500/20 text-red-300'
-                            : t.priority === 1
-                              ? 'bg-yellow-500/20 text-yellow-300'
-                              : 'bg-green-500/20 text-green-300'
-                            }`}
+
+                      {/* Priority */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'priority' ? (
+                        <select
+                          autoFocus
+                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded"
+                          value={editingCell.value ?? ''}
+                          onChange={e => {
+                            const val = e.target.value === '' ? null : Number(e.target.value)
+                            setEditingCell({ ...editingCell, value: val })
+                            handleSave(String(t.id), 'priority', val)
+                          }}
+                          onBlur={() => setEditingCell(null)}
                         >
-                          {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
-                        </span>
+                          <option value="">无</option>
+                          <option value="2">高</option>
+                          <option value="1">中</option>
+                          <option value="0">低</option>
+                        </select>
+                      ) : (
+                        typeof t.priority === 'number' && (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${t.priority === 2
+                              ? 'bg-red-500/20 text-red-300'
+                              : t.priority === 1
+                                ? 'bg-yellow-500/20 text-yellow-300'
+                                : 'bg-green-500/20 text-green-300'
+                              }`}
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'priority', value: t.priority })}
+                          >
+                            {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                          </span>
+                        )
                       )}
-                      {(t.tags || []).map((g) => (
-                        <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
-                      ))}
+
+                      {/* Tags */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'tags' ? (
+                        <input
+                          autoFocus
+                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-32"
+                          value={editingCell.value}
+                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onBlur={() => {
+                            const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                            handleSave(String(t.id), 'tags', tags)
+                          }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') {
+                              const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                              handleSave(String(t.id), 'tags', tags)
+                            }
+                            if (e.key === 'Escape') setEditingCell(null)
+                          }}
+                        />
+                      ) : (
+                        (t.tags || []).map((g) => (
+                          <span
+                            key={g}
+                            className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: (t.tags || []).join(', ') })}
+                          >
+                            #{g}
+                          </span>
+                        ))
+                      )}
                     </div>
                   </div>
                   <div className="relative">

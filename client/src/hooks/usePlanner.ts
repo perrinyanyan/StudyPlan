@@ -486,6 +486,28 @@ export function usePlanner(props: UsePlannerProps) {
     return true
   }
 
+  async function updateBlock(id: Block['id'], payload: { start_at?: string; end_at?: string; task_id?: string }) {
+    const r = await fetch(`/blocks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...headers() },
+      body: JSON.stringify(payload),
+    })
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}))
+      if (r.status === 409) {
+        setCenterAlert({ title: '时间冲突', detail: '该时间与其他任务重叠，请调整后再试。' })
+      } else {
+        alert('更新时间块失败: ' + (j.error || r.status))
+      }
+      return false
+    }
+    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (pathOnly === '/planner' && plannerView === 'list') {
+      setRangeReloadKey((k) => k + 1)
+    }
+    return true
+  }
+
   async function deleteBlock(id: Block['id']) {
     const r = await fetch(`/blocks/${id}`, { method: 'DELETE', headers: headers() })
     if (!r.ok) {
@@ -527,6 +549,7 @@ export function usePlanner(props: UsePlannerProps) {
     completeTask,
     deleteTask,
     addBlock,
+    updateBlock,
     deleteBlock,
     unschedMenuOpenId,
     setUnschedMenuOpenId,

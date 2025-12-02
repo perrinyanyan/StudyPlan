@@ -52,7 +52,10 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     setScheduleFor,
     setShowCreateTask,
     updateTaskAdvanced,
+    updateBlock,
   } = actions || {}
+
+  const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set())
 
@@ -110,6 +113,49 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     })
     return ids
   }, [filteredItems])
+
+  const handleSave = async (id: string, field: string, value: any) => {
+    const block = (rangeBlocks || blocks || []).find((b: any) => String(b.id) === id)
+    if (!block) return
+
+    if (field === 'time') {
+      const parts = value.split('-').map((s: string) => s.trim())
+      if (parts.length !== 2) return
+      const [startStr, endStr] = parts
+
+      const getDateWithTime = (baseDate: Date, timeStr: string) => {
+        const [h, m] = timeStr.split(':').map(Number)
+        if (isNaN(h) || isNaN(m)) return null
+        const d = new Date(baseDate)
+        d.setHours(h)
+        d.setMinutes(m)
+        d.setSeconds(0)
+        d.setMilliseconds(0)
+        return d
+      }
+
+      const baseDate = new Date(block.start_at)
+      const newStart = getDateWithTime(baseDate, startStr)
+      const newEnd = getDateWithTime(baseDate, endStr)
+
+      if (newStart && newEnd && updateBlock) {
+        await updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+      }
+    } else if (field === 'title') {
+      if (block.task_id && updateTaskAdvanced) {
+        await updateTaskAdvanced(block.task_id, { title: value })
+      }
+    } else {
+      if (block.task_id && updateTaskMeta) {
+        const updates: any = {}
+        if (field === 'priority') updates.priority = value
+        if (field === 'type') updates.type = value
+        if (field === 'tags') updates.tags = value
+        await updateTaskMeta(block.task_id, updates)
+      }
+    }
+    setEditingCell(null)
+  }
 
   const toggleSelectAll = () => {
     if (visibleTaskIds.size > 0 && Array.from(visibleTaskIds).every(id => selectedTaskIds.has(id))) {
@@ -351,31 +397,97 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                       完成
                                     </span>
                                   )}
-                                  <p
-                                    className={`font-medium ${status === 'done' ? 'line-through opacity-60' : ''
-                                      }`}
-                                  >
-                                    {name || '时间块'}
-                                  </p>
+                                  {editingCell?.id === blockId && editingCell.field === 'title' ? (
+                                    <input
+                                      autoFocus
+                                      className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full max-w-[200px]"
+                                      value={editingCell.value}
+                                      onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                      onBlur={() => handleSave(blockId, 'title', editingCell.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleSave(blockId, 'title', editingCell.value)
+                                        if (e.key === 'Escape') setEditingCell(null)
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    <p
+                                      className={`font-medium cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done' ? 'line-through opacity-60' : ''
+                                        }`}
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation()
+                                        setEditingCell({ id: blockId, field: 'title', value: name || '' })
+                                      }}
+                                    >
+                                      {name || '时间块'}
+                                    </p>
+                                  )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                                  {type && (
-                                    <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                                  {editingCell?.id === blockId && editingCell.field === 'type' ? (
+                                    <input
+                                      autoFocus
+                                      className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-20"
+                                      value={editingCell.value}
+                                      onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                      onBlur={() => handleSave(blockId, 'type', editingCell.value)}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') handleSave(blockId, 'type', editingCell.value)
+                                        if (e.key === 'Escape') setEditingCell(null)
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    type && (
                                       <span
-                                        className="w-2 h-2 rounded-full"
-                                        style={{ backgroundColor: meta?.color || '#9CA3AF' }}
-                                      ></span>
-                                      <span>{type}</span>
-                                    </span>
+                                        className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation()
+                                          setEditingCell({ id: blockId, field: 'type', value: type })
+                                        }}
+                                      >
+                                        <span
+                                          className="w-2 h-2 rounded-full"
+                                          style={{ backgroundColor: meta?.color || '#9CA3AF' }}
+                                        ></span>
+                                        <span>{type}</span>
+                                      </span>
+                                    )
                                   )}
-                                  {tags.map((g: string) => (
-                                    <span
-                                      key={g}
-                                      className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300"
-                                    >
-                                      #{g}
-                                    </span>
-                                  ))}
+
+                                  {editingCell?.id === blockId && editingCell.field === 'tags' ? (
+                                    <input
+                                      autoFocus
+                                      className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-32"
+                                      value={editingCell.value}
+                                      onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                      onBlur={() => {
+                                        const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                                        handleSave(blockId, 'tags', tags)
+                                      }}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                                          handleSave(blockId, 'tags', tags)
+                                        }
+                                        if (e.key === 'Escape') setEditingCell(null)
+                                      }}
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    tags.map((g: string) => (
+                                      <span
+                                        key={g}
+                                        className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation()
+                                          setEditingCell({ id: blockId, field: 'tags', value: tags.join(', ') })
+                                        }}
+                                      >
+                                        #{g}
+                                      </span>
+                                    ))
+                                  )}
                                 </div>
                               </div>
                               <div
@@ -408,15 +520,63 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                     逾期
                                   </span>
                                 )}
-                                <p className="whitespace-nowrap">
-                                  {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
-                                </p>
-                                {prioLabel && (
-                                  <span
-                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${prioClass}`}
+
+                                {editingCell?.id === blockId && editingCell.field === 'time' ? (
+                                  <input
+                                    autoFocus
+                                    className="bg-slate-700 text-white text-xs px-1 py-0.5 rounded w-24 text-center"
+                                    value={editingCell.value}
+                                    onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                    onBlur={() => handleSave(blockId, 'time', editingCell.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
+                                      if (e.key === 'Escape') setEditingCell(null)
+                                    }}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                ) : (
+                                  <p
+                                    className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                                    onDoubleClick={(e) => {
+                                      e.stopPropagation()
+                                      const timeStr = `${fmtHHmm ? fmtHHmm(s) : ''} - ${fmtHHmm ? fmtHHmm(e) : ''}`
+                                      setEditingCell({ id: blockId, field: 'time', value: timeStr })
+                                    }}
                                   >
-                                    <span>{prioLabel}</span>
-                                  </span>
+                                    {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
+                                  </p>
+                                )}
+
+                                {editingCell?.id === blockId && editingCell.field === 'priority' ? (
+                                  <select
+                                    autoFocus
+                                    className="bg-slate-700 text-white text-[10px] px-1 py-0 rounded"
+                                    value={editingCell.value ?? ''}
+                                    onChange={e => {
+                                      const val = e.target.value === '' ? null : Number(e.target.value)
+                                      setEditingCell({ ...editingCell, value: val })
+                                      handleSave(blockId, 'priority', val)
+                                    }}
+                                    onBlur={() => setEditingCell(null)}
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    <option value="">无</option>
+                                    <option value="2">高</option>
+                                    <option value="1">中</option>
+                                    <option value="0">低</option>
+                                  </select>
+                                ) : (
+                                  prioLabel && (
+                                    <span
+                                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                      onDoubleClick={(e) => {
+                                        e.stopPropagation()
+                                        setEditingCell({ id: blockId, field: 'priority', value: prio })
+                                      }}
+                                    >
+                                      <span>{prioLabel}</span>
+                                    </span>
+                                  )
                                 )}
                               </div>
                               <div className="flex items-center gap-2 pl-3">

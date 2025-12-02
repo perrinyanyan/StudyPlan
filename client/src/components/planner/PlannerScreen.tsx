@@ -94,6 +94,7 @@ export function PlannerScreen({
     setShowCreateTask,
     // 日视图 actions
     addBlock,
+    updateBlock,
     deleteBlock,
     expandAllHours,
     collapseAllHours,
@@ -213,6 +214,7 @@ export function PlannerScreen({
             setListEdit,
             setShowCreateTask,
             addBlock,
+            updateBlock,
             deleteBlock,
             setListFilterType,
             setListFilterPriority,

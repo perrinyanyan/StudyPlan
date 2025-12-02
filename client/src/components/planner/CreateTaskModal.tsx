@@ -266,14 +266,14 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
         const dd = String(d.getDate()).padStart(2, '0')
         parts.push(`UNTIL=${yyyy}${mm}${dd}`)
       }
-      if (pinned && effectiveMode === 'pool') {
+      if (pinned && (effectiveMode as string) === 'pool') {
         parts.push('PINNED')
       }
       finalRecur = parts.join(';')
     } else if (effectiveMode === 'pool') {
       finalRecur = 'POOL'
       if (pinned) finalRecur += ';PINNED'
-    } else if (pinned && effectiveMode === 'pool') {
+    } else if (pinned && (effectiveMode as string) === 'pool') {
       finalRecur = 'PINNED'
     }
     const finalTags = tagInput.trim() ? Array.from(new Set([...tags, tagInput.trim().toLowerCase()])) : tags
@@ -311,7 +311,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       ok = await actions.createTaskAdvanced(payload)
     } else {
       // Normal behavior: update existing or create new
-      ok = await (isEdit ? actions.updateTaskAdvanced(initialTask!.id, payload) : actions.createTaskAdvanced(payload))
+      ok = await (isEdit ? actions.updateTaskAdvanced(String(initialTask!.id), payload) : actions.createTaskAdvanced(payload))
     }
 
     if (!ok) return
