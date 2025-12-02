@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { Task } from '../../types'
 
 export interface PlannerListViewProps {
@@ -9,7 +10,28 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
   const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
   const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced } = actions || {}
 
-  const list: Task[] = unscheduled || []
+  const list = useMemo(() => {
+    const raw = (unscheduled || []) as Task[]
+    return [...raw].sort((a, b) => {
+      // 1. Today Must
+      const aMust = a.recurrence_rule?.includes('TODAY_MUST') ? 1 : 0
+      const bMust = b.recurrence_rule?.includes('TODAY_MUST') ? 1 : 0
+      if (aMust !== bMust) return bMust - aMust
+
+      // 2. Pinned
+      const aPinned = a.recurrence_rule?.includes('PINNED') ? 1 : 0
+      const bPinned = b.recurrence_rule?.includes('PINNED') ? 1 : 0
+      if (aPinned !== bPinned) return bPinned - aPinned
+
+      // 3. Priority (2 > 1 > 0 > null)
+      const aPrio = typeof a.priority === 'number' ? a.priority : -1
+      const bPrio = typeof b.priority === 'number' ? b.priority : -1
+      if (aPrio !== bPrio) return bPrio - aPrio
+
+      // 4. Title
+      return (a.title || '').localeCompare(b.title || '')
+    })
+  }, [unscheduled])
 
   return (
     <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
@@ -32,12 +54,21 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
             return (
               <div key={String(t.id)} className="bg-white/5 p-3 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
-                  <div className="flex-1 space-y-1.5">
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-center justify-center w-4 gap-1">
+                      {t.recurrence_rule?.includes('TODAY_MUST') && (
+                        <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center shadow-sm">
+                          <span className="text-[10px] text-white leading-none font-bold scale-90">今</span>
+                        </div>
+                      )}
                       {t.recurrence_rule?.includes('PINNED') && (
                         <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
                       )}
+                    </div>
+                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
+                  </div>
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center gap-1.5">
                       <p className="text-white text-sm font-medium leading-tight">{t.title}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
@@ -92,7 +123,34 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
                           onClick={async () => {
-                            console.log('Pin button clicked', { updateTaskAdvanced: !!updateTaskAdvanced })
+                            if (!updateTaskAdvanced) {
+                              alert('updateTaskAdvanced 函数不可用')
+                              return
+                            }
+                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                            const parts = (t.recurrence_rule || 'POOL').split(';')
+                            const isTodayMust = parts.includes('TODAY_MUST')
+                            let newParts = parts.filter(p => p !== 'TODAY_MUST')
+                            if (!isTodayMust) {
+                              newParts.push('TODAY_MUST')
+                            }
+                            // Ensure POOL is present if it's the only rule or if it was there
+                            if (!newParts.includes('POOL') && (parts.includes('POOL') || newParts.length === 0 || (newParts.length === 1 && newParts[0] === 'TODAY_MUST'))) {
+                              if (!newParts.includes('POOL')) newParts.unshift('POOL')
+                            }
+
+                            const newRule = newParts.join(';')
+                            await updateTaskAdvanced(t.id, {
+                              title: t.title,
+                              recurrence_rule: newRule,
+                            })
+                          }}
+                        >
+                          {t.recurrence_rule?.includes('TODAY_MUST') ? '取消今日必' : '今日必'}
+                        </button>
+                        <button
+                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                          onClick={async () => {
                             if (!updateTaskAdvanced) {
                               alert('updateTaskAdvanced 函数不可用')
                               return
@@ -107,18 +165,10 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             if (newParts.length === 0) newParts.push('POOL')
                             const newRule = newParts.join(';')
 
-                            console.log('Pin toggle:', {
-                              oldRule: t.recurrence_rule,
-                              newRule,
-                              taskId: t.id,
-                              isPinned
-                            })
-
                             const result = await updateTaskAdvanced(t.id, {
                               title: t.title,
                               recurrence_rule: newRule,
                             })
-                            console.log('Update result:', result)
                           }}
                         >
                           {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
