@@ -362,6 +362,7 @@ export function PlannerScreen({
             setShowCreateTask,
             setShowFutureOnly,
             addBlock,
+            updateBlock,
             deleteBlock,
             expandAllHours,
             collapseAllHours,
