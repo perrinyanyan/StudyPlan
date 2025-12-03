@@ -262,6 +262,7 @@ export function PlannerScreen({
             setScheduleFor,
             setListEdit,
             setShowCreateTask,
+            updateBlock,
             deleteBlock,
             setListFilterType,
             setListFilterPriority,
@@ -271,6 +272,7 @@ export function PlannerScreen({
             setListMenuOpenId,
             createTaskAdvanced,
             updateTaskAdvanced,
+            headers,
           }}
         />
       ) : plannerView === 'week' ? (
@@ -305,6 +307,7 @@ export function PlannerScreen({
             setScheduleFor,
             setListEdit,
             setShowCreateTask,
+            updateBlock,
             deleteBlock,
             setListFilterType,
             setListFilterPriority,
@@ -314,6 +317,7 @@ export function PlannerScreen({
             setListMenuOpenId,
             createTaskAdvanced,
             updateTaskAdvanced,
+            headers,
           }}
         />
       ) : (
