@@ -71,13 +71,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
-  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
+  const handleSave = (id: string, field: string, value: any, extras?: any) => {
+    setEditingCell(null)
     const block = (filteredBlocks || []).find((b: any) => String(b.id) === id)
     if (!block) return
 
     if (field === 'title') {
       if (block.task_id && updateTaskAdvanced) {
-        await updateTaskAdvanced(block.task_id, { title: value })
+        updateTaskAdvanced(block.task_id, { title: value })
       }
     } else if (field === 'time') {
       if (updateBlock) {
@@ -94,22 +95,20 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         const newStart = parseTime(originalStart, startStr)
         const newEnd = parseTime(originalEnd, endStr)
 
-        await updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+        updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
       }
     } else {
       if (block.task_id && updateTaskMeta) {
         const updates: any = {}
-        if (field === 'priority') updates.priority = value
         if (field === 'priority') updates.priority = value
         if (field === 'type') {
           updates.type = value
           if (extras?.color) updates.color = extras.color
         }
         if (field === 'tags') updates.tags = value
-        await updateTaskMeta(block.task_id, updates)
+        updateTaskMeta(block.task_id, updates)
       }
     }
-    setEditingCell(null)
   }
 
   const handleCopyToPool = async (task: any) => {
@@ -669,7 +668,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                       </span>
                                                     ))}
                                                     {(editingCell.value as string[]).length === 0 && (
-                                                      <span className="text-gray-500 text-[10px]">无标签</span>
+                                                      <span className="text-gray-500 text-[10px]">#</span>
                                                     )}
                                                   </div>
                                                   <TaskTagSelector
@@ -684,18 +683,30 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                   />
                                                 </div>
                                               ) : (
-                                                tags.map((g: string) => (
+                                                (tags && tags.length > 0) ? (
+                                                  tags.map((g: string) => (
+                                                    <span
+                                                      key={g}
+                                                      className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                                      onDoubleClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                                      }}
+                                                    >
+                                                      #{g}
+                                                    </span>
+                                                  ))
+                                                ) : (
                                                   <span
-                                                    key={g}
-                                                    className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                                    className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
                                                     onDoubleClick={(e) => {
                                                       e.stopPropagation()
-                                                      setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                                      setEditingCell({ id: blockId, field: 'tags', value: [] })
                                                     }}
                                                   >
-                                                    #{g}
+                                                    #
                                                   </span>
-                                                ))
+                                                )
                                               )}
                                             </div>
                                           </div>

@@ -38,15 +38,15 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     })
   }, [unscheduled])
 
-  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
+  const handleSave = (id: string, field: string, value: any, extras?: any) => {
+    setEditingCell(null)
     if (field === 'title') {
-      await updateTaskAdvanced(id, { title: value })
+      updateTaskAdvanced(id, { title: value })
     } else {
       // For meta fields (priority, type, tags)
       const t = list.find(t => String(t.id) === id)
       if (!t) return
       const updates: any = {}
-      if (field === 'priority') updates.priority = value
       if (field === 'priority') updates.priority = value
       if (field === 'type') {
         updates.type = value
@@ -54,9 +54,8 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
       }
       if (field === 'tags') updates.tags = value
 
-      await updateTaskMeta(id, updates)
+      updateTaskMeta(id, updates)
     }
-    setEditingCell(null)
   }
 
   return (
@@ -210,7 +209,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                               </span>
                             ))}
                             {(editingCell.value as string[]).length === 0 && (
-                              <span className="text-gray-500 text-[10px]">无标签</span>
+                              <span className="text-gray-500 text-[10px]">#</span>
                             )}
                           </div>
                           <TaskTagSelector
@@ -240,7 +239,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
                             onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: [] })}
                           >
-                            无标签
+                            #
                           </span>
                         )
                       )}

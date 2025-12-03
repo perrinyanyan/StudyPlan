@@ -40,23 +40,61 @@ export function TaskHoverCard({
 }: TaskHoverCardProps) {
     const [editingCell, setEditingCell] = useState<{ field: string, value: any } | null>(null)
     const [cardMenuOpen, setCardMenuOpen] = useState(false)
+    const [optimisticTask, setOptimisticTask] = useState(task)
 
-    if (!task || !position) return null
+    useEffect(() => {
+        setOptimisticTask(task)
+    }, [task])
+
+    if (!optimisticTask || !position) return null
 
     const handleSave = async (field: string, value: any, extras?: any) => {
-        const taskId = String(task.id)
-        const blockId = task.blockId ? String(task.blockId) : null
+        const taskId = String(optimisticTask.id)
+        const blockId = optimisticTask.blockId ? String(optimisticTask.blockId) : null
 
+        // Optimistic update
+        const newTask = { ...optimisticTask }
+        if (field === 'title') newTask.title = value
+        if (field === 'priority') newTask.priority = value
+        if (field === 'type') {
+            newTask.type = value
+            if (extras?.color) newTask.color = extras.color
+        }
+        if (field === 'tags') newTask.tags = value
+
+        if (field === 'time') {
+            // value is { startStr: "HH:mm", endStr: "HH:mm" }
+            const { startStr, endStr } = value
+            const getDateWithTime = (baseDate: Date, timeStr: string) => {
+                const [h, m] = timeStr.split(':').map(Number)
+                if (isNaN(h) || isNaN(m)) return null
+                const d = new Date(baseDate)
+                d.setHours(h)
+                d.setMinutes(m)
+                d.setSeconds(0)
+                d.setMilliseconds(0)
+                return d
+            }
+            const baseDate = new Date(optimisticTask.blockStart)
+            const newStart = getDateWithTime(baseDate, startStr)
+            const newEnd = getDateWithTime(baseDate, endStr)
+            if (newStart && newEnd) {
+                newTask.blockStart = newStart.toISOString()
+                newTask.blockEnd = newEnd.toISOString()
+            }
+        }
+        setOptimisticTask(newTask)
+        setEditingCell(null)
+
+        // API calls
         if (field === 'title') {
             if (actions.updateTaskAdvanced) {
                 await actions.updateTaskAdvanced(taskId, { title: value })
-                // Optimistic update handled by parent re-render usually, but we might want local state if needed
             }
         } else if (field === 'time') {
             if (blockId && actions.updateBlock) {
                 // value is { startStr: "HH:mm", endStr: "HH:mm" }
                 const { startStr, endStr } = value
-
                 const getDateWithTime = (baseDate: Date, timeStr: string) => {
                     const [h, m] = timeStr.split(':').map(Number)
                     if (isNaN(h) || isNaN(m)) return null
@@ -67,11 +105,9 @@ export function TaskHoverCard({
                     d.setMilliseconds(0)
                     return d
                 }
-
-                const baseDate = new Date(task.blockStart)
+                const baseDate = new Date(optimisticTask.blockStart)
                 const newStart = getDateWithTime(baseDate, startStr)
                 const newEnd = getDateWithTime(baseDate, endStr)
-
                 if (newStart && newEnd) {
                     await actions.updateBlock(blockId, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
                 }
@@ -89,23 +125,22 @@ export function TaskHoverCard({
                 await actions.updateTaskMeta(taskId, updates)
             }
         }
-        setEditingCell(null)
     }
 
     const handleCopyToPool = async () => {
-        if (!actions.createTaskAdvanced || !task) return
+        if (!actions.createTaskAdvanced || !optimisticTask) return
         const payload = {
-            title: task.title,
-            type: task.type,
-            color: task.color,
-            priority: task.priority,
-            tags: task.tags,
+            title: optimisticTask.title,
+            type: optimisticTask.type,
+            color: optimisticTask.color,
+            priority: optimisticTask.priority,
+            tags: optimisticTask.tags,
             recurrence_rule: 'POOL',
-            estimate_min: task.estimate_min,
+            estimate_min: optimisticTask.estimate_min,
         }
         await actions.createTaskAdvanced(payload)
         if (actions.setCenterAlert) {
-            actions.setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
+            actions.setCenterAlert({ title: '已复制到任务池', detail: `任务 "${optimisticTask.title}" 已复制到任务池` })
         }
         setCardMenuOpen(false)
         onClose()
@@ -134,7 +169,7 @@ export function TaskHoverCard({
         >
             <div className="bg-white/5 p-3">
                 <div className="flex items-center gap-3">
-                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (task.color || '#4B5563') + '80' }}></div>
+                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (optimisticTask.color || '#4B5563') + '80' }}></div>
                     <div className="flex-1 space-y-1.5">
                         {/* Title */}
                         {editingCell?.field === 'title' ? (
@@ -152,14 +187,14 @@ export function TaskHoverCard({
                         ) : (
                             <p
                                 className="text-white text-sm font-medium leading-tight cursor-pointer hover:underline decoration-dashed decoration-slate-500"
-                                onDoubleClick={() => setEditingCell({ field: 'title', value: task.title })}
+                                onDoubleClick={() => setEditingCell({ field: 'title', value: optimisticTask.title })}
                             >
-                                {task.title}
+                                {optimisticTask.title}
                             </p>
                         )}
 
                         {/* Time */}
-                        {task.blockStart && task.blockEnd && (
+                        {optimisticTask.blockStart && optimisticTask.blockEnd && (
                             editingCell?.field === 'time' ? (
                                 <div
                                     className="flex items-center gap-1 bg-slate-800 rounded px-1 py-0.5"
@@ -207,12 +242,12 @@ export function TaskHoverCard({
                                     onDoubleClick={() => setEditingCell({
                                         field: 'time',
                                         value: {
-                                            startStr: fmt(task.blockStart),
-                                            endStr: fmt(task.blockEnd)
+                                            startStr: fmt(optimisticTask.blockStart),
+                                            endStr: fmt(optimisticTask.blockEnd)
                                         }
                                     })}
                                 >
-                                    {fmt(task.blockStart)} - {fmt(task.blockEnd)}
+                                    {fmt(optimisticTask.blockStart)} - {fmt(optimisticTask.blockEnd)}
                                 </p>
                             )
                         )}
@@ -222,7 +257,7 @@ export function TaskHoverCard({
                             {editingCell?.field === 'type' ? (
                                 <div className="relative">
                                     <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: task.color || '#9CA3AF' }}></span>
+                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: optimisticTask.color || '#9CA3AF' }}></span>
                                         <span>{editingCell.value}</span>
                                     </span>
                                     <TaskTypeSelector
@@ -236,13 +271,13 @@ export function TaskHoverCard({
                                     <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setEditingCell(null) }} />
                                 </div>
                             ) : (
-                                task.type ? (
+                                optimisticTask.type ? (
                                     <span
                                         className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
-                                        onDoubleClick={() => setEditingCell({ field: 'type', value: task.type })}
+                                        onDoubleClick={() => setEditingCell({ field: 'type', value: optimisticTask.type })}
                                     >
-                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: task.color || '#9CA3AF' }}></span>
-                                        <span>{task.type}</span>
+                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: optimisticTask.color || '#9CA3AF' }}></span>
+                                        <span>{optimisticTask.type}</span>
                                     </span>
                                 ) : (
                                     <span
@@ -257,12 +292,12 @@ export function TaskHoverCard({
                             {/* Priority */}
                             {editingCell?.field === 'priority' ? (
                                 <div className="relative">
-                                    {typeof task.priority === 'number' ? (
-                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${task.priority === 2 ? 'bg-red-500/20 text-red-300' :
-                                            task.priority === 1 ? 'bg-yellow-500/20 text-yellow-300' :
+                                    {typeof optimisticTask.priority === 'number' ? (
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${optimisticTask.priority === 2 ? 'bg-red-500/20 text-red-300' :
+                                            optimisticTask.priority === 1 ? 'bg-yellow-500/20 text-yellow-300' :
                                                 'bg-green-500/20 text-green-300'
                                             }`}>
-                                            {task.priority === 2 ? '高' : task.priority === 1 ? '中' : '低'}
+                                            {optimisticTask.priority === 2 ? '高' : optimisticTask.priority === 1 ? '中' : '低'}
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium bg-slate-500/20 text-slate-300">无</span>
@@ -274,17 +309,17 @@ export function TaskHoverCard({
                                     />
                                 </div>
                             ) : (
-                                typeof task.priority === 'number' ? (
+                                typeof optimisticTask.priority === 'number' ? (
                                     <span
-                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${task.priority === 2
+                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${optimisticTask.priority === 2
                                             ? 'bg-red-500/20 text-red-300'
-                                            : task.priority === 1
+                                            : optimisticTask.priority === 1
                                                 ? 'bg-yellow-500/20 text-yellow-300'
                                                 : 'bg-green-500/20 text-green-300'
                                             }`}
-                                        onDoubleClick={() => setEditingCell({ field: 'priority', value: task.priority })}
+                                        onDoubleClick={() => setEditingCell({ field: 'priority', value: optimisticTask.priority })}
                                     >
-                                        {task.priority === 2 ? '高' : task.priority === 1 ? '中' : '低'}
+                                        {optimisticTask.priority === 2 ? '高' : optimisticTask.priority === 1 ? '中' : '低'}
                                     </span>
                                 ) : (
                                     <span
@@ -303,7 +338,7 @@ export function TaskHoverCard({
                                         {(editingCell.value as string[]).map((g: string) => (
                                             <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
                                         ))}
-                                        {(editingCell.value as string[]).length === 0 && <span className="text-gray-500 text-[10px]">无标签</span>}
+                                        {(editingCell.value as string[]).length === 0 && <span className="text-gray-500 text-[10px]">#</span>}
                                     </div>
                                     <TaskTagSelector
                                         currentTags={editingCell.value as string[]}
@@ -317,12 +352,12 @@ export function TaskHoverCard({
                                     />
                                 </div>
                             ) : (
-                                (task.tags && task.tags.length > 0) ? (
-                                    task.tags.map((g: string) => (
+                                (optimisticTask.tags && optimisticTask.tags.length > 0) ? (
+                                    optimisticTask.tags.map((g: string) => (
                                         <span
                                             key={g}
                                             className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
-                                            onDoubleClick={() => setEditingCell({ field: 'tags', value: task.tags })}
+                                            onDoubleClick={() => setEditingCell({ field: 'tags', value: optimisticTask.tags })}
                                         >
                                             #{g}
                                         </span>
@@ -332,12 +367,12 @@ export function TaskHoverCard({
                                         className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
                                         onDoubleClick={() => setEditingCell({ field: 'tags', value: [] })}
                                     >
-                                        无标签
+                                        #
                                     </span>
                                 )
                             )}
 
-                            {task.status === 'done' && (
+                            {optimisticTask.status === 'done' && (
                                 <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">已完成</span>
                             )}
                         </div>
@@ -357,7 +392,7 @@ export function TaskHoverCard({
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
                                     onClick={() => {
-                                        if (actions.setEditTask) actions.setEditTask(task)
+                                        if (actions.setEditTask) actions.setEditTask(optimisticTask)
                                         setCardMenuOpen(false)
                                         onClose()
                                     }}
@@ -367,7 +402,7 @@ export function TaskHoverCard({
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
                                     onClick={async () => {
-                                        if (actions.completeTask && task.id) await actions.completeTask(String(task.id))
+                                        if (actions.completeTask && optimisticTask.id) await actions.completeTask(String(optimisticTask.id))
                                         setCardMenuOpen(false)
                                         onClose()
                                     }}
@@ -383,7 +418,7 @@ export function TaskHoverCard({
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
                                     onClick={async () => {
-                                        if (actions.deleteTask && task.id) await actions.deleteTask(String(task.id))
+                                        if (actions.deleteTask && optimisticTask.id) await actions.deleteTask(String(optimisticTask.id))
                                         setCardMenuOpen(false)
                                         onClose()
                                     }}
@@ -394,13 +429,13 @@ export function TaskHoverCard({
                         )}
                     </div>
                 </div>
-                {(task.estimate_min || task.due_at) && (
+                {(optimisticTask.estimate_min || optimisticTask.due_at) && (
                     <div className="mt-3 pt-2 border-t border-white/10 flex items-center gap-4 text-[10px] text-slate-400">
-                        {task.estimate_min && (
-                            <span>预估: {task.estimate_min} 分钟</span>
+                        {optimisticTask.estimate_min && (
+                            <span>预估: {optimisticTask.estimate_min} 分钟</span>
                         )}
-                        {task.due_at && (
-                            <span>截止: {new Date(task.due_at).toLocaleString()}</span>
+                        {optimisticTask.due_at && (
+                            <span>截止: {new Date(optimisticTask.due_at).toLocaleString()}</span>
                         )}
                     </div>
                 )}

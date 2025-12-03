@@ -353,6 +353,23 @@ export function usePlanner(props: UsePlannerProps) {
     id: Task['id'],
     payload: { priority?: number | null; type?: string | null; color?: string | null; tags?: string[] },
   ) {
+    // Optimistic update
+    const updateLocalTask = (t: Task) => {
+      if (String(t.id) === String(id)) {
+        return { ...t, ...payload }
+      }
+      return t
+    }
+    setTasks({
+      ...tasks,
+      today: tasks.today?.map(updateLocalTask),
+      overdue: tasks.overdue?.map(updateLocalTask),
+    })
+    setUnscheduled(unscheduled.map(updateLocalTask))
+    if (rangeTasks) {
+      setRangeTasks(rangeTasks.map(updateLocalTask))
+    }
+
     const body: any = {}
     if ('priority' in payload) body.priority = payload.priority
     if ('type' in payload) body.type = payload.type
@@ -381,6 +398,51 @@ export function usePlanner(props: UsePlannerProps) {
     recurrence_rule?: string
     tags?: string[]
   }): Promise<boolean> {
+    // Optimistic update
+    const tempId = -Date.now()
+    const tempTask: Task = {
+      id: tempId,
+      title: payload.title,
+      type: payload.type || null,
+      color: payload.color || null,
+      priority: payload.priority ?? null,
+      tags: payload.tags || [],
+      status: 'open',
+      recurrence_rule: payload.recurrence_rule || null,
+      estimate_min: payload.estimate_min || null,
+      due_at: payload.due_at || null,
+      // user_id is not in Task type either, so removing it too if it causes error, but let's check.
+      // Task type definition: id, title, status, due_at, estimate_min, priority, type, color, recurrence_rule, scheduling_status, tags.
+      // user_id is NOT in Task type.
+    }
+
+    if (payload.recurrence_rule === 'POOL') {
+      setUnscheduled([tempTask, ...unscheduled])
+    } else {
+      // Assuming it's for today if not POOL, or we check due_at?
+      // For simplicity, if it's not POOL, we might add it to today or rangeTasks depending on context.
+      // But usually "create task" from UI puts it in today or pool.
+      // If it has due_at, we might need to check date.
+      // Let's assume it goes to 'today' if no specific rule, or 'unscheduled' if no due date?
+      // Actually, standard create task usually goes to unscheduled if not specified, or today if specified.
+      // If recurrence_rule is 'POOL', it's definitely unscheduled.
+      // If not, let's look at where it's called.
+      // In PlannerDayView, we might create a task for a specific time? No, that's addBlock.
+      // If we create a task from "Create Task" modal, it might be for today.
+      // Let's just add to 'unscheduled' if POOL, else 'today' for now as a safe bet for optimistic.
+      // Wait, if it's POOL, it goes to unscheduled.
+      // If it's not POOL, it likely goes to 'today' tasks if the date matches.
+      // For now, let's handle POOL explicitly, and others to 'today' if it seems to match.
+
+      if (payload.recurrence_rule === 'POOL') {
+        // Already handled above
+      } else {
+        setTasks({
+          ...tasks,
+          today: [tempTask, ...(tasks.today || [])],
+        })
+      }
+    }
     const r = await fetch('/tasks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers() },
@@ -416,6 +478,23 @@ export function usePlanner(props: UsePlannerProps) {
       tags?: string[]
     },
   ): Promise<boolean> {
+    // Optimistic update
+    const updateLocalTask = (t: Task) => {
+      if (String(t.id) === String(id)) {
+        return { ...t, ...payload }
+      }
+      return t
+    }
+    setTasks({
+      ...tasks,
+      today: tasks.today?.map(updateLocalTask),
+      overdue: tasks.overdue?.map(updateLocalTask),
+    })
+    setUnscheduled(unscheduled.map(updateLocalTask))
+    if (rangeTasks) {
+      setRangeTasks(rangeTasks.map(updateLocalTask))
+    }
+
     const r = await fetch(`/tasks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
@@ -434,6 +513,23 @@ export function usePlanner(props: UsePlannerProps) {
   }
 
   async function completeTask(id: Task['id']) {
+    // Optimistic update
+    const updateLocalTask = (t: Task) => {
+      if (String(t.id) === String(id)) {
+        return { ...t, status: 'done' }
+      }
+      return t
+    }
+    setTasks({
+      ...tasks,
+      today: tasks.today?.map(updateLocalTask),
+      overdue: tasks.overdue?.map(updateLocalTask),
+    })
+    setUnscheduled(unscheduled.map(updateLocalTask))
+    if (rangeTasks) {
+      setRangeTasks(rangeTasks.map(updateLocalTask))
+    }
+
     const r = await fetch(`/tasks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
@@ -450,6 +546,18 @@ export function usePlanner(props: UsePlannerProps) {
   }
 
   async function deleteTask(id: Task['id']) {
+    // Optimistic update
+    const filterLocalTask = (t: Task) => String(t.id) !== String(id)
+    setTasks({
+      ...tasks,
+      today: tasks.today?.filter(filterLocalTask),
+      overdue: tasks.overdue?.filter(filterLocalTask),
+    })
+    setUnscheduled(unscheduled.filter(filterLocalTask))
+    if (rangeTasks) {
+      setRangeTasks(rangeTasks.filter(filterLocalTask))
+    }
+
     const r = await fetch(`/tasks/${id}`, { method: 'DELETE', headers: headers() })
     if (!r.ok) {
       alert('删除任务失败')
@@ -465,6 +573,20 @@ export function usePlanner(props: UsePlannerProps) {
     const d = dateOverride || date
     const payload: any = { start_at: toIso(d, start), end_at: toIso(d, end) }
     if (taskId) payload.task_id = taskId
+
+    // Optimistic update
+    const tempId = -Date.now()
+    const tempBlock: Block = {
+      id: tempId,
+      start_at: payload.start_at,
+      end_at: payload.end_at,
+      task_id: taskId || null,
+    }
+    setBlocks([...blocks, tempBlock])
+    if (rangeBlocks) {
+      setRangeBlocks([...rangeBlocks, tempBlock])
+    }
+
     const r = await fetch('/blocks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers() },
@@ -477,6 +599,12 @@ export function usePlanner(props: UsePlannerProps) {
       } else {
         alert('创建时间块失败: ' + (j.error || r.status))
       }
+      // Revert optimistic update on error
+      setBlocks(blocks.filter(b => b.id !== tempId))
+      if (rangeBlocks) {
+        setRangeBlocks(rangeBlocks.filter(b => b.id !== tempId))
+      }
+
       return false
     }
     await Promise.all([fetchDaily(), fetchUnscheduled()])
@@ -487,6 +615,18 @@ export function usePlanner(props: UsePlannerProps) {
   }
 
   async function updateBlock(id: Block['id'], payload: { start_at?: string; end_at?: string; task_id?: string }) {
+    // Optimistic update
+    const updateLocalBlock = (b: Block) => {
+      if (String(b.id) === String(id)) {
+        return { ...b, ...payload }
+      }
+      return b
+    }
+    setBlocks(blocks.map(updateLocalBlock))
+    if (rangeBlocks) {
+      setRangeBlocks(rangeBlocks.map(updateLocalBlock))
+    }
+
     const r = await fetch(`/blocks/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
@@ -509,6 +649,13 @@ export function usePlanner(props: UsePlannerProps) {
   }
 
   async function deleteBlock(id: Block['id']) {
+    // Optimistic update
+    const filterLocalBlock = (b: Block) => String(b.id) !== String(id)
+    setBlocks(blocks.filter(filterLocalBlock))
+    if (rangeBlocks) {
+      setRangeBlocks(rangeBlocks.filter(filterLocalBlock))
+    }
+
     const r = await fetch(`/blocks/${id}`, { method: 'DELETE', headers: headers() })
     if (!r.ok) {
       alert('删除时间块失败')

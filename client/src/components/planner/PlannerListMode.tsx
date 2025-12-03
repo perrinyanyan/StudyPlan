@@ -118,7 +118,8 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     return ids
   }, [filteredItems])
 
-  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
+  const handleSave = (id: string, field: string, value: any, extras?: any) => {
+    setEditingCell(null)
     const block = (rangeBlocks || blocks || []).find((b: any) => String(b.id) === id)
     if (!block) return
 
@@ -143,11 +144,11 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
       const newEnd = getDateWithTime(baseDate, endStr)
 
       if (newStart && newEnd && updateBlock) {
-        await updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+        updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
       }
     } else if (field === 'title') {
       if (block.task_id && updateTaskAdvanced) {
-        await updateTaskAdvanced(block.task_id, { title: value })
+        updateTaskAdvanced(block.task_id, { title: value })
       }
     } else {
       if (block.task_id && updateTaskMeta) {
@@ -158,10 +159,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           if (extras?.color) updates.color = extras.color
         }
         if (field === 'tags') updates.tags = value
-        await updateTaskMeta(block.task_id, updates)
+        updateTaskMeta(block.task_id, updates)
       }
     }
-    setEditingCell(null)
   }
 
   const toggleSelectAll = () => {
@@ -488,7 +488,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                           </span>
                                         ))}
                                         {(editingCell.value as string[]).length === 0 && (
-                                          <span className="text-gray-500 text-[10px]">无标签</span>
+                                          <span className="text-gray-500 text-[10px]">#</span>
                                         )}
                                       </div>
                                       <TaskTagSelector
@@ -504,18 +504,30 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                       {/* Overlay handled by TaskTagSelector */}
                                     </div>
                                   ) : (
-                                    tags.map((g: string) => (
+                                    (tags && tags.length > 0) ? (
+                                      tags.map((g: string) => (
+                                        <span
+                                          key={g}
+                                          className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                          onDoubleClick={(e) => {
+                                            e.stopPropagation()
+                                            setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                          }}
+                                        >
+                                          #{g}
+                                        </span>
+                                      ))
+                                    ) : (
                                       <span
-                                        key={g}
-                                        className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                        className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
                                         onDoubleClick={(e) => {
                                           e.stopPropagation()
-                                          setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                          setEditingCell({ id: blockId, field: 'tags', value: [] })
                                         }}
                                       >
-                                        #{g}
+                                        #
                                       </span>
-                                    ))
+                                    )
                                   )}
                                 </div>
                               </div>
