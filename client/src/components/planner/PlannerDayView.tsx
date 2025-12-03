@@ -4,6 +4,7 @@ import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
+import { TaskPrioritySelector } from './TaskPrioritySelector'
 
 export interface PlannerDayViewProps {
   state: any
@@ -70,7 +71,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
-  const handleSave = async (id: string, field: string, value: any) => {
+  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
     const block = (filteredBlocks || []).find((b: any) => String(b.id) === id)
     if (!block) return
 
@@ -99,7 +100,11 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       if (block.task_id && updateTaskMeta) {
         const updates: any = {}
         if (field === 'priority') updates.priority = value
-        if (field === 'type') updates.type = value
+        if (field === 'priority') updates.priority = value
+        if (field === 'type') {
+          updates.type = value
+          if (extras?.color) updates.color = extras.color
+        }
         if (field === 'tags') updates.tags = value
         await updateTaskMeta(block.task_id, updates)
       }
@@ -623,7 +628,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                     currentType={editingCell.value}
                                                     authHeaders={actions.headers()}
                                                     onSelect={(t) => {
-                                                      handleSave(blockId, 'type', t.name)
+                                                      handleSave(blockId, 'type', t.name, { color: t.color })
                                                       setEditingCell(null)
                                                     }}
                                                     onClose={() => setEditingCell(null)}
@@ -784,23 +789,32 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                             )}
 
                                             {editingCell?.id === blockId && editingCell.field === 'priority' ? (
-                                              <select
-                                                autoFocus
-                                                className="bg-slate-700 text-white text-[10px] px-1 py-0 rounded"
-                                                value={editingCell.value ?? ''}
-                                                onChange={e => {
-                                                  const val = e.target.value === '' ? null : Number(e.target.value)
-                                                  setEditingCell({ ...editingCell, value: val })
-                                                  handleSave(blockId, 'priority', val)
-                                                }}
-                                                onBlur={() => setEditingCell(null)}
-                                                onClick={e => e.stopPropagation()}
-                                              >
-                                                <option value="">无</option>
-                                                <option value="2">高</option>
-                                                <option value="1">中</option>
-                                                <option value="0">低</option>
-                                              </select>
+                                              <div className="relative">
+                                                {prioLabel && (
+                                                  <span
+                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span>{prioLabel}</span>
+                                                  </span>
+                                                )}
+                                                {!prioLabel && (
+                                                  <span
+                                                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span>无</span>
+                                                  </span>
+                                                )}
+                                                <TaskPrioritySelector
+                                                  currentPriority={editingCell.value}
+                                                  onSelect={(val) => {
+                                                    handleSave(blockId, 'priority', val)
+                                                    setEditingCell(null)
+                                                  }}
+                                                  onClose={() => setEditingCell(null)}
+                                                />
+                                              </div>
                                             ) : (
                                               prioLabel && (
                                                 <span
@@ -937,7 +951,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
             )}
           </div>
         </section>
-      </div>
+      </div >
 
       <div className="md:col-span-2 lg:col-span-2">
         <PlannerListView

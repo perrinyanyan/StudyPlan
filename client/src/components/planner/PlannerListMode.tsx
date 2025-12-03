@@ -1,6 +1,9 @@
 import type { Task } from '../../types'
 import { useState, useMemo } from 'react'
 import { PlannerListView } from './PlannerListView'
+import { TaskTypeSelector } from './TaskTypeSelector'
+import { TaskTagSelector } from './TaskTagSelector'
+import { TaskPrioritySelector } from './TaskPrioritySelector'
 
 export interface PlannerListModeProps {
   state: any
@@ -115,7 +118,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     return ids
   }, [filteredItems])
 
-  const handleSave = async (id: string, field: string, value: any) => {
+  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
     const block = (rangeBlocks || blocks || []).find((b: any) => String(b.id) === id)
     if (!block) return
 
@@ -150,7 +153,10 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
       if (block.task_id && updateTaskMeta) {
         const updates: any = {}
         if (field === 'priority') updates.priority = value
-        if (field === 'type') updates.type = value
+        if (field === 'type') {
+          updates.type = value
+          if (extras?.color) updates.color = extras.color
+        }
         if (field === 'tags') updates.tags = value
         await updateTaskMeta(block.task_id, updates)
       }
@@ -426,18 +432,35 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                 </div>
                                 <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
                                   {editingCell?.id === blockId && editingCell.field === 'type' ? (
-                                    <input
-                                      autoFocus
-                                      className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-20"
-                                      value={editingCell.value}
-                                      onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                      onBlur={() => handleSave(blockId, 'type', editingCell.value)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') handleSave(blockId, 'type', editingCell.value)
-                                        if (e.key === 'Escape') setEditingCell(null)
-                                      }}
-                                      onClick={e => e.stopPropagation()}
-                                    />
+                                    <div className="relative">
+                                      <span
+                                        className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                        onClick={e => e.stopPropagation()}
+                                      >
+                                        <span
+                                          className="w-2 h-2 rounded-full"
+                                          style={{ backgroundColor: meta?.color || '#9CA3AF' }}
+                                        ></span>
+                                        <span>{editingCell.value || '无类型'}</span>
+                                      </span>
+                                      <TaskTypeSelector
+                                        currentType={editingCell.value}
+                                        authHeaders={actions.headers()}
+                                        onSelect={(t) => {
+                                          handleSave(blockId, 'type', t.name, { color: t.color })
+                                          setEditingCell(null)
+                                        }}
+                                        onClose={() => setEditingCell(null)}
+                                      />
+                                      {/* Overlay to close on click outside */}
+                                      <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setEditingCell(null)
+                                        }}
+                                      />
+                                    </div>
                                   ) : (
                                     type && (
                                       <span
@@ -457,24 +480,29 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                   )}
 
                                   {editingCell?.id === blockId && editingCell.field === 'tags' ? (
-                                    <input
-                                      autoFocus
-                                      className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-32"
-                                      value={editingCell.value}
-                                      onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                      onBlur={() => {
-                                        const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
-                                        handleSave(blockId, 'tags', tags)
-                                      }}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') {
-                                          const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                                    <div className="relative">
+                                      <div className="flex flex-wrap gap-1">
+                                        {(editingCell.value as string[]).map((g: string) => (
+                                          <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                            #{g}
+                                          </span>
+                                        ))}
+                                        {(editingCell.value as string[]).length === 0 && (
+                                          <span className="text-gray-500 text-[10px]">无标签</span>
+                                        )}
+                                      </div>
+                                      <TaskTagSelector
+                                        currentTags={editingCell.value as string[]}
+                                        availableTags={listTagOptions || []}
+                                        onSelect={(tags) => {
+                                          setEditingCell({ ...editingCell, value: tags })
                                           handleSave(blockId, 'tags', tags)
-                                        }
-                                        if (e.key === 'Escape') setEditingCell(null)
-                                      }}
-                                      onClick={e => e.stopPropagation()}
-                                    />
+                                        }}
+                                        onClose={() => setEditingCell(null)}
+                                        authHeaders={actions.headers ? actions.headers() : {}}
+                                      />
+                                      {/* Overlay handled by TaskTagSelector */}
+                                    </div>
                                   ) : (
                                     tags.map((g: string) => (
                                       <span
@@ -482,7 +510,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                         className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
                                         onDoubleClick={(e) => {
                                           e.stopPropagation()
-                                          setEditingCell({ id: blockId, field: 'tags', value: tags.join(', ') })
+                                          setEditingCell({ id: blockId, field: 'tags', value: tags })
                                         }}
                                       >
                                         #{g}
@@ -523,25 +551,66 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                 )}
 
                                 {editingCell?.id === blockId && editingCell.field === 'time' ? (
-                                  <input
-                                    autoFocus
-                                    className="bg-slate-700 text-white text-xs px-1 py-0.5 rounded w-24 text-center"
-                                    value={editingCell.value}
-                                    onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                    onBlur={() => handleSave(blockId, 'time', editingCell.value)}
-                                    onKeyDown={e => {
-                                      if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
-                                      if (e.key === 'Escape') setEditingCell(null)
-                                    }}
+                                  <div
+                                    className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"
                                     onClick={e => e.stopPropagation()}
-                                  />
+                                    onBlur={(e) => {
+                                      const target = e.relatedTarget as HTMLElement | null
+                                      if (target && target.closest('.time-edit-container')) return
+                                      const timeStr = `${editingCell.value.startStr} - ${editingCell.value.endStr}`
+                                      handleSave(blockId, 'time', timeStr)
+                                    }}
+                                  >
+                                    <input
+                                      type="time"
+                                      className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                      value={editingCell.value.startStr}
+                                      onChange={e => setEditingCell({
+                                        ...editingCell,
+                                        value: { ...editingCell.value, startStr: e.target.value }
+                                      })}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          const timeStr = `${editingCell.value.startStr} - ${editingCell.value.endStr}`
+                                          handleSave(blockId, 'time', timeStr)
+                                        }
+                                        if (e.key === 'Escape') setEditingCell(null)
+                                      }}
+                                    />
+                                    <span className="text-[10px]">-</span>
+                                    <input
+                                      type="time"
+                                      className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                      value={editingCell.value.endStr}
+                                      onChange={e => setEditingCell({
+                                        ...editingCell,
+                                        value: { ...editingCell.value, endStr: e.target.value }
+                                      })}
+                                      onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                          const timeStr = `${editingCell.value.startStr} - ${editingCell.value.endStr}`
+                                          handleSave(blockId, 'time', timeStr)
+                                        }
+                                        if (e.key === 'Escape') setEditingCell(null)
+                                      }}
+                                    />
+                                  </div>
                                 ) : (
                                   <p
                                     className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
-                                    onDoubleClick={(e) => {
-                                      e.stopPropagation()
-                                      const timeStr = `${fmtHHmm ? fmtHHmm(s) : ''} - ${fmtHHmm ? fmtHHmm(e) : ''}`
-                                      setEditingCell({ id: blockId, field: 'time', value: timeStr })
+                                    onDoubleClick={(ev) => {
+                                      ev.stopPropagation()
+                                      const fmt = (d: Date) => {
+                                        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+                                      }
+                                      setEditingCell({
+                                        id: blockId,
+                                        field: 'time',
+                                        value: {
+                                          startStr: fmt(s),
+                                          endStr: fmt(e)
+                                        }
+                                      })
                                     }}
                                   >
                                     {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
@@ -549,23 +618,32 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                 )}
 
                                 {editingCell?.id === blockId && editingCell.field === 'priority' ? (
-                                  <select
-                                    autoFocus
-                                    className="bg-slate-700 text-white text-[10px] px-1 py-0 rounded"
-                                    value={editingCell.value ?? ''}
-                                    onChange={e => {
-                                      const val = e.target.value === '' ? null : Number(e.target.value)
-                                      setEditingCell({ ...editingCell, value: val })
-                                      handleSave(blockId, 'priority', val)
-                                    }}
-                                    onBlur={() => setEditingCell(null)}
-                                    onClick={e => e.stopPropagation()}
-                                  >
-                                    <option value="">无</option>
-                                    <option value="2">高</option>
-                                    <option value="1">中</option>
-                                    <option value="0">低</option>
-                                  </select>
+                                  <div className="relative">
+                                    {prioLabel && (
+                                      <span
+                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                        onClick={e => e.stopPropagation()}
+                                      >
+                                        <span>{prioLabel}</span>
+                                      </span>
+                                    )}
+                                    {!prioLabel && (
+                                      <span
+                                        className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
+                                        onClick={e => e.stopPropagation()}
+                                      >
+                                        <span>无</span>
+                                      </span>
+                                    )}
+                                    <TaskPrioritySelector
+                                      currentPriority={editingCell.value}
+                                      onSelect={(val) => {
+                                        handleSave(blockId, 'priority', val)
+                                        setEditingCell(null)
+                                      }}
+                                      onClose={() => setEditingCell(null)}
+                                    />
+                                  </div>
                                 ) : (
                                   prioLabel && (
                                     <span

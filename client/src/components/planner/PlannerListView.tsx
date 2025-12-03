@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Task } from '../../types'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
+import { TaskPrioritySelector } from './TaskPrioritySelector'
 
 export interface PlannerListViewProps {
   state: any
@@ -37,7 +38,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     })
   }, [unscheduled])
 
-  const handleSave = async (id: string, field: string, value: any) => {
+  const handleSave = async (id: string, field: string, value: any, extras?: any) => {
     if (field === 'title') {
       await updateTaskAdvanced(id, { title: value })
     } else {
@@ -46,7 +47,11 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
       if (!t) return
       const updates: any = {}
       if (field === 'priority') updates.priority = value
-      if (field === 'type') updates.type = value
+      if (field === 'priority') updates.priority = value
+      if (field === 'type') {
+        updates.type = value
+        if (extras?.color) updates.color = extras.color
+      }
       if (field === 'tags') updates.tags = value
 
       await updateTaskMeta(id, updates)
@@ -121,10 +126,18 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             currentType={editingCell.value}
                             onSelect={(type) => {
                               setEditingCell({ ...editingCell, value: type.name })
-                              handleSave(String(t.id), 'type', type.name)
+                              handleSave(String(t.id), 'type', type.name, { color: type.color })
                             }}
                             onClose={() => setEditingCell(null)}
                             authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                          {/* Overlay to close on click outside */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingCell(null)
+                            }}
                           />
                         </div>
                       ) : (
@@ -141,22 +154,36 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
 
                       {/* Priority */}
                       {editingCell?.id === String(t.id) && editingCell.field === 'priority' ? (
-                        <select
-                          autoFocus
-                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded"
-                          value={editingCell.value ?? ''}
-                          onChange={e => {
-                            const val = e.target.value === '' ? null : Number(e.target.value)
-                            setEditingCell({ ...editingCell, value: val })
-                            handleSave(String(t.id), 'priority', val)
-                          }}
-                          onBlur={() => setEditingCell(null)}
-                        >
-                          <option value="">无</option>
-                          <option value="2">高</option>
-                          <option value="1">中</option>
-                          <option value="0">低</option>
-                        </select>
+                        <div className="relative">
+                          {typeof t.priority === 'number' ? (
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${t.priority === 2
+                                ? 'bg-red-500/20 text-red-300'
+                                : t.priority === 1
+                                  ? 'bg-yellow-500/20 text-yellow-300'
+                                  : 'bg-green-500/20 text-green-300'
+                                }`}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              无
+                            </span>
+                          )}
+                          <TaskPrioritySelector
+                            currentPriority={editingCell.value}
+                            onSelect={(val) => {
+                              handleSave(String(t.id), 'priority', val)
+                              setEditingCell(null)
+                            }}
+                            onClose={() => setEditingCell(null)}
+                          />
+                        </div>
                       ) : (
                         typeof t.priority === 'number' && (
                           <span
@@ -190,6 +217,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             currentTags={editingCell.value as string[]}
                             availableTags={state.listTagOptions || []}
                             onSelect={(tags) => {
+                              setEditingCell({ ...editingCell, value: tags })
                               handleSave(String(t.id), 'tags', tags)
                             }}
                             onClose={() => setEditingCell(null)}
