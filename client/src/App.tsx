@@ -179,6 +179,7 @@ export default function App() {
     completeTask,
     deleteTask,
     addBlock,
+    updateBlock,
     deleteBlock,
   } = usePlanner({
     date,
@@ -652,6 +653,7 @@ export default function App() {
                 setScheduleFor,
                 setShowCreateTask,
                 addBlock,
+                updateBlock,
                 deleteBlock,
                 expandAllHours,
                 collapseAllHours,

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
+import { TaskTypeSelector } from './TaskTypeSelector'
+import { TaskTagSelector } from './TaskTagSelector'
 
 export interface PlannerDayViewProps {
   state: any
@@ -606,18 +608,35 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                             </div>
                                             <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
                                               {editingCell?.id === blockId && editingCell.field === 'type' ? (
-                                                <input
-                                                  autoFocus
-                                                  className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-20"
-                                                  value={editingCell.value}
-                                                  onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                                  onBlur={() => handleSave(blockId, 'type', editingCell.value)}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') handleSave(blockId, 'type', editingCell.value)
-                                                    if (e.key === 'Escape') setEditingCell(null)
-                                                  }}
-                                                  onClick={e => e.stopPropagation()}
-                                                />
+                                                <div className="relative">
+                                                  <span
+                                                    className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span
+                                                      className="w-2 h-2 rounded-full"
+                                                      style={{ backgroundColor: typeDotColor }}
+                                                    ></span>
+                                                    <span>{editingCell.value || '无类型'}</span>
+                                                  </span>
+                                                  <TaskTypeSelector
+                                                    currentType={editingCell.value}
+                                                    authHeaders={actions.headers()}
+                                                    onSelect={(t) => {
+                                                      handleSave(blockId, 'type', t.name)
+                                                      setEditingCell(null)
+                                                    }}
+                                                    onClose={() => setEditingCell(null)}
+                                                  />
+                                                  {/* Overlay to close on click outside */}
+                                                  <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell(null)
+                                                    }}
+                                                  />
+                                                </div>
                                               ) : (
                                                 type && (
                                                   <span
@@ -637,24 +656,28 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                               )}
 
                                               {editingCell?.id === blockId && editingCell.field === 'tags' ? (
-                                                <input
-                                                  autoFocus
-                                                  className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-32"
-                                                  value={editingCell.value}
-                                                  onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                                  onBlur={() => {
-                                                    const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
-                                                    handleSave(blockId, 'tags', tags)
-                                                  }}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') {
-                                                      const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                                                <div className="relative">
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {(editingCell.value as string[]).map((g: string) => (
+                                                      <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                                        #{g}
+                                                      </span>
+                                                    ))}
+                                                    {(editingCell.value as string[]).length === 0 && (
+                                                      <span className="text-gray-500 text-[10px]">无标签</span>
+                                                    )}
+                                                  </div>
+                                                  <TaskTagSelector
+                                                    currentTags={editingCell.value as string[]}
+                                                    availableTags={listTagOptions || []}
+                                                    onSelect={(tags) => {
+                                                      setEditingCell({ ...editingCell, value: tags })
                                                       handleSave(blockId, 'tags', tags)
-                                                    }
-                                                    if (e.key === 'Escape') setEditingCell(null)
-                                                  }}
-                                                  onClick={e => e.stopPropagation()}
-                                                />
+                                                    }}
+                                                    onClose={() => setEditingCell(null)}
+                                                    authHeaders={actions.headers ? actions.headers() : {}}
+                                                  />
+                                                </div>
                                               ) : (
                                                 tags.map((g: string) => (
                                                   <span
@@ -662,7 +685,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                     className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
                                                     onDoubleClick={(e) => {
                                                       e.stopPropagation()
-                                                      setEditingCell({ id: blockId, field: 'tags', value: tags.join(', ') })
+                                                      setEditingCell({ id: blockId, field: 'tags', value: tags })
                                                     }}
                                                   >
                                                     #{g}
@@ -700,12 +723,17 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                             )}
                                             {editingCell?.id === blockId && editingCell.field === 'time' ? (
                                               <div
-                                                className="flex items-center gap-1 bg-slate-800 rounded px-1"
+                                                className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"
                                                 onClick={e => e.stopPropagation()}
+                                                onBlur={(e) => {
+                                                  const target = e.relatedTarget as HTMLElement | null
+                                                  if (target && target.closest('.time-edit-container')) return
+                                                  handleSave(blockId, 'time', editingCell.value)
+                                                }}
                                               >
                                                 <input
                                                   type="time"
-                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[45px]"
+                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
                                                   value={editingCell.value.startStr}
                                                   onChange={e => setEditingCell({
                                                     ...editingCell,
@@ -716,16 +744,15 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                     if (e.key === 'Escape') setEditingCell(null)
                                                   }}
                                                 />
-                                                <span>-</span>
+                                                <span className="text-[10px]">-</span>
                                                 <input
                                                   type="time"
-                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[45px]"
+                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
                                                   value={editingCell.value.endStr}
                                                   onChange={e => setEditingCell({
                                                     ...editingCell,
                                                     value: { ...editingCell.value, endStr: e.target.value }
                                                   })}
-                                                  onBlur={() => handleSave(blockId, 'time', editingCell.value)}
                                                   onKeyDown={e => {
                                                     if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
                                                     if (e.key === 'Escape') setEditingCell(null)
@@ -914,7 +941,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
       <div className="md:col-span-2 lg:col-span-2">
         <PlannerListView
-          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap }}
+          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTagOptions }}
           actions={{
             fetchUnscheduled,
             setUnschedMenuOpenId,
@@ -925,6 +952,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
             setShowCreateTask,
             updateTaskMeta,
             updateTaskAdvanced,
+            headers: actions.headers,
           }}
         />
       </div>

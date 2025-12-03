@@ -53,6 +53,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     setShowCreateTask,
     updateTaskAdvanced,
     updateBlock,
+    headers,
   } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
@@ -740,7 +741,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
       </div>
       <div className="md:col-span-2 lg:col-span-2">
         <PlannerListView
-          state={{ unscheduled, unschedMenuOpenId, listEdit }}
+          state={{ unscheduled, unschedMenuOpenId, listEdit, listTagOptions }}
           actions={{
             fetchUnscheduled,
             setUnschedMenuOpenId,
@@ -751,6 +752,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
             setShowCreateTask,
             updateTaskMeta,
             updateTaskAdvanced,
+            headers,
           }}
         />
       </div>

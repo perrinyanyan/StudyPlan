@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Task } from '../../types'
+import { TaskTypeSelector } from './TaskTypeSelector'
+import { TaskTagSelector } from './TaskTagSelector'
 
 export interface PlannerListViewProps {
   state: any
@@ -107,17 +109,24 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                     <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
                       {/* Type */}
                       {editingCell?.id === String(t.id) && editingCell.field === 'type' ? (
-                        <input
-                          autoFocus
-                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-20"
-                          value={editingCell.value}
-                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => handleSave(String(t.id), 'type', editingCell.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleSave(String(t.id), 'type', editingCell.value)
-                            if (e.key === 'Escape') setEditingCell(null)
-                          }}
-                        />
+                        <div className="relative">
+                          {t.type && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                              <span>{t.type}</span>
+                            </span>
+                          )}
+                          {!t.type && <span className="text-[10px] text-slate-500">无类型</span>}
+                          <TaskTypeSelector
+                            currentType={editingCell.value}
+                            onSelect={(type) => {
+                              setEditingCell({ ...editingCell, value: type.name })
+                              handleSave(String(t.id), 'type', type.name)
+                            }}
+                            onClose={() => setEditingCell(null)}
+                            authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                        </div>
                       ) : (
                         t.type && (
                           <span
@@ -166,33 +175,46 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
 
                       {/* Tags */}
                       {editingCell?.id === String(t.id) && editingCell.field === 'tags' ? (
-                        <input
-                          autoFocus
-                          className="bg-slate-700 text-white text-[11px] px-1 py-0 rounded w-32"
-                          value={editingCell.value}
-                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                          onBlur={() => {
-                            const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
-                            handleSave(String(t.id), 'tags', tags)
-                          }}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') {
-                              const tags = editingCell.value.split(/[\s,]+/).map((s: string) => s.trim()).filter(Boolean)
+                        <div className="relative">
+                          <div className="flex flex-wrap gap-1">
+                            {(editingCell.value as string[]).map((g: string) => (
+                              <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                #{g}
+                              </span>
+                            ))}
+                            {(editingCell.value as string[]).length === 0 && (
+                              <span className="text-gray-500 text-[10px]">无标签</span>
+                            )}
+                          </div>
+                          <TaskTagSelector
+                            currentTags={editingCell.value as string[]}
+                            availableTags={state.listTagOptions || []}
+                            onSelect={(tags) => {
                               handleSave(String(t.id), 'tags', tags)
-                            }
-                            if (e.key === 'Escape') setEditingCell(null)
-                          }}
-                        />
+                            }}
+                            onClose={() => setEditingCell(null)}
+                            authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                        </div>
                       ) : (
-                        (t.tags || []).map((g) => (
+                        (t.tags && t.tags.length > 0) ? (
+                          t.tags.map((g) => (
+                            <span
+                              key={g}
+                              className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                              onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: t.tags || [] })}
+                            >
+                              #{g}
+                            </span>
+                          ))
+                        ) : (
                           <span
-                            key={g}
-                            className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
-                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: (t.tags || []).join(', ') })}
+                            className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: [] })}
                           >
-                            #{g}
+                            无标签
                           </span>
-                        ))
+                        )
                       )}
                     </div>
                   </div>

@@ -227,6 +227,7 @@ export function PlannerScreen({
             updateTaskAdvanced,
             fmtHHmm,
             formatYmdWeek,
+            headers,
           }}
         />
       ) : plannerView === 'month' ? (
@@ -376,6 +377,7 @@ export function PlannerScreen({
             setCenterAlert,
             createTaskAdvanced,
             updateTaskAdvanced,
+            headers,
           }}
         />
       )}

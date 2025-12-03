@@ -68,6 +68,7 @@ app.use('/push', pushSubLimiter, pushRouter);
 app.use('/notifications', notificationsRouter);
 app.use('/classes', classesRouter);
 app.use('/task-types', taskTypesRouter);
+app.use('/tags', tagsRouter);
 app.use('/settings', settingsRouter);
 app.use('/admin', adminRouter);
 app.use('/upload', uploadRouter);
