@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { PlanVisibilityModal } from './PlanVisibilityModal';
 import { SetSelectedPlanModal } from './SetSelectedPlanModal';
+import { TaskTypeSelector } from '../planner/TaskTypeSelector';
+import { TaskTagSelector } from '../planner/TaskTagSelector';
+import { TaskPrioritySelector } from '../planner/TaskPrioritySelector';
 
 interface PlanDetailsModalProps {
     planId: string;
@@ -24,10 +27,17 @@ interface Course {
     sessions: Session[];
 }
 
+interface CourseSettings {
+    type: string;
+    priority: number;
+    tags: string[];
+}
+
 interface PlanItem {
     id: string;
     kind: string;
     course: Course;
+    settings?: CourseSettings;
 }
 
 interface PlanDetails {
@@ -43,12 +53,6 @@ interface PlanDetails {
     items: PlanItem[];
 }
 
-interface CourseSettings {
-    type: string;
-    priority: number;
-    tags: string[];
-}
-
 type TypeRow = { id: string; name: string; color: string }
 
 export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetailsModalProps) {
@@ -61,6 +65,9 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
     const [applying, setApplying] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [courseSettings, setCourseSettings] = useState<Map<string, CourseSettings>>(new Map());
+
+    // Inline editing state
+    const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null);
 
     const [types, setTypes] = useState<TypeRow[]>([]);
     const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -87,9 +94,6 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         '#F472B6', // Pink
     ];
 
-    // Tag creation state (per course, but we use a temporary state for the input)
-    const [tagInputs, setTagInputs] = useState<Map<string, string>>(new Map());
-
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -106,7 +110,11 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
 
                 const defaultSettings = new Map<string, CourseSettings>();
                 data.items.forEach((item: PlanItem) => {
-                    defaultSettings.set(item.course.id, { type: 'Class', priority: 1, tags: [] });
+                    if (item.settings) {
+                        defaultSettings.set(item.course.id, item.settings);
+                    } else {
+                        defaultSettings.set(item.course.id, { type: 'Class', priority: 1, tags: [] });
+                    }
                 });
                 setCourseSettings(defaultSettings);
 
@@ -167,32 +175,38 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         setSelectedCourseIds(selectedCourseIds.length === allIds.length ? [] : allIds);
     };
 
-    const updateCourseSetting = (courseId: string, field: keyof CourseSettings, value: any) => {
+    const updateCourseSetting = async (courseId: string, field: keyof CourseSettings, value: any) => {
+        // Optimistic update
         setCourseSettings(prev => {
             const newMap = new Map(prev);
             const current = newMap.get(courseId) || { type: 'Class', priority: 1, tags: [] };
             newMap.set(courseId, { ...current, [field]: value });
             return newMap;
         });
-    };
 
-    const handleTagInput = (courseId: string, value: string) => {
-        setTagInputs(prev => new Map(prev).set(courseId, value));
-    };
+        // Find the plan item ID
+        const item = details?.items.find(i => i.course.id === courseId);
+        if (!item) return;
 
-    const addTag = (courseId: string, tag: string) => {
-        const t = tag.trim();
-        if (!t) return;
+        // Prepare new settings
         const currentSettings = courseSettings.get(courseId) || { type: 'Class', priority: 1, tags: [] };
-        if (!currentSettings.tags.includes(t)) {
-            updateCourseSetting(courseId, 'tags', [...currentSettings.tags, t]);
+        const newSettings = { ...currentSettings, [field]: value };
+
+        try {
+            const res = await fetch(`/plans/${planId}/items/${item.id}`, {
+                method: 'PATCH',
+                headers: { ...headers(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ settings: newSettings })
+            });
+
+            if (!res.ok) {
+                throw new Error('Failed to update settings');
+            }
+        } catch (err) {
+            console.error('Failed to persist settings:', err);
+            // Revert on error (optional, but good UX)
+            // For now, we'll just log it.
         }
-        setTagInputs(prev => new Map(prev).set(courseId, ''));
-    };
-
-    const removeTag = (courseId: string, tag: string) => {
-        const currentSettings = courseSettings.get(courseId) || { type: 'Class', priority: 1, tags: [] };
-        updateCourseSetting(courseId, 'tags', currentSettings.tags.filter(t => t !== tag));
     };
 
     async function addType(name: string, color: string): Promise<boolean> {
@@ -346,14 +360,15 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                                         {selectedCourseIds.length === details.items.length ? '取消全选' : '全选'}
                                     </button>
                                 </div>
-                                <div className="grid gap-4">
+                                <div className="grid gap-2">
                                     {details.items.map((item) => {
                                         const isSelected = selectedCourseIds.includes(item.course.id);
                                         const settings = courseSettings.get(item.course.id) || { type: 'Class', priority: 1, tags: [] };
+                                        const typeObj = types.find(t => t.name === settings.type);
 
                                         return (
-                                            <div key={item.id} className={`border rounded-lg p-4 transition-colors ${isSelected ? 'border-[#137fec] bg-[#137fec]/5' : 'border-white/10 bg-white/5'}`}>
-                                                <div className="flex gap-3 mb-3">
+                                            <div key={item.id} className={`border rounded-lg p-3 transition-colors ${isSelected ? 'border-[#137fec] bg-[#137fec]/5' : 'border-white/10 bg-white/5'}`}>
+                                                <div className="flex items-start gap-3">
                                                     <input
                                                         type="checkbox"
                                                         className="mt-1.5 h-4 w-4 rounded border-slate-600 bg-slate-700 text-[#137fec] focus:ring-[#137fec]"
@@ -361,118 +376,110 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                                                         onChange={() => handleToggleCourse(item.course.id)}
                                                     />
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="flex justify-between mb-2">
-                                                            <div>
-                                                                <div className="font-bold text-lg text-[#137fec]">{item.course.code}</div>
-                                                                <div className="font-medium text-white">{item.course.name}</div>
+                                                        <div className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className="font-bold text-[#137fec]">{item.course.code}</span>
+                                                                <span className="font-medium text-white">{item.course.name}</span>
+
+                                                                {/* Priority */}
+                                                                {editingCell?.id === item.course.id && editingCell.field === 'priority' ? (
+                                                                    <div className="relative">
+                                                                        <TaskPrioritySelector
+                                                                            currentPriority={editingCell.value}
+                                                                            onSelect={(val) => {
+                                                                                updateCourseSetting(item.course.id, 'priority', val);
+                                                                                setEditingCell(null);
+                                                                            }}
+                                                                            onClose={() => setEditingCell(null)}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <span
+                                                                        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${settings.priority === 2
+                                                                            ? 'bg-red-500/20 text-red-300'
+                                                                            : settings.priority === 1
+                                                                                ? 'bg-yellow-500/20 text-yellow-300'
+                                                                                : 'bg-green-500/20 text-green-300'
+                                                                            }`}
+                                                                        onDoubleClick={() => setEditingCell({ id: item.course.id, field: 'priority', value: settings.priority })}
+                                                                    >
+                                                                        {settings.priority === 2 ? '高' : settings.priority === 1 ? '中' : '低'}
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Type */}
+                                                                {editingCell?.id === item.course.id && editingCell.field === 'type' ? (
+                                                                    <div className="relative">
+                                                                        <TaskTypeSelector
+                                                                            currentType={editingCell.value}
+                                                                            onSelect={(type) => {
+                                                                                updateCourseSetting(item.course.id, 'type', type.name);
+                                                                                setEditingCell(null);
+                                                                            }}
+                                                                            onClose={() => setEditingCell(null)}
+                                                                            authHeaders={headers()}
+                                                                        />
+                                                                        <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setEditingCell(null); }} />
+                                                                    </div>
+                                                                ) : (
+                                                                    <span
+                                                                        className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600 text-xs"
+                                                                        onDoubleClick={() => setEditingCell({ id: item.course.id, field: 'type', value: settings.type })}
+                                                                    >
+                                                                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: typeObj?.color || '#9CA3AF' }}></span>
+                                                                        <span>{settings.type}</span>
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Tags */}
+                                                                {editingCell?.id === item.course.id && editingCell.field === 'tags' ? (
+                                                                    <div className="relative">
+                                                                        <div className="flex flex-wrap gap-1">
+                                                                            {(editingCell.value as string[]).map((g: string) => (
+                                                                                <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 text-xs">#{g}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                        <TaskTagSelector
+                                                                            currentTags={editingCell.value as string[]}
+                                                                            availableTags={availableTags}
+                                                                            onSelect={(tags) => {
+                                                                                updateCourseSetting(item.course.id, 'tags', tags);
+                                                                                setEditingCell(null);
+                                                                            }}
+                                                                            onClose={() => setEditingCell(null)}
+                                                                            authHeaders={headers()}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    settings.tags.length > 0 ? (
+                                                                        settings.tags.map((g) => (
+                                                                            <span
+                                                                                key={g}
+                                                                                className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30 text-xs"
+                                                                                onDoubleClick={() => setEditingCell({ id: item.course.id, field: 'tags', value: settings.tags })}
+                                                                            >
+                                                                                #{g}
+                                                                            </span>
+                                                                        ))
+                                                                    ) : (
+                                                                        <span
+                                                                            className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
+                                                                            onDoubleClick={() => setEditingCell({ id: item.course.id, field: 'tags', value: [] })}
+                                                                        >
+                                                                            #
+                                                                        </span>
+                                                                    )
+                                                                )}
                                                             </div>
+
                                                             <div className="text-sm text-slate-400">{item.course.sessions.length} 节课</div>
                                                         </div>
 
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-slate-900/50 rounded border border-white/5">
-                                                            {/* Category Selection */}
-                                                            <div className="flex flex-col gap-2">
-                                                                <label className="text-xs font-medium text-slate-400">分类</label>
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {types.map((t) => (
-                                                                        <button
-                                                                            key={t.id}
-                                                                            onClick={() => updateCourseSetting(item.course.id, 'type', t.name)}
-                                                                            className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs border transition-all ${settings.type === t.name
-                                                                                ? 'bg-[#137fec]/20 border-[#137fec] text-white'
-                                                                                : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500'
-                                                                                }`}
-                                                                        >
-                                                                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }}></span>
-                                                                            {t.name}
-                                                                        </button>
-                                                                    ))}
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setNewTypeName('');
-                                                                            setNewTypeColor(TYPE_COLOR_OPTIONS[0]);
-                                                                            setTypeModalOpen(true);
-                                                                        }}
-                                                                        className="flex items-center gap-1 px-2 py-1 rounded-full text-xs border border-dashed border-slate-600 text-slate-500 hover:text-[#137fec] hover:border-[#137fec]"
-                                                                    >
-                                                                        <span className="material-symbols-outlined text-[14px]">add</span>
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Priority Selection */}
-                                                            <div className="flex flex-col gap-2">
-                                                                <label className="text-xs font-medium text-slate-400">优先级</label>
-                                                                <div className="flex rounded-lg border border-slate-700 bg-slate-800 p-0.5">
-                                                                    {[
-                                                                        { val: 2, label: '高', color: 'text-red-400', bg: 'bg-red-500/20' },
-                                                                        { val: 1, label: '中', color: 'text-orange-400', bg: 'bg-orange-500/20' },
-                                                                        { val: 0, label: '低', color: 'text-sky-400', bg: 'bg-[#137fec]/20' }
-                                                                    ].map((opt) => (
-                                                                        <button
-                                                                            key={opt.val}
-                                                                            onClick={() => updateCourseSetting(item.course.id, 'priority', opt.val)}
-                                                                            className={`flex-1 py-1 text-xs font-medium rounded ${settings.priority === opt.val
-                                                                                ? `${opt.bg} ${opt.color}`
-                                                                                : 'text-slate-500 hover:text-slate-300'
-                                                                                }`}
-                                                                        >
-                                                                            {opt.label}
-                                                                        </button>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Tags Selection */}
-                                                            <div className="flex flex-col gap-2">
-                                                                <label className="text-xs font-medium text-slate-400">标签</label>
-                                                                <div className="flex flex-wrap gap-1.5 min-h-[32px] p-1.5 rounded border border-slate-700 bg-slate-800">
-                                                                    {settings.tags.map(tag => (
-                                                                        <span key={tag} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#137fec]/20 text-[#137fec] text-xs">
-                                                                            #{tag}
-                                                                            <button onClick={() => removeTag(item.course.id, tag)} className="hover:text-white">
-                                                                                <span className="material-symbols-outlined text-[10px]">close</span>
-                                                                            </button>
-                                                                        </span>
-                                                                    ))}
-                                                                    <input
-                                                                        className="flex-1 min-w-[60px] bg-transparent border-none p-0 text-xs text-white placeholder-slate-600 focus:ring-0"
-                                                                        placeholder={settings.tags.length === 0 ? "添加标签..." : ""}
-                                                                        value={tagInputs.get(item.course.id) || ''}
-                                                                        onChange={(e) => handleTagInput(item.course.id, e.target.value)}
-                                                                        onKeyDown={(e) => {
-                                                                            if (e.key === 'Enter') {
-                                                                                e.preventDefault();
-                                                                                addTag(item.course.id, tagInputs.get(item.course.id) || '');
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                </div>
-                                                                {/* Quick select tags */}
-                                                                {availableTags.length > 0 && (
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {availableTags.slice(0, 5).map(tag => (
-                                                                            <button
-                                                                                key={tag}
-                                                                                onClick={() => addTag(item.course.id, tag)}
-                                                                                className={`px-1.5 py-0.5 rounded text-[10px] border ${settings.tags.includes(tag)
-                                                                                    ? 'border-[#137fec] text-[#137fec] bg-[#137fec]/10'
-                                                                                    : 'border-slate-700 text-slate-500 hover:border-slate-500'
-                                                                                    }`}
-                                                                            >
-                                                                                #{tag}
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="bg-slate-800/30 rounded p-3 space-y-2 mt-3 border border-white/5">
+                                                        <div className="bg-slate-800/30 rounded p-2 space-y-1 mt-2 border border-white/5">
                                                             {item.course.sessions.map(s => (
-                                                                <div key={s.id} className="flex text-sm text-slate-400 gap-4">
-                                                                    <div className="w-32">📅 {s.date}</div>
-                                                                    <div className="w-32">⏰ {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</div>
+                                                                <div key={s.id} className="flex text-xs text-slate-400 gap-3">
+                                                                    <div className="w-24">📅 {s.date}</div>
+                                                                    <div className="w-24">⏰ {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</div>
                                                                     <div>📍 {s.location}</div>
                                                                 </div>
                                                             ))}

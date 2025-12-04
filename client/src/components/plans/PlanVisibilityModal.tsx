@@ -41,21 +41,30 @@ export function PlanVisibilityModal({ planId, planName, planScope, onClose, onSu
                 visData.visibility.forEach((rule: any) => {
                     currentIds.add(rule.target_id)
                 })
-                setSelectedIds(currentIds)
 
                 // Fetch available targets based on plan scope
+                let availableTargets: any[] = []
                 if (planScope === 'global') {
                     // Fetch all schools for system admin
                     const res = await fetch('/admin/schools', { headers: headers() })
                     if (!res.ok) throw new Error('Failed to fetch schools')
                     const data = await res.json()
-                    setSchools(data.schools || [])
+                    availableTargets = data.schools || []
+                    setSchools(availableTargets)
                 } else if (planScope === 'school') {
                     // Fetch all classes for school admin
                     const res = await fetch('/admin/classes', { headers: headers() })
                     if (!res.ok) throw new Error('Failed to fetch classes')
                     const data = await res.json()
-                    setClasses(data.classes || [])
+                    availableTargets = data.classes || []
+                    setClasses(availableTargets)
+                }
+
+                // If no rules exist, it means "Visible to All", so select all by default
+                if (visData.visibility.length === 0 && availableTargets.length > 0) {
+                    setSelectedIds(new Set(availableTargets.map(t => t.id)))
+                } else {
+                    setSelectedIds(currentIds)
                 }
             } catch (err: any) {
                 setError(err.message)
@@ -177,8 +186,8 @@ export function PlanVisibilityModal({ planId, planName, planScope, onClose, onSu
                                     <label
                                         key={item.id}
                                         className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${selectedIds.has(item.id)
-                                                ? 'bg-blue-500/10 border-blue-500/50'
-                                                : 'bg-slate-800 border-white/10 hover:border-white/20'
+                                            ? 'bg-blue-500/10 border-blue-500/50'
+                                            : 'bg-slate-800 border-white/10 hover:border-white/20'
                                             }`}
                                     >
                                         <input

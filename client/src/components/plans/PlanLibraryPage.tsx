@@ -51,7 +51,7 @@ export function PlanLibraryPage() {
     const categories = Array.from(new Set(plans.map(p => p.category).filter(Boolean))) as string[]
 
     const handleDownloadTemplate = () => {
-        const headers = ['plan_name', 'category', 'course_code', 'course_name', 'date', 'start_time', 'end_time', 'location']
+        const headers = ['plan_name', 'category', 'course_code', 'course_name', 'date', 'start_time', 'end_time', 'location', 'type', 'priority', 'tags']
         const csvContent = headers.join(',') + '\n'
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
         const link = document.createElement('a')
@@ -82,11 +82,11 @@ export function PlanLibraryPage() {
                         onChange={e => setFilterScope(e.target.value)}
                         className="bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     >
-                        <option value="all">所有范围</option>
-                        <option value="global">全局</option>
-                        <option value="school">学校</option>
-                        <option value="class">班级</option>
-                        <option value="personal">个人</option>
+                        <option value="all" className="bg-slate-800">所有范围</option>
+                        <option value="global" className="bg-slate-800">全局</option>
+                        <option value="school" className="bg-slate-800">学校</option>
+                        <option value="class" className="bg-slate-800">班级</option>
+                        <option value="personal" className="bg-slate-800">个人</option>
                     </select>
 
                     <select
@@ -94,8 +94,8 @@ export function PlanLibraryPage() {
                         onChange={e => setFilterCategory(e.target.value)}
                         className="bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     >
-                        <option value="all">所有分类</option>
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                        <option value="all" className="bg-slate-800">所有计划分类</option>
+                        {categories.map(c => <option key={c} value={c} className="bg-slate-800">{c}</option>)}
                     </select>
 
                     <button
