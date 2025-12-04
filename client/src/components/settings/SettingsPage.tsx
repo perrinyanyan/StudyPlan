@@ -7,31 +7,29 @@ import { TaskTypeSettings } from './TaskTypeSettings'
 import { TagSettings } from './TagSettings'
 
 export interface SettingsPageProps {
-    swReady: boolean
     pushMsg: string
+    isSubscribed: boolean
     dailyEnabled: boolean
     settings: UserSettings
     settingsMsg: string
     tzOptions: string[]
     tzPlaceholder: string
-    ensureSW: () => void
-    subscribePush: () => void
-    unsubscribePush: () => void
-    testPush: () => void
+    subscribePush: () => Promise<boolean>
+    unsubscribePush: () => Promise<void>
+    testPush: () => Promise<void>
     saveSettings: () => void | Promise<void>
     setDailyEnabled: (value: boolean) => void
     setSettings: Dispatch<SetStateAction<UserSettings>>
 }
 
 export function SettingsPage({
-    swReady,
     pushMsg,
+    isSubscribed,
     dailyEnabled,
     settings,
     settingsMsg,
     tzOptions,
     tzPlaceholder,
-    ensureSW,
     subscribePush,
     unsubscribePush,
     testPush,
@@ -170,6 +168,17 @@ export function SettingsPage({
             }
         } catch (e) {
             setAvatarMsg('上传失败')
+        }
+    }
+
+    const handlePushToggle = async (checked: boolean) => {
+        if (checked) {
+            const success = await subscribePush()
+            if (success) {
+                await testPush()
+            }
+        } else {
+            await unsubscribePush()
         }
     }
 
@@ -358,46 +367,20 @@ export function SettingsPage({
                 </div>
 
                 <div className="p-6 space-y-6">
-                    <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/50 border border-slate-700/30">
-                        <div className="flex items-center gap-3">
-                            <div className={`w-2 h-2 rounded-full ${swReady ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-500'}`} />
-                            <span className="text-sm font-medium text-slate-200">
-                                Service Worker 状态: {swReady ? '已就绪' : '未注册'}
-                            </span>
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <label className="text-base font-medium text-slate-200 block mb-1">启用推送通知</label>
+                            <p className="text-sm text-slate-400">开启后将自动订阅并发送测试通知</p>
                         </div>
-                        <button
-                            onClick={ensureSW}
-                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors border border-slate-700"
-                        >
-                            重新检测
-                        </button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            onClick={subscribePush}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={!swReady}
-                        >
-                            <span className="material-symbols-outlined text-[20px]">notifications_active</span>
-                            订阅通知
-                        </button>
-                        <button
-                            onClick={unsubscribePush}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={!swReady}
-                        >
-                            <span className="material-symbols-outlined text-[20px]">notifications_off</span>
-                            关闭通知
-                        </button>
-                        <button
-                            onClick={testPush}
-                            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                            disabled={!swReady}
-                        >
-                            <span className="material-symbols-outlined text-[20px]">send</span>
-                            发送测试通知
-                        </button>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={isSubscribed}
+                                onChange={(e) => handlePushToggle(e.target.checked)}
+                            />
+                            <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
                     </div>
 
                     {pushMsg && (
@@ -406,29 +389,14 @@ export function SettingsPage({
                             {pushMsg}
                         </div>
                     )}
-                </div>
-            </section>
 
-            {/* Preferences Section */}
-            <section className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:border-slate-600/50">
-                <div className="p-6 border-b border-slate-700/50">
-                    <div className="flex items-center gap-3">
-                        <span className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
-                            <span className="material-symbols-outlined">tune</span>
-                        </span>
-                        <div>
-                            <h2 className="text-lg font-semibold text-white">偏好设置</h2>
-                            <p className="text-sm text-slate-400">自定义您的使用体验</p>
-                        </div>
-                    </div>
-                </div>
+                    <div className="h-px bg-slate-700/50" />
 
-                <div className="p-6 space-y-6">
                     {/* Daily Summary */}
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <label className="text-base font-medium text-slate-200 block mb-1">每日总结通知</label>
-                            <p className="text-sm text-slate-400">在指定时间接收当天的任务总结</p>
+                            <p className="text-sm text-slate-400">在指定时间接收当天的任务总结 (默认 21:00)</p>
                         </div>
                         <div className="flex items-center gap-3">
                             <input
@@ -461,27 +429,47 @@ export function SettingsPage({
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px]">
                                 public
                             </span>
-                            <input
-                                list="tz-list"
-                                className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all"
+                            <select
+                                className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 outline-none transition-all appearance-none"
                                 value={settings.timezone || ''}
                                 onChange={(e) =>
                                     setSettings((s) => ({ ...s, timezone: e.target.value || null }))
                                 }
-                                placeholder={tzPlaceholder}
-                            />
-                            <datalist id="tz-list">
+                            >
+                                <option value="" disabled>{tzPlaceholder}</option>
                                 {tzOptions.map((z) => (
-                                    <option key={z} value={z} />
+                                    <option key={z} value={z} className="bg-slate-900 text-white">
+                                        {z}
+                                    </option>
                                 ))}
-                            </datalist>
+                            </select>
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 material-symbols-outlined text-[20px] pointer-events-none">
+                                expand_more
+                            </span>
                         </div>
                         <p className="mt-2 text-sm text-slate-400">
                             用于正确显示时间和发送通知
                         </p>
                     </div>
+                </div>
+            </section>
 
-                    <div className="h-px bg-slate-700/50" />
+            {/* Preferences Section */}
+            <section className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:border-slate-600/50">
+                <div className="p-6 border-b border-slate-700/50">
+                    <div className="flex items-center gap-3">
+                        <span className="p-2 rounded-lg bg-purple-500/10 text-purple-400">
+                            <span className="material-symbols-outlined">tune</span>
+                        </span>
+                        <div>
+                            <h2 className="text-lg font-semibold text-white">专注设置</h2>
+                            <p className="text-sm text-slate-400">自定义您的专注体验</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+
 
                     {/* Focus Duration */}
                     <div>

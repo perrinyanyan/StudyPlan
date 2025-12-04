@@ -14,7 +14,6 @@ export function PlanLibraryPage() {
     const [showSelectedOnly, setShowSelectedOnly] = useState(false)
 
     const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set())
-    const [userClasses, setUserClasses] = useState<any[]>([])
 
     const fetchPlans = async () => {
         setLoading(true)
@@ -27,36 +26,9 @@ export function PlanLibraryPage() {
             const data = await res.json()
             setPlans(data.plans)
 
-            // Fetch user's classes and their selected plans
-            try {
-                const classesRes = await fetch('/admin/classes', {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                })
-                if (classesRes.ok) {
-                    const classesData = await classesRes.json()
-                    setUserClasses(classesData.classes || [])
-
-                    // Fetch selected plans for all classes
-                    const selectedIds = new Set<string>()
-                    for (const cls of classesData.classes || []) {
-                        try {
-                            const selectedRes = await fetch(`/classes/${cls.id}/selected-plan`, {
-                                headers: { 'Authorization': `Bearer ${token}` }
-                            })
-                            if (selectedRes.ok) {
-                                const selectedData = await selectedRes.json()
-                                if (selectedData.optional_plan_id) {
-                                    selectedIds.add(selectedData.optional_plan_id)
-                                }
-                            }
-                        } catch (err) {
-                            // Ignore errors for individual classes
-                        }
-                    }
-                    setSelectedPlanIds(selectedIds)
-                }
-            } catch (err) {
-                // Ignore class fetching errors
+            // Set selected plan IDs directly from response
+            if (data.selectedPlanIds && Array.isArray(data.selectedPlanIds)) {
+                setSelectedPlanIds(new Set(data.selectedPlanIds))
             }
         } catch (err: any) {
             setError(err.message)
@@ -77,6 +49,20 @@ export function PlanLibraryPage() {
     })
 
     const categories = Array.from(new Set(plans.map(p => p.category).filter(Boolean))) as string[]
+
+    const handleDownloadTemplate = () => {
+        const headers = ['plan_name', 'category', 'course_code', 'course_name', 'date', 'start_time', 'end_time', 'location']
+        const csvContent = headers.join(',') + '\n'
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const link = document.createElement('a')
+        const url = URL.createObjectURL(blob)
+        link.setAttribute('href', url)
+        link.setAttribute('download', 'plan_import_template.csv')
+        link.style.visibility = 'hidden'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+    }
 
     return (
         <div className="p-6 max-w-6xl mx-auto text-white">
@@ -111,6 +97,14 @@ export function PlanLibraryPage() {
                         <option value="all">所有分类</option>
                         {categories.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
+
+                    <button
+                        onClick={handleDownloadTemplate}
+                        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium flex items-center gap-2 border border-white/10"
+                        title="下载导入模板"
+                    >
+                        <span className="material-symbols-outlined text-[18px]">download</span>
+                    </button>
 
                     <button
                         onClick={() => setShowImportModal(true)}

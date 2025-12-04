@@ -7,8 +7,9 @@ export interface UsePushNotificationsParams {
 export interface UsePushNotificationsResult {
   pushMsg: string
   swReady: boolean
+  isSubscribed: boolean
   ensureSW: () => Promise<ServiceWorkerRegistration | null>
-  subscribePush: () => Promise<void>
+  subscribePush: () => Promise<boolean>
   unsubscribePush: () => Promise<void>
   testPush: () => Promise<void>
 }
@@ -16,6 +17,7 @@ export interface UsePushNotificationsResult {
 export function usePushNotifications({ headers }: UsePushNotificationsParams): UsePushNotificationsResult {
   const [pushMsg, setPushMsg] = useState<string>('')
   const [swReady, setSwReady] = useState<boolean>(false)
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(false)
 
   async function ensureSW(): Promise<ServiceWorkerRegistration | null> {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
@@ -29,6 +31,8 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
     const reg = await navigator.serviceWorker.getRegistration()
     if (reg) {
       setSwReady(true)
+      const sub = await reg.pushManager.getSubscription()
+      setIsSubscribed(!!sub)
       return reg
     }
     const r = await navigator.serviceWorker.register('/sw.js')
@@ -45,16 +49,16 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
     return outputArray
   }
 
-  async function subscribePush(): Promise<void> {
+  async function subscribePush(): Promise<boolean> {
     setPushMsg('')
     try {
       const reg = await ensureSW()
-      if (!reg) return
+      if (!reg) return false
       const keyResp = await fetch('/push/public-key')
       const { key } = await keyResp.json()
       if (!key) {
         setPushMsg('VAPID 公钥未配置')
-        return
+        return false
       }
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -73,11 +77,14 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
       if (!r.ok) {
         const j = await r.json().catch(() => ({}))
         setPushMsg('订阅保存失败: ' + (j.error || r.status))
-        return
+        return false
       }
       setPushMsg('订阅成功')
+      setIsSubscribed(true)
+      return true
     } catch (e: any) {
       setPushMsg('订阅失败: ' + (e?.message || String(e)))
+      return false
     }
   }
 
@@ -101,6 +108,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
       const sub = await reg.pushManager.getSubscription()
       if (!sub) {
         setPushMsg('当前未订阅')
+        setIsSubscribed(false)
         return
       }
 
@@ -115,6 +123,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
       await sub.unsubscribe()
 
       setPushMsg('已取消订阅')
+      setIsSubscribed(false)
     } catch (e: any) {
       setPushMsg('取消订阅失败: ' + (e?.message || String(e)))
     }
@@ -123,6 +132,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
   return {
     pushMsg,
     swReady,
+    isSubscribed,
     ensureSW,
     subscribePush,
     unsubscribePush,

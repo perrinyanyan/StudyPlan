@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
 import { LoginForm } from './components/auth/LoginForm'
 import { SignupForm } from './components/auth/SignupForm'
@@ -44,7 +44,7 @@ export default function App() {
   } = useShares({ jwt, headers })
 
   // Push
-  const { pushMsg, swReady, ensureSW, subscribePush, unsubscribePush, testPush } = usePushNotifications({ headers })
+  const { pushMsg, swReady, isSubscribed, ensureSW, subscribePush, unsubscribePush, testPush } = usePushNotifications({ headers })
 
   // Unscheduled pool
   const [unscheduled, setUnscheduled] = useState<Task[]>([])
@@ -113,11 +113,11 @@ export default function App() {
     const prevAlert = window.alert
     window.alert = (message?: string) => {
       const text = typeof message === 'string' ? message.trim() : ''
-      setCenterAlert({ title: text || '提示', detail: text ? undefined : undefined })
+      setCenterAlert({ title: text || '鎻愮ず', detail: text ? undefined : undefined })
       if (text && text.length > 0) {
-        setCenterAlert({ title: '提示', detail: text })
+        setCenterAlert({ title: '鎻愮ず', detail: text })
       } else {
-        setCenterAlert({ title: '提示' })
+        setCenterAlert({ title: '鎻愮ず' })
       }
     }
     return () => {
@@ -292,7 +292,7 @@ export default function App() {
               className="mt-5 inline-flex items-center justify-center rounded-lg bg-[#137fec] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f6cc8]"
               onClick={() => setCenterAlert(null)}
             >
-              我知道了
+              鎴戠煡閬撲簡
             </button>
           </div>
         </div>
@@ -408,7 +408,8 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">专注</span>}
                 </a>
               </li>
-              <li>
+
+              {/* <li>
                 <a
                   href="#/shares"
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/shares'
@@ -417,9 +418,10 @@ export default function App() {
                     }`}
                 >
                   <span className="material-symbols-outlined">share</span>
-                  {!sidebarCollapsed && <span className="font-medium">分享</span>}
+                  {!sidebarCollapsed && <span className="font-medium">鍒嗕韩</span>}
                 </a>
-              </li>
+              </li> */}
+
               <li>
                 <a
                   href="#/settings"
@@ -503,7 +505,7 @@ export default function App() {
                       current === '/shares' ? 'text-blue-300' : 'text-slate-300'
                     }
                   >
-                    分享
+                    鍒嗕韩
                   </a>
                   <a
                     href="#/settings"
@@ -511,7 +513,7 @@ export default function App() {
                       current === '/settings' ? 'text-blue-300' : 'text-slate-300'
                     }
                   >
-                    设置
+                    璁剧疆
                   </a>
                 </nav>
               </div>
@@ -519,18 +521,18 @@ export default function App() {
                 {jwt ? (
                   <div className="inline-flex items-center gap-2">
                     <span className="rounded-full bg-emerald-900/60 px-2 py-1">
-                      已登录
+                      宸茬櫥褰?
                     </span>
                     <button
                       className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
                       onClick={() => rememberJwt(null)}
                     >
-                      退出
+                      閫€鍑?
                     </button>
                   </div>
                 ) : (
                   <span className="rounded-full bg-rose-900/60 px-2 py-1">
-                    未登录
+                    鏈櫥褰?
                   </span>
                 )}
               </div>
@@ -549,14 +551,13 @@ export default function App() {
             <PlanLibraryPage />
           ) : pathOnly === '/settings' ? (
             <SettingsPage
-              swReady={swReady}
+              isSubscribed={isSubscribed}
               pushMsg={pushMsg}
               dailyEnabled={dailyEnabled}
               settings={settings}
               settingsMsg={settingsMsg}
               tzOptions={tzOptions}
               tzPlaceholder={defaultTimeZone()}
-              ensureSW={ensureSW}
               subscribePush={subscribePush}
               unsubscribePush={unsubscribePush}
               testPush={testPush}
