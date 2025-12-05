@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 
 import { LoginForm } from './components/auth/LoginForm'
 import { SignupForm } from './components/auth/SignupForm'
@@ -8,7 +8,11 @@ import { AppHeader } from './components/layout/AppHeader'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { SharesPage } from './components/shares/SharesPage'
 import { SharedPage } from './components/shares/SharedPage'
-import { RoleManagementPage } from './components/admin/RoleManagementPage'
+
+import { AdminLayout } from './components/admin/AdminLayout'
+import { SchoolManagement } from './components/admin/SchoolManagement'
+import { ClassManagement } from './components/admin/ClassManagement'
+import { UserManagement } from './components/admin/UserManagement'
 import { PlanLibraryPage } from './components/plans/PlanLibraryPage'
 import { FocusPage } from './components/focus/FocusPage'
 import type { Task, Block, DailyTasks, FetchState } from './types'
@@ -40,7 +44,7 @@ export default function App() {
   } = useShares({ jwt, headers })
 
   // Push
-  const { pushMsg, swReady, ensureSW, subscribePush, unsubscribePush, testPush } = usePushNotifications({ headers })
+  const { pushMsg, swReady, isSubscribed, ensureSW, subscribePush, unsubscribePush, testPush } = usePushNotifications({ headers })
 
   // Unscheduled pool
   const [unscheduled, setUnscheduled] = useState<Task[]>([])
@@ -109,11 +113,11 @@ export default function App() {
     const prevAlert = window.alert
     window.alert = (message?: string) => {
       const text = typeof message === 'string' ? message.trim() : ''
-      setCenterAlert({ title: text || '提示', detail: text ? undefined : undefined })
+      setCenterAlert({ title: text || '鎻愮ず', detail: text ? undefined : undefined })
       if (text && text.length > 0) {
-        setCenterAlert({ title: '提示', detail: text })
+        setCenterAlert({ title: '鎻愮ず', detail: text })
       } else {
-        setCenterAlert({ title: '提示' })
+        setCenterAlert({ title: '鎻愮ず' })
       }
     }
     return () => {
@@ -175,6 +179,7 @@ export default function App() {
     completeTask,
     deleteTask,
     addBlock,
+    updateBlock,
     deleteBlock,
   } = usePlanner({
     date,
@@ -287,13 +292,13 @@ export default function App() {
               className="mt-5 inline-flex items-center justify-center rounded-lg bg-[#137fec] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0f6cc8]"
               onClick={() => setCenterAlert(null)}
             >
-              我知道了
+              鎴戠煡閬撲簡
             </button>
           </div>
         </div>
       )}
 
-      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall && (
+      {(pathOnly === '/planner' || pathOnly === '/plans' || pathOnly.startsWith('/admin') || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall && (
         <aside
           className={`fixed inset-y-0 left-0 ${sidebarCollapsed ? 'w-16' : 'w-64'
             } bg-[#1A2633] text-white border-r border-white/10 p-2 flex flex-col`}
@@ -403,7 +408,8 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">专注</span>}
                 </a>
               </li>
-              <li>
+
+              {/* <li>
                 <a
                   href="#/shares"
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/shares'
@@ -412,9 +418,10 @@ export default function App() {
                     }`}
                 >
                   <span className="material-symbols-outlined">share</span>
-                  {!sidebarCollapsed && <span className="font-medium">分享</span>}
+                  {!sidebarCollapsed && <span className="font-medium">鍒嗕韩</span>}
                 </a>
-              </li>
+              </li> */}
+
               <li>
                 <a
                   href="#/settings"
@@ -427,17 +434,23 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">设置</span>}
                 </a>
               </li>
-              {profile?.role === 'system_admin' && (
+              {(profile?.role === 'system_admin' || profile?.role === 'school_admin' || profile?.role === 'class_admin') && (
                 <li>
                   <a
-                    href="#/admin/roles"
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/admin/roles'
+                    href={
+                      profile?.role === 'class_admin'
+                        ? '#/admin/users'
+                        : profile?.role === 'school_admin'
+                          ? '#/admin/classes'
+                          : '#/admin/schools'
+                    }
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly.startsWith('/admin')
                       ? 'bg-white/10 text-white'
                       : 'text-white/80 hover:bg-white/10'
                       }`}
                   >
                     <span className="material-symbols-outlined">admin_panel_settings</span>
-                    {!sidebarCollapsed && <span className="font-medium">角色管理</span>}
+                    {!sidebarCollapsed && <span className="font-medium">管理后台</span>}
                   </a>
                 </li>
               )}
@@ -465,7 +478,7 @@ export default function App() {
 
       <div
         className={
-          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly === '/admin/roles' || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall
+          (pathOnly === '/planner' || pathOnly === '/plans' || pathOnly.startsWith('/admin') || pathOnly === '/settings' || pathOnly === '/shares' || pathOnly === '/focus') && !isSmall
             ? sidebarCollapsed
               ? 'pl-16'
               : 'pl-64'
@@ -473,7 +486,7 @@ export default function App() {
         }
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
-          {pathOnly !== '/planner' && pathOnly !== '/plans' && pathOnly !== '/admin/roles' && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
+          {pathOnly !== '/planner' && pathOnly !== '/plans' && !pathOnly.startsWith('/admin') && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">
                 <h1 className="text-xl font-semibold">Study Planner</h1>
@@ -492,7 +505,7 @@ export default function App() {
                       current === '/shares' ? 'text-blue-300' : 'text-slate-300'
                     }
                   >
-                    分享
+                    鍒嗕韩
                   </a>
                   <a
                     href="#/settings"
@@ -500,7 +513,7 @@ export default function App() {
                       current === '/settings' ? 'text-blue-300' : 'text-slate-300'
                     }
                   >
-                    设置
+                    璁剧疆
                   </a>
                 </nav>
               </div>
@@ -508,18 +521,18 @@ export default function App() {
                 {jwt ? (
                   <div className="inline-flex items-center gap-2">
                     <span className="rounded-full bg-emerald-900/60 px-2 py-1">
-                      已登录
+                      宸茬櫥褰?
                     </span>
                     <button
                       className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
                       onClick={() => rememberJwt(null)}
                     >
-                      退出
+                      閫€鍑?
                     </button>
                   </div>
                 ) : (
                   <span className="rounded-full bg-rose-900/60 px-2 py-1">
-                    未登录
+                    鏈櫥褰?
                   </span>
                 )}
               </div>
@@ -528,24 +541,23 @@ export default function App() {
 
           {!jwt ? (
             <LoginForm onLogin={doLogin} msg={loginMsg} />
+          ) : pathOnly.startsWith('/admin') ? (
+            <AdminLayout currentPath={pathOnly}>
+              {pathOnly === '/admin/schools' && <SchoolManagement />}
+              {pathOnly === '/admin/classes' && <ClassManagement />}
+              {pathOnly === '/admin/users' && <UserManagement />}
+            </AdminLayout>
           ) : pathOnly === '/plans' ? (
             <PlanLibraryPage />
-          ) : pathOnly === '/admin/roles' ? (
-            <RoleManagementPage
-              jwt={jwt}
-              headers={headers}
-              currentUserRole={profile?.role}
-            />
           ) : pathOnly === '/settings' ? (
             <SettingsPage
-              swReady={swReady}
+              isSubscribed={isSubscribed}
               pushMsg={pushMsg}
               dailyEnabled={dailyEnabled}
               settings={settings}
               settingsMsg={settingsMsg}
               tzOptions={tzOptions}
               tzPlaceholder={defaultTimeZone()}
-              ensureSW={ensureSW}
               subscribePush={subscribePush}
               unsubscribePush={unsubscribePush}
               testPush={testPush}
@@ -642,6 +654,7 @@ export default function App() {
                 setScheduleFor,
                 setShowCreateTask,
                 addBlock,
+                updateBlock,
                 deleteBlock,
                 expandAllHours,
                 collapseAllHours,

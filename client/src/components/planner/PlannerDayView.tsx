@@ -1,7 +1,10 @@
-import { useState, useRef } from 'react'
+import { useState } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
+import { TaskTypeSelector } from './TaskTypeSelector'
+import { TaskTagSelector } from './TaskTagSelector'
+import { TaskPrioritySelector } from './TaskPrioritySelector'
 
 export interface PlannerDayViewProps {
   state: any
@@ -51,6 +54,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setShowCreateTask,
     setShowFutureOnly,
     addBlock,
+    updateBlock,
     deleteBlock,
     setListFilterType,
     setListFilterPriority,
@@ -59,8 +63,71 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setListFilterDone,
     toggleHourCollapsed,
     setListMenuOpenId,
+
     setCenterAlert,
+    createTaskAdvanced,
+    updateTaskAdvanced,
   } = actions || {}
+
+  const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
+
+  const handleSave = (id: string, field: string, value: any, extras?: any) => {
+    setEditingCell(null)
+    const block = (filteredBlocks || []).find((b: any) => String(b.id) === id)
+    if (!block) return
+
+    if (field === 'title') {
+      if (block.task_id && updateTaskAdvanced) {
+        updateTaskAdvanced(block.task_id, { title: value })
+      }
+    } else if (field === 'time') {
+      if (updateBlock) {
+        const { startStr, endStr, originalStart, originalEnd } = value
+
+        const parseTime = (date: Date, timeStr: string) => {
+          const [h, m] = timeStr.split(':').map(Number)
+          const newDate = new Date(date)
+          newDate.setHours(h)
+          newDate.setMinutes(m)
+          return newDate
+        }
+
+        const newStart = parseTime(originalStart, startStr)
+        const newEnd = parseTime(originalEnd, endStr)
+
+        updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+      }
+    } else {
+      if (block.task_id && updateTaskMeta) {
+        const updates: any = {}
+        if (field === 'priority') updates.priority = value
+        if (field === 'type') {
+          updates.type = value
+          if (extras?.color) updates.color = extras.color
+        }
+        if (field === 'tags') updates.tags = value
+        updateTaskMeta(block.task_id, updates)
+      }
+    }
+  }
+
+  const handleCopyToPool = async (task: any) => {
+    if (!createTaskAdvanced || !task) return
+    const payload = {
+      title: task.title,
+      type: task.type,
+      color: task.color,
+      priority: task.priority,
+      tags: task.tags,
+      recurrence_rule: 'POOL',
+      estimate_min: task.estimate_min,
+      // No due_at for pool tasks
+    }
+    await createTaskAdvanced(payload)
+    if (setCenterAlert) {
+      setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
+    }
+  }
 
   const timelineBlocks = (filteredBlocks || []).filter((b: any) => {
     const s = new Date(b.start_at)
@@ -104,10 +171,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     return true
   })
 
-  const [hoveredTask, setHoveredTask] = useState<any | null>(null)
-  const [hoverPos, setHoverPos] = useState<{ x: number, y: number } | null>(null)
-  const hoverTimeoutRef = useRef<any>(null)
-  const [cardMenuOpen, setCardMenuOpen] = useState(false)
+
 
   const effectivePxPerMin = pxPerMin || (HOUR_PX ? HOUR_PX / 60 : 96 / 60)
   const hourHeight = effectivePxPerMin * 60
@@ -175,135 +239,150 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
-      <div className="md:col-span-3 lg:col-span-4">
+      <div className="md:col-span-3 lg:col-span-4 relative">
+        {/* Filter Toggle Button */}
+        <div className="absolute -top-[3.25rem] right-0 z-10">
+          <button
+            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+          >
+            <span className="material-symbols-outlined text-sm">
+              {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+            </span>
+          </button>
+        </div>
+
         <section className="rounded-xl border border-white/10 bg-slate-800/50">
-          <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-3 text-white/90 text-sm">
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">类型</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterType}
-                    onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    {(listTypeOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
-                        {name}
+          {state.showFilters && (
+            <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-3 text-white/90 text-sm">
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">类型</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterType}
+                      onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
                       </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">优先</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterPriority}
-                    onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="2" className="text-slate-900">
-                      高
-                    </option>
-                    <option value="1" className="text-slate-900">
-                      中
-                    </option>
-                    <option value="0" className="text-slate-900">
-                      低
-                    </option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">标签</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterTag}
-                    onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    {(listTagOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
-                        {name}
+                      {(listTypeOptions || []).map((name: string) => (
+                        <option key={name} value={name} className="text-slate-900">
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">优先</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterPriority}
+                      onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
                       </option>
-                    ))}
-                  </select>
+                      <option value="2" className="text-slate-900">
+                        高
+                      </option>
+                      <option value="1" className="text-slate-900">
+                        中
+                      </option>
+                      <option value="0" className="text-slate-900">
+                        低
+                      </option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">标签</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterTag}
+                      onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      {(listTagOptions || []).map((name: string) => (
+                        <option key={name} value={name} className="text-slate-900">
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">逾期</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterOverdue}
+                      onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      <option value="yes" className="text-slate-900">
+                        是
+                      </option>
+                      <option value="no" className="text-slate-900">
+                        否
+                      </option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">完成</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterDone}
+                      onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      <option value="done" className="text-slate-900">
+                        已完成
+                      </option>
+                      <option value="open" className="text-slate-900">
+                        未完成
+                      </option>
+                    </select>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">逾期</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterOverdue}
-                    onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="yes" className="text-slate-900">
-                      是
-                    </option>
-                    <option value="no" className="text-slate-900">
-                      否
-                    </option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">完成</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterDone}
-                    onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="done" className="text-slate-900">
-                      已完成
-                    </option>
-                    <option value="open" className="text-slate-900">
-                      未完成
-                    </option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 w-full justify-end">
-                <label className="flex items-center gap-2 text-xs text-slate-200" >
-                  <input
-                    type="checkbox"
-                    checked={!!showFutureOnly}
-                    onChange={(e) => setShowFutureOnly && setShowFutureOnly(e.target.checked)}
-                  />
-                  <span>仅显示未来</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                    onClick={() => {
-                      if (!actions.expandAllHours) return
-                      actions.expandAllHours()
-                    }}
-                  >
-                    展开
-                  </button>
-                  <button
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                    onClick={() => {
-                      if (!actions.collapseAllHours) return
-                      actions.collapseAllHours()
-                    }}
-                  >
-                    折叠
-                  </button>
+                <div className="flex items-center gap-3 w-full justify-end">
+                  <label className="flex items-center gap-2 text-xs text-slate-200" >
+                    <input
+                      type="checkbox"
+                      checked={!!showFutureOnly}
+                      onChange={(e) => setShowFutureOnly && setShowFutureOnly(e.target.checked)}
+                    />
+                    <span>仅显示未来</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
+                      onClick={() => {
+                        if (!actions.expandAllHours) return
+                        actions.expandAllHours()
+                      }}
+                    >
+                      展开
+                    </button>
+                    <button
+                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
+                      onClick={() => {
+                        if (!actions.collapseAllHours) return
+                        actions.collapseAllHours()
+                      }}
+                    >
+                      折叠
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="p-3 space-y-3">
             <div className="overflow-x-hidden rounded-xl border border-white/10 bg-black/20">
@@ -391,11 +470,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                           {isCurrentHour && (
                             <div
                               className="absolute z-30 pointer-events-none"
-                              // 添加 -translate-y-1/2 确保三角形的尖角中心对准当前时间线
-                              // left 可能需要微调，比如 left: 12，取决于你想让它离轴线多近
                               style={{ top: now.getMinutes() * effectivePxPerMin, left: 7, transform: 'translateY(-50%)' }}
                             >
-                              {/* 这是一个利用边框制作的三角形 */}
                               <div
                                 className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-yellow-500"
                               />
@@ -427,7 +503,6 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const isLong = !fullyWithinHour
 
                                 if (fullyWithinHour) {
-                                  // 纯粹属于这一小时内的短任务，按在本小时内的顺序垂直堆叠
                                   const stackIndex = shortIndex
                                   shortIndex += 1
                                   top = stackIndex * hourHeight
@@ -435,7 +510,6 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                   cardStartMin = hourStart
                                   cardEndMin = hourEnd
                                 } else {
-                                  // 跨小时 / 多小时任务：只在开始小时渲染一次，按整小时块跨度来计算高度
                                   const startBlock = Math.floor(clampedStart / 60)
                                   const endBlockExclusive = Math.ceil(clampedEnd / 60)
                                   const spanBlocks = Math.max(1, endBlockExclusive - startBlock)
@@ -482,7 +556,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                   String((currentBlock as any).id) === String(b.id)
                                 const blockId = String(b.id)
                                 const isMenuOpen = listMenuOpenId === blockId
-                                const menuPositionClass = 'top-full mt-1'
+                                const menuPositionClass = h > 18 ? 'bottom-full mb-1' : 'top-full mt-1'
 
                                 return (
                                   <div
@@ -492,25 +566,6 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                     style={{
                                       top,
                                       height,
-                                    }}
-                                    onMouseEnter={(e) => {
-                                      if (b.task_id && meta) {
-                                        if (hoverTimeoutRef.current) {
-                                          clearTimeout(hoverTimeoutRef.current)
-                                          hoverTimeoutRef.current = null
-                                        }
-                                        const rect = e.currentTarget.getBoundingClientRect()
-                                        setHoverPos({ x: rect.right + 10, y: rect.top })
-                                        setHoveredTask({ ...meta, id: b.task_id, title: name, status, blockStart: b.start_at, blockEnd: b.end_at })
-                                        setCardMenuOpen(false)
-                                      }
-                                    }}
-                                    onMouseLeave={() => {
-                                      hoverTimeoutRef.current = setTimeout(() => {
-                                        setHoveredTask(null)
-                                        setHoverPos(null)
-                                        setCardMenuOpen(false)
-                                      }, 300)
                                     }}
                                   >
                                     <div
@@ -542,33 +597,132 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                   完成
                                                 </span>
                                               )}
-                                              <p
-                                                className={`font-medium truncate ${status === 'done'
-                                                  ? 'line-through opacity-60'
-                                                  : ''
-                                                  }`}
-                                              >
-                                                {name || '时间块'}
-                                              </p>
+                                              {editingCell?.id === blockId && editingCell.field === 'title' ? (
+                                                <input
+                                                  autoFocus
+                                                  className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full"
+                                                  value={editingCell.value}
+                                                  onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                                  onBlur={() => handleSave(blockId, 'title', editingCell.value)}
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSave(blockId, 'title', editingCell.value)
+                                                    if (e.key === 'Escape') setEditingCell(null)
+                                                  }}
+                                                  onClick={e => e.stopPropagation()}
+                                                />
+                                              ) : (
+                                                <p
+                                                  className={`font-medium truncate cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done'
+                                                    ? 'line-through opacity-60'
+                                                    : ''
+                                                    }`}
+                                                  onDoubleClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setEditingCell({ id: blockId, field: 'title', value: name || '' })
+                                                  }}
+                                                >
+                                                  {name || '时间块'}
+                                                </p>
+                                              )}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                                              {type && (
-                                                <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                                              {editingCell?.id === blockId && editingCell.field === 'type' ? (
+                                                <div className="relative">
                                                   <span
-                                                    className="w-2 h-2 rounded-full"
-                                                    style={{ backgroundColor: typeDotColor }}
-                                                  ></span>
-                                                  <span>{type}</span>
-                                                </span>
+                                                    className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span
+                                                      className="w-2 h-2 rounded-full"
+                                                      style={{ backgroundColor: typeDotColor }}
+                                                    ></span>
+                                                    <span>{editingCell.value || '无类型'}</span>
+                                                  </span>
+                                                  <TaskTypeSelector
+                                                    currentType={editingCell.value}
+                                                    authHeaders={actions.headers()}
+                                                    onSelect={(t) => {
+                                                      handleSave(blockId, 'type', t.name, { color: t.color })
+                                                      setEditingCell(null)
+                                                    }}
+                                                    onClose={() => setEditingCell(null)}
+                                                  />
+                                                  {/* Overlay to close on click outside */}
+                                                  <div
+                                                    className="fixed inset-0 z-40"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell(null)
+                                                    }}
+                                                  />
+                                                </div>
+                                              ) : (
+                                                type && (
+                                                  <span
+                                                    className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                                    onDoubleClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell({ id: blockId, field: 'type', value: type })
+                                                    }}
+                                                  >
+                                                    <span
+                                                      className="w-2 h-2 rounded-full"
+                                                      style={{ backgroundColor: typeDotColor }}
+                                                    ></span>
+                                                    <span>{type}</span>
+                                                  </span>
+                                                )
                                               )}
-                                              {tags.map((g: string) => (
-                                                <span
-                                                  key={g}
-                                                  className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300"
-                                                >
-                                                  #{g}
-                                                </span>
-                                              ))}
+
+                                              {editingCell?.id === blockId && editingCell.field === 'tags' ? (
+                                                <div className="relative">
+                                                  <div className="flex flex-wrap gap-1">
+                                                    {(editingCell.value as string[]).map((g: string) => (
+                                                      <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                                        #{g}
+                                                      </span>
+                                                    ))}
+                                                    {(editingCell.value as string[]).length === 0 && (
+                                                      <span className="text-gray-500 text-[10px]">#</span>
+                                                    )}
+                                                  </div>
+                                                  <TaskTagSelector
+                                                    currentTags={editingCell.value as string[]}
+                                                    availableTags={listTagOptions || []}
+                                                    onSelect={(tags) => {
+                                                      setEditingCell({ ...editingCell, value: tags })
+                                                      handleSave(blockId, 'tags', tags)
+                                                    }}
+                                                    onClose={() => setEditingCell(null)}
+                                                    authHeaders={actions.headers ? actions.headers() : {}}
+                                                  />
+                                                </div>
+                                              ) : (
+                                                (tags && tags.length > 0) ? (
+                                                  tags.map((g: string) => (
+                                                    <span
+                                                      key={g}
+                                                      className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                                      onDoubleClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                                      }}
+                                                    >
+                                                      #{g}
+                                                    </span>
+                                                  ))
+                                                ) : (
+                                                  <span
+                                                    className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
+                                                    onDoubleClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell({ id: blockId, field: 'tags', value: [] })
+                                                    }}
+                                                  >
+                                                    #
+                                                  </span>
+                                                )
+                                              )}
                                             </div>
                                           </div>
                                           <div
@@ -598,15 +752,107 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                 逾期
                                               </span>
                                             )}
-                                            <p className="whitespace-nowrap">
-                                              {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
-                                            </p>
-                                            {prioLabel && (
-                                              <span
-                                                className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${prioClass}`}
+                                            {editingCell?.id === blockId && editingCell.field === 'time' ? (
+                                              <div
+                                                className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"
+                                                onClick={e => e.stopPropagation()}
+                                                onBlur={(e) => {
+                                                  const target = e.relatedTarget as HTMLElement | null
+                                                  if (target && target.closest('.time-edit-container')) return
+                                                  handleSave(blockId, 'time', editingCell.value)
+                                                }}
                                               >
-                                                <span>{prioLabel}</span>
-                                              </span>
+                                                <input
+                                                  type="time"
+                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                                  value={editingCell.value.startStr}
+                                                  onChange={e => setEditingCell({
+                                                    ...editingCell,
+                                                    value: { ...editingCell.value, startStr: e.target.value }
+                                                  })}
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
+                                                    if (e.key === 'Escape') setEditingCell(null)
+                                                  }}
+                                                />
+                                                <span className="text-[10px]">-</span>
+                                                <input
+                                                  type="time"
+                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                                  value={editingCell.value.endStr}
+                                                  onChange={e => setEditingCell({
+                                                    ...editingCell,
+                                                    value: { ...editingCell.value, endStr: e.target.value }
+                                                  })}
+                                                  onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
+                                                    if (e.key === 'Escape') setEditingCell(null)
+                                                  }}
+                                                />
+                                              </div>
+                                            ) : (
+                                              <p
+                                                className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                                                onDoubleClick={(ev) => {
+                                                  ev.stopPropagation()
+                                                  const fmt = (d: Date) => {
+                                                    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+                                                  }
+                                                  setEditingCell({
+                                                    id: blockId,
+                                                    field: 'time',
+                                                    value: {
+                                                      startStr: fmt(s),
+                                                      endStr: fmt(e),
+                                                      originalStart: s,
+                                                      originalEnd: e
+                                                    }
+                                                  })
+                                                }}
+                                              >
+                                                {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
+                                              </p>
+                                            )}
+
+                                            {editingCell?.id === blockId && editingCell.field === 'priority' ? (
+                                              <div className="relative">
+                                                {prioLabel && (
+                                                  <span
+                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span>{prioLabel}</span>
+                                                  </span>
+                                                )}
+                                                {!prioLabel && (
+                                                  <span
+                                                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    <span>无</span>
+                                                  </span>
+                                                )}
+                                                <TaskPrioritySelector
+                                                  currentPriority={editingCell.value}
+                                                  onSelect={(val) => {
+                                                    handleSave(blockId, 'priority', val)
+                                                    setEditingCell(null)
+                                                  }}
+                                                  onClose={() => setEditingCell(null)}
+                                                />
+                                              </div>
+                                            ) : (
+                                              prioLabel && (
+                                                <span
+                                                  className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                  onDoubleClick={(e) => {
+                                                    e.stopPropagation()
+                                                    setEditingCell({ id: blockId, field: 'priority', value: prio })
+                                                  }}
+                                                >
+                                                  <span>{prioLabel}</span>
+                                                </span>
+                                              )
                                             )}
                                           </div>
                                           <div className="flex items-center gap-2 pl-3">
@@ -668,6 +914,35 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                       完成
                                                     </button>
                                                     <button
+                                                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer"
+                                                      onClick={() => {
+                                                        if (!taskIdStr) return
+                                                        if (!tasks) return
+                                                        const candidates: Task[] = []
+                                                          ; (tasks.today || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (tasks.overdue || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (unscheduled || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                          ; (rangeTasks || []).forEach((x: Task) =>
+                                                            candidates.push(x),
+                                                          )
+                                                        const t = candidates.find(
+                                                          (x) => String(x.id) === taskIdStr,
+                                                        )
+                                                        if (t) {
+                                                          handleCopyToPool(t)
+                                                        }
+                                                        setListMenuOpenId && setListMenuOpenId(null)
+                                                      }}
+                                                    >
+                                                      到任务池
+                                                    </button>
+                                                    <button
                                                       className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800 cursor-pointer"
                                                       onClick={async () => {
                                                         if (!taskIdStr || !deleteTask) return
@@ -697,17 +972,16 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                 </div>
               </div>
             </div>
-
             {fetchState === 'error' && (
-              <div className="text-sm text-rose-300">加载失败</div>
+              <div className="text-sm text-rose-300 px-3">加载失败</div>
             )}
           </div>
         </section>
-      </div>
+      </div >
 
       <div className="md:col-span-2 lg:col-span-2">
         <PlannerListView
-          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap }}
+          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTagOptions }}
           actions={{
             fetchUnscheduled,
             setUnschedMenuOpenId,
@@ -717,131 +991,13 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
             deleteTask,
             setShowCreateTask,
             updateTaskMeta,
+            updateTaskAdvanced,
+            headers: actions.headers,
           }}
         />
       </div>
 
-      {/* Hover Detail Card */}
-      {hoveredTask && hoverPos && (
-        <div
-          className="fixed z-50 w-80 p-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-visible"
-          style={{
-            top: Math.min(hoverPos.y, window.innerHeight - 200), // Prevent going off bottom
-            left: Math.min(hoverPos.x, window.innerWidth - 340), // Prevent going off right
-          }}
-          onMouseEnter={() => {
-            if (hoverTimeoutRef.current) {
-              clearTimeout(hoverTimeoutRef.current)
-              hoverTimeoutRef.current = null
-            }
-          }}
-          onMouseLeave={() => {
-            hoverTimeoutRef.current = setTimeout(() => {
-              setHoveredTask(null)
-              setHoverPos(null)
-              setCardMenuOpen(false)
-            }, 300)
-          }}
-        >
-          <div className="bg-white/5 p-3">
-            <div className="flex items-center gap-3">
-              <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (hoveredTask.color || '#4B5563') + '80' }}></div>
-              <div className="flex-1 space-y-1.5">
-                <p className="text-white text-sm font-medium leading-tight">{hoveredTask.title}</p>
-                {hoveredTask.blockStart && hoveredTask.blockEnd && (
-                  <p className="text-xs text-white/60 font-mono">
-                    {new Date(hoveredTask.blockStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - {new Date(hoveredTask.blockEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                )}
-                <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                  {hoveredTask.type && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: hoveredTask.color || '#9CA3AF' }}></span>
-                      <span>{hoveredTask.type}</span>
-                    </span>
-                  )}
-                  {typeof hoveredTask.priority === 'number' && (
-                    <span
-                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${hoveredTask.priority === 2
-                        ? 'bg-red-500/20 text-red-300'
-                        : hoveredTask.priority === 1
-                          ? 'bg-yellow-500/20 text-yellow-300'
-                          : 'bg-green-500/20 text-green-300'
-                        }`}
-                    >
-                      {hoveredTask.priority === 2 ? '高' : hoveredTask.priority === 1 ? '中' : '低'}
-                    </span>
-                  )}
-                  {(hoveredTask.tags || []).map((g: string) => (
-                    <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
-                  ))}
-                  {hoveredTask.status === 'done' && (
-                    <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">已完成</span>
-                  )}
-                </div>
-              </div>
-              <div className="relative">
-                <button
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setCardMenuOpen(!cardMenuOpen)
-                  }}
-                >
-                  <span className="material-symbols-outlined text-lg">more_vert</span>
-                </button>
-                {cardMenuOpen && (
-                  <div
-                    className="absolute right-0 top-full mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-50"
-                  >
-                    <button
-                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
-                      onClick={() => {
-                        if (setEditTask) setEditTask(hoveredTask)
-                        setCardMenuOpen(false)
-                        setHoveredTask(null)
-                      }}
-                    >
-                      修改
-                    </button>
-                    <button
-                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
-                      onClick={async () => {
-                        if (completeTask && hoveredTask.id) await completeTask(String(hoveredTask.id))
-                        setCardMenuOpen(false)
-                        setHoveredTask(null)
-                      }}
-                    >
-                      完成
-                    </button>
-                    <button
-                      className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
-                      onClick={async () => {
-                        if (deleteTask && hoveredTask.id) await deleteTask(String(hoveredTask.id))
-                        setCardMenuOpen(false)
-                        setHoveredTask(null)
-                      }}
-                    >
-                      删除
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            {/* Extra details not in list view but useful for hover */}
-            {(hoveredTask.estimate_min || hoveredTask.due_at) && (
-              <div className="mt-3 pt-2 border-t border-white/10 flex items-center gap-4 text-[10px] text-slate-400">
-                {hoveredTask.estimate_min && (
-                  <span>预估: {hoveredTask.estimate_min} 分钟</span>
-                )}
-                {hoveredTask.due_at && (
-                  <span>截止: {new Date(hoveredTask.due_at).toLocaleString()}</span>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+
+    </div >
   )
 }

@@ -1,4 +1,8 @@
+import { useMemo, useState } from 'react'
 import type { Task } from '../../types'
+import { TaskTypeSelector } from './TaskTypeSelector'
+import { TaskTagSelector } from './TaskTagSelector'
+import { TaskPrioritySelector } from './TaskPrioritySelector'
 
 export interface PlannerListViewProps {
   state: any
@@ -7,56 +11,238 @@ export interface PlannerListViewProps {
 
 export function PlannerListView({ state, actions }: PlannerListViewProps) {
   const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
-  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask } = actions || {}
+  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta } = actions || {}
 
-  const list: Task[] = unscheduled || []
+  const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
+
+  const list = useMemo(() => {
+    const raw = (unscheduled || []) as Task[]
+    return [...raw].sort((a, b) => {
+      // 1. Today Must
+      const aMust = a.recurrence_rule?.includes('TODAY_MUST') ? 1 : 0
+      const bMust = b.recurrence_rule?.includes('TODAY_MUST') ? 1 : 0
+      if (aMust !== bMust) return bMust - aMust
+
+      // 2. Pinned
+      const aPinned = a.recurrence_rule?.includes('PINNED') ? 1 : 0
+      const bPinned = b.recurrence_rule?.includes('PINNED') ? 1 : 0
+      if (aPinned !== bPinned) return bPinned - aPinned
+
+      // 3. Priority (2 > 1 > 0 > null)
+      const aPrio = typeof a.priority === 'number' ? a.priority : -1
+      const bPrio = typeof b.priority === 'number' ? b.priority : -1
+      if (aPrio !== bPrio) return bPrio - aPrio
+
+      // 4. Title
+      return (a.title || '').localeCompare(b.title || '')
+    })
+  }, [unscheduled])
+
+  const handleSave = (id: string, field: string, value: any, extras?: any) => {
+    setEditingCell(null)
+    if (field === 'title') {
+      updateTaskAdvanced(id, { title: value })
+    } else {
+      // For meta fields (priority, type, tags)
+      const t = list.find(t => String(t.id) === id)
+      if (!t) return
+      const updates: any = {}
+      if (field === 'priority') updates.priority = value
+      if (field === 'type') {
+        updates.type = value
+        if (extras?.color) updates.color = extras.color
+      }
+      if (field === 'tags') updates.tags = value
+
+      updateTaskMeta(id, updates)
+    }
+  }
 
   return (
     <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
       <h2 className="font-semibold mb-3">任务池</h2>
       <div className="mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm text-slate-300">未排程任务</h3>
-          <button
-            className="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600"
-            onClick={() => fetchUnscheduled && fetchUnscheduled()}
-          >
-            刷新
-          </button>
-        </div>
         <div className="flex flex-col gap-2">
           {list.length === 0 && <div className="text-xs text-slate-400">暂无未排程任务</div>}
           {list.map((t, index) => {
             const isLast = index === list.length - 1
             const menuPositionClass = isLast ? 'bottom-full mb-1' : 'top-full mt-1'
+            const isTodayMust = t.recurrence_rule?.includes('TODAY_MUST')
             return (
-              <div key={String(t.id)} className="bg-white/5 p-3 rounded-lg">
+              <div
+                key={String(t.id)}
+                className={`p-3 rounded-lg ${isTodayMust ? 'bg-amber-500/10' : 'bg-white/5'}`}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col items-center justify-center w-4 gap-1">
+                      {t.recurrence_rule?.includes('TODAY_MUST') && (
+                        <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center shadow-sm">
+                          <span className="text-[10px] text-white leading-none font-bold scale-90">今</span>
+                        </div>
+                      )}
+                      {t.recurrence_rule?.includes('PINNED') && (
+                        <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
+                      )}
+                    </div>
+                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
+                  </div>
                   <div className="flex-1 space-y-1.5">
-                    <p className="text-white text-sm font-medium leading-tight">{t.title}</p>
-                    <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                      {t.type && (
-                        <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
-                          <span>{t.type}</span>
-                        </span>
-                      )}
-                      {typeof t.priority === 'number' && (
-                        <span
-                          className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${t.priority === 2
-                            ? 'bg-red-500/20 text-red-300'
-                            : t.priority === 1
-                              ? 'bg-yellow-500/20 text-yellow-300'
-                              : 'bg-green-500/20 text-green-300'
-                            }`}
+                    <div className="flex items-center gap-1.5">
+                      {editingCell?.id === String(t.id) && editingCell.field === 'title' ? (
+                        <input
+                          autoFocus
+                          className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full"
+                          value={editingCell.value}
+                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onBlur={() => handleSave(String(t.id), 'title', editingCell.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSave(String(t.id), 'title', editingCell.value)
+                            if (e.key === 'Escape') setEditingCell(null)
+                          }}
+                        />
+                      ) : (
+                        <p
+                          className="text-white text-sm font-medium leading-tight cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                          onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'title', value: t.title })}
                         >
-                          {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
-                        </span>
+                          {t.title}
+                        </p>
                       )}
-                      {(t.tags || []).map((g) => (
-                        <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">#{g}</span>
-                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
+                      {/* Priority */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'priority' ? (
+                        <div className="relative">
+                          {typeof t.priority === 'number' ? (
+                            <span
+                              className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${t.priority === 2
+                                ? 'bg-red-500/20 text-red-300'
+                                : t.priority === 1
+                                  ? 'bg-yellow-500/20 text-yellow-300'
+                                  : 'bg-green-500/20 text-green-300'
+                                }`}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              无
+                            </span>
+                          )}
+                          <TaskPrioritySelector
+                            currentPriority={editingCell.value}
+                            onSelect={(val) => {
+                              handleSave(String(t.id), 'priority', val)
+                              setEditingCell(null)
+                            }}
+                            onClose={() => setEditingCell(null)}
+                          />
+                        </div>
+                      ) : (
+                        typeof t.priority === 'number' && (
+                          <span
+                            className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${t.priority === 2
+                              ? 'bg-red-500/20 text-red-300'
+                              : t.priority === 1
+                                ? 'bg-yellow-500/20 text-yellow-300'
+                                : 'bg-green-500/20 text-green-300'
+                              }`}
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'priority', value: t.priority })}
+                          >
+                            {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                          </span>
+                        )
+                      )}
+
+                      {/* Type */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'type' ? (
+                        <div className="relative">
+                          {t.type && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                              <span>{t.type}</span>
+                            </span>
+                          )}
+                          {!t.type && <span className="text-[10px] text-slate-500">无类型</span>}
+                          <TaskTypeSelector
+                            currentType={editingCell.value}
+                            onSelect={(type) => {
+                              setEditingCell({ ...editingCell, value: type.name })
+                              handleSave(String(t.id), 'type', type.name, { color: type.color })
+                            }}
+                            onClose={() => setEditingCell(null)}
+                            authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                          {/* Overlay to close on click outside */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingCell(null)
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        t.type && (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'type', value: t.type })}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                            <span>{t.type}</span>
+                          </span>
+                        )
+                      )}
+
+                      {/* Tags */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'tags' ? (
+                        <div className="relative">
+                          <div className="flex flex-wrap gap-1">
+                            {(editingCell.value as string[]).map((g: string) => (
+                              <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                #{g}
+                              </span>
+                            ))}
+                            {(editingCell.value as string[]).length === 0 && (
+                              <span className="text-gray-500 text-[10px]">#</span>
+                            )}
+                          </div>
+                          <TaskTagSelector
+                            currentTags={editingCell.value as string[]}
+                            availableTags={state.listTagOptions || []}
+                            onSelect={(tags) => {
+                              setEditingCell({ ...editingCell, value: tags })
+                              handleSave(String(t.id), 'tags', tags)
+                            }}
+                            onClose={() => setEditingCell(null)}
+                            authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                        </div>
+                      ) : (
+                        (t.tags && t.tags.length > 0) ? (
+                          t.tags.map((g) => (
+                            <span
+                              key={g}
+                              className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                              onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: t.tags || [] })}
+                            >
+                              #{g}
+                            </span>
+                          ))
+                        ) : (
+                          <span
+                            className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'tags', value: [] })}
+                          >
+                            #
+                          </span>
+                        )
+                      )}
                     </div>
                   </div>
                   <div className="relative">
@@ -82,17 +268,62 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             setUnschedMenuOpenId && setUnschedMenuOpenId(null)
                           }}
                         >
-                          修改
+                          修改/安排
                         </button>
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                          onClick={() => {
+                          onClick={async () => {
+                            if (!updateTaskAdvanced) {
+                              alert('updateTaskAdvanced 函数不可用')
+                              return
+                            }
                             setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            setScheduleFor && setScheduleFor(t)
+                            const parts = (t.recurrence_rule || 'POOL').split(';')
+                            const isTodayMust = parts.includes('TODAY_MUST')
+                            let newParts = parts.filter(p => p !== 'TODAY_MUST')
+                            if (!isTodayMust) {
+                              newParts.push('TODAY_MUST')
+                            }
+                            // Ensure POOL is present if it's the only rule or if it was there
+                            if (!newParts.includes('POOL') && (parts.includes('POOL') || newParts.length === 0 || (newParts.length === 1 && newParts[0] === 'TODAY_MUST'))) {
+                              if (!newParts.includes('POOL')) newParts.unshift('POOL')
+                            }
+
+                            const newRule = newParts.join(';')
+                            await updateTaskAdvanced(t.id, {
+                              title: t.title,
+                              recurrence_rule: newRule,
+                            })
                           }}
                         >
-                          安排
+                          {t.recurrence_rule?.includes('TODAY_MUST') ? '取消今日必' : '今日必'}
                         </button>
+                        <button
+                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                          onClick={async () => {
+                            if (!updateTaskAdvanced) {
+                              alert('updateTaskAdvanced 函数不可用')
+                              return
+                            }
+                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                            const parts = (t.recurrence_rule || 'POOL').split(';')
+                            const isPinned = parts.includes('PINNED')
+                            let newParts = parts.filter(p => p !== 'PINNED')
+                            if (!isPinned) {
+                              newParts.push('PINNED')
+                            }
+                            if (newParts.length === 0) newParts.push('POOL')
+                            const newRule = newParts.join(';')
+
+                            const result = await updateTaskAdvanced(t.id, {
+                              title: t.title,
+                              recurrence_rule: newRule,
+                            })
+                          }}
+                        >
+                          {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
+                        </button>
+
                         <button
                           className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
                           onClick={async () => {
@@ -191,6 +422,6 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
         <span className="material-symbols-outlined text-xl">add_circle</span>
         添加新任务
       </button>
-    </section>
+    </section >
   )
 }

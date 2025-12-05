@@ -4,7 +4,19 @@ import { UserRole } from '../types'
 
 export interface UseAuthResult {
   jwt: string | null
-  profile: { id: string | number; email: string; nickname?: string; avatar_url?: string; role?: UserRole } | null
+  profile: {
+    id: string | number;
+    email: string;
+    nickname?: string;
+    avatar_url?: string;
+    role?: UserRole;
+    roles?: {
+      role: UserRole;
+      scope_type: 'global' | 'school' | 'class';
+      scope_id: string | null;
+      class_name?: string;
+    }[];
+  } | null
   loginMsg: string
   rememberJwt: (token: string | null) => void
   doLogin: (email: string, password: string) => Promise<void>
@@ -19,7 +31,19 @@ export function useAuth(): UseAuthResult {
     if (typeof window === 'undefined') return null
     return localStorage.getItem('jwt')
   })
-  const [profile, setProfile] = useState<{ id: string | number; email: string; nickname?: string; avatar_url?: string; role?: UserRole } | null>(null)
+  const [profile, setProfile] = useState<{
+    id: string | number;
+    email: string;
+    nickname?: string;
+    avatar_url?: string;
+    role?: UserRole;
+    roles?: {
+      role: UserRole;
+      scope_type: 'global' | 'school' | 'class';
+      scope_id: string | null;
+      class_name?: string;
+    }[];
+  } | null>(null)
   const [loginMsg, setLoginMsg] = useState<string>('')
 
   function headers(): Record<string, string> {

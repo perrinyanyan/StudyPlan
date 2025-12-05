@@ -118,17 +118,14 @@ export function PlanImportModal({ onClose, onSuccess }: PlanImportModalProps) {
         }
 
         try {
-            const res = await fetch('/plans/import', {
-                method: 'POST',
-                headers: headers(), // headers() from useAuth includes Authorization, but FormData needs browser to set Content-Type
-                body: formData
-            })
-
             // Note: When using FormData, do NOT set Content-Type header manually. 
             // useAuth().headers() might set Content-Type to application/json.
             // We need to override that.
             const authHeaders = headers()
-            delete (authHeaders as any)['Content-Type']
+            // Ensure Content-Type is not set (let browser set it with boundary)
+            if ((authHeaders as any)['Content-Type']) {
+                delete (authHeaders as any)['Content-Type']
+            }
 
             const uploadRes = await fetch('/plans/import', {
                 method: 'POST',
