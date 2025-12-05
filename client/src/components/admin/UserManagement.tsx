@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
@@ -84,13 +85,13 @@ export function UserManagement() {
         try {
             const headers = { Authorization: `Bearer ${jwt}` };
 
-            const uRes = await fetch('/admin/users', { headers });
+            const uRes = await fetch(getApiUrl('/admin/users'), { headers });
             if (!uRes.ok) throw new Error('获取用户列表失败');
             const uData = await uRes.json();
             setUsers(uData.users);
 
             try {
-                const sRes = await fetch('/admin/schools', { headers });
+                const sRes = await fetch(getApiUrl('/admin/schools'), { headers });
                 if (sRes.ok) {
                     const sData = await sRes.json();
                     setSchools(sData.schools);
@@ -98,7 +99,7 @@ export function UserManagement() {
             } catch (e) { console.log('Schools fetch failed', e); }
 
             try {
-                const cRes = await fetch('/admin/classes', { headers });
+                const cRes = await fetch(getApiUrl('/admin/classes'), { headers });
                 if (cRes.ok) {
                     const cData = await cRes.json();
                     setClasses(cData.classes);
@@ -121,7 +122,7 @@ export function UserManagement() {
             try {
                 const formData = new FormData();
                 formData.append('file', avatarFile);
-                const res = await fetch('/upload/avatar', {
+                const res = await fetch(getApiUrl('/upload/avatar'), {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${jwt}`
@@ -164,7 +165,7 @@ export function UserManagement() {
             const body: any = { email, nickname, avatar_url: finalAvatarUrl };
             if (password) body.password = password;
 
-            const res = await fetch(url, {
+            const res = await fetch(getApiUrl(url), {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
@@ -193,7 +194,7 @@ export function UserManagement() {
                     }
 
                     if (finalRole && (finalRole !== 'student' || finalScopeId)) {
-                        await fetch(`/admin/users/${savedUser.id}/roles`, {
+                        await fetch(getApiUrl(`/admin/users/${savedUser.id}/roles`), {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -225,7 +226,7 @@ export function UserManagement() {
     async function handleDeleteUser(id: string) {
         if (!confirm('确定要删除吗？')) return;
         try {
-            const res = await fetch(`http://localhost:3000/admin/users/${id}`, {
+            const res = await fetch(getApiUrl(`/admin/users/${id}`), {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${jwt}` },
             });
@@ -240,7 +241,7 @@ export function UserManagement() {
         if (!confirm('确定要移除该角色吗？')) return;
 
         try {
-            const res = await fetch(`http://localhost:3000/admin/users/${userId}/roles`, {
+            const res = await fetch(getApiUrl(`/admin/users/${userId}/roles`), {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',
@@ -268,7 +269,7 @@ export function UserManagement() {
         }
 
         try {
-            const res = await fetch(`http://localhost:3000/admin/users/${selectedUserId}/roles`, {
+            const res = await fetch(getApiUrl(`/admin/users/${selectedUserId}/roles`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

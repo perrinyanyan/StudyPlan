@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getApiUrl } from '../config'
 
 export interface UsePushNotificationsParams {
   headers: () => Record<string, string>
@@ -54,7 +55,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
     try {
       const reg = await ensureSW()
       if (!reg) return false
-      const keyResp = await fetch('/push/public-key')
+      const keyResp = await fetch(getApiUrl('/push/public-key'))
       const { key } = await keyResp.json()
       if (!key) {
         setPushMsg('VAPID 公钥未配置')
@@ -69,7 +70,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
         keys: (sub.toJSON() as any).keys,
         userAgent: navigator.userAgent,
       }
-      const r = await fetch('/push/subscribe', {
+      const r = await fetch(getApiUrl('/push/subscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers() },
         body: JSON.stringify(payload),
@@ -90,7 +91,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
 
   async function testPush(): Promise<void> {
     setPushMsg('')
-    const r = await fetch('/notifications/test', { method: 'POST', headers: headers() })
+    const r = await fetch(getApiUrl('/notifications/test'), { method: 'POST', headers: headers() })
     if (!r.ok) {
       const j = await r.json().catch(() => ({}))
       setPushMsg('触发失败: ' + (j.error || r.status))
@@ -113,7 +114,7 @@ export function usePushNotifications({ headers }: UsePushNotificationsParams): U
       }
 
       // Unsubscribe from server first
-      await fetch('/push/unsubscribe', {
+      await fetch(getApiUrl('/push/unsubscribe'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers() },
         body: JSON.stringify({ endpoint: sub.endpoint }),

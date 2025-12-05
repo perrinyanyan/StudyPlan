@@ -1,4 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { getApiUrl } from '../config'
 import type { UserSettings } from '../types'
 import { DEFAULT_TZ_LIST, defaultTimeZone } from '../utils/datetime'
 
@@ -22,6 +23,9 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
   const [settings, setSettings] = useState<UserSettings>(() => ({
     daily_summary_time: null,
     timezone: defaultTimeZone(),
+    focus_duration_minutes: 25,
+    focus_start_sound: 'gentle',
+    focus_end_sound: 'gentle',
   }))
   const [settingsMsg, setSettingsMsg] = useState<string>('')
   const [dailyEnabled, setDailyEnabled] = useState<boolean>(false)
@@ -31,7 +35,7 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
     if (anyIntl && typeof anyIntl.supportedValuesOf === 'function') {
       try {
         return anyIntl.supportedValuesOf('timeZone') as string[]
-      } catch {}
+      } catch { }
     }
     return DEFAULT_TZ_LIST
   }, [])
@@ -39,7 +43,7 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
   async function loadSettings() {
     if (!jwt) return
     setSettingsMsg('')
-    const r = await fetch('/settings', { headers: headers() })
+    const r = await fetch(getApiUrl('/settings'), { headers: headers() })
     const j = await r.json().catch(() => ({}))
     if (!r.ok) {
       setSettingsMsg('加载失败: ' + (j.error || r.status))
@@ -49,7 +53,13 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
       typeof j.daily_summary_time === 'string' && j.daily_summary_time.length >= 5
         ? j.daily_summary_time.slice(0, 5)
         : null
-    setSettings({ daily_summary_time: hhmm, timezone: j.timezone ?? defaultTimeZone() })
+    setSettings({
+      daily_summary_time: hhmm,
+      timezone: j.timezone ?? defaultTimeZone(),
+      focus_duration_minutes: j.focus_duration_minutes ?? 25,
+      focus_start_sound: j.focus_start_sound ?? 'gentle',
+      focus_end_sound: j.focus_end_sound ?? 'gentle',
+    })
     setDailyEnabled(Boolean(hhmm))
   }
 
@@ -61,8 +71,11 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
         ? settings.daily_summary_time || '20:00'
         : null,
       timezone: settings.timezone || defaultTimeZone(),
+      focus_duration_minutes: settings.focus_duration_minutes,
+      focus_start_sound: settings.focus_start_sound,
+      focus_end_sound: settings.focus_end_sound,
     }
-    const r = await fetch('/settings', {
+    const r = await fetch(getApiUrl('/settings'), {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import type { Dispatch, SetStateAction } from 'react'
 import type { UserSettings } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
@@ -68,7 +69,7 @@ export function SettingsPage({
 
         try {
             const token = localStorage.getItem('jwt')
-            const res = await fetch('/settings/clear-data', {
+            const res = await fetch(getApiUrl('/settings/clear-data'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -103,7 +104,7 @@ export function SettingsPage({
     }, [profile])
 
     const refreshCaptcha = async () => {
-        const r = await fetch('/auth/captcha')
+        const r = await fetch(getApiUrl('/auth/captcha'))
         const data = await r.json()
         setCaptcha(data)
         setCaptchaAns('')

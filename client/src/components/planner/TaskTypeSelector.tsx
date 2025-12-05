@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useLayoutEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { createPortal } from 'react-dom'
 
 interface TaskType {
@@ -56,7 +57,7 @@ export function TaskTypeSelector({ currentType, onSelect, onClose, authHeaders }
     async function loadTypes() {
         setLoading(true)
         try {
-            const r = await fetch('/task-types', { headers: authHeaders })
+            const r = await fetch(getApiUrl('/task-types'), { headers: authHeaders })
             const j = await r.json().catch(() => ({}))
             if (r.ok && Array.isArray(j.items)) {
                 setTypes(j.items.map((x: any) => ({
@@ -75,7 +76,7 @@ export function TaskTypeSelector({ currentType, onSelect, onClose, authHeaders }
     async function handleCreate() {
         if (!newTypeName.trim()) return
         try {
-            const r = await fetch('/task-types', {
+            const r = await fetch(getApiUrl('/task-types'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({ name: newTypeName.trim(), color: newTypeColor }),

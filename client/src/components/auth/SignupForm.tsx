@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getApiUrl } from '../../config'
 
 export function SignupForm({ onLogin }: { onLogin: (email: string, password: string) => void }) {
   const [email, setEmail] = useState('')
@@ -18,7 +19,7 @@ export function SignupForm({ onLogin }: { onLogin: (email: string, password: str
     setMsg('')
     setLoading(true)
     try {
-      const r = await fetch('/auth/signup', {
+      const r = await fetch(getApiUrl('/auth/signup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, nickname }),
@@ -39,7 +40,7 @@ export function SignupForm({ onLogin }: { onLogin: (email: string, password: str
     setMsg('')
     setLoading(true)
     try {
-      const vr = await fetch('/auth/verify-email', {
+      const vr = await fetch(getApiUrl('/auth/verify-email'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: code }),

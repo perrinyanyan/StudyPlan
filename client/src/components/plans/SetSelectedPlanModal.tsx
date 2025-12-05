@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { useAuth } from '../../hooks/useAuth'
 
 interface SetSelectedPlanModalProps {
@@ -26,12 +27,12 @@ export function SetSelectedPlanModal({ planId, planName, onClose, onSuccess }: S
         const fetchAdminClasses = async () => {
             try {
                 // Fetch user's profile to get their classes where they are admin
-                const profileRes = await fetch('/auth/me', { headers: headers() })
+                const profileRes = await fetch(getApiUrl('/auth/me'), { headers: headers() })
                 if (!profileRes.ok) throw new Error('Failed to fetch profile')
                 const profile = await profileRes.json()
 
                 // For now, fetch all classes - in production, this should be filtered server-side
-                const classesRes = await fetch('/admin/classes', { headers: headers() })
+                const classesRes = await fetch(getApiUrl('/admin/classes'), { headers: headers() })
                 if (!classesRes.ok) throw new Error('Failed to fetch classes')
                 const classesData = await classesRes.json()
 
@@ -67,7 +68,7 @@ export function SetSelectedPlanModal({ planId, planName, onClose, onSuccess }: S
                 body.effective_from = effectiveFrom
             }
 
-            const res = await fetch(`/classes/${selectedClassId}/selected-plan`, {
+            const res = await fetch(getApiUrl(`/classes/${selectedClassId}/selected-plan`), {
                 method: 'PUT',
                 headers: { ...headers(), 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)

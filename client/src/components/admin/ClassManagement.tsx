@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
@@ -59,8 +60,8 @@ export function ClassManagement() {
     async function fetchData() {
         try {
             const [cRes, sRes] = await Promise.all([
-                fetch('http://localhost:3000/admin/classes', { headers: { Authorization: `Bearer ${jwt}` } }),
-                fetch('http://localhost:3000/admin/schools', { headers: { Authorization: `Bearer ${jwt}` } }),
+                fetch(getApiUrl('/admin/classes'), { headers: { Authorization: `Bearer ${jwt}` } }),
+                fetch(getApiUrl('/admin/schools'), { headers: { Authorization: `Bearer ${jwt}` } }),
             ]);
 
             if (!cRes.ok) throw new Error('获取班级列表失败');
@@ -93,7 +94,7 @@ export function ClassManagement() {
         setMemberLoading(true);
         try {
             // Fetch users filtered by class_id
-            const res = await fetch(`http://localhost:3000/admin/users?class_id=${classId}`, {
+            const res = await fetch(getApiUrl(`/admin/users?class_id=${classId}`), {
                 headers: { Authorization: `Bearer ${jwt}` }
             });
             if (!res.ok) throw new Error('获取成员列表失败');
@@ -110,7 +111,7 @@ export function ClassManagement() {
         // Fetch all users for the "Add Student" dropdown/search
         if (allUsers.length > 0) return;
         try {
-            const res = await fetch('http://localhost:3000/admin/users', {
+            const res = await fetch(getApiUrl('/admin/users'), {
                 headers: { Authorization: `Bearer ${jwt}` }
             });
             if (res.ok) {
@@ -124,8 +125,8 @@ export function ClassManagement() {
         e.preventDefault();
         try {
             const url = editingClass
-                ? `http://localhost:3000/admin/classes/${editingClass.id}`
-                : 'http://localhost:3000/admin/classes';
+                ? getApiUrl(`/admin/classes/${editingClass.id}`)
+                : getApiUrl('/admin/classes');
             const method = editingClass ? 'PUT' : 'POST';
             const body: any = { name };
             if (!editingClass) body.school_id = schoolId;
@@ -154,7 +155,7 @@ export function ClassManagement() {
     async function handleDelete(id: string) {
         if (!confirm('确定要删除吗？')) return;
         try {
-            const res = await fetch(`http://localhost:3000/admin/classes/${id}`, {
+            const res = await fetch(getApiUrl(`/admin/classes/${id}`), {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${jwt}` },
             });
@@ -177,7 +178,7 @@ export function ClassManagement() {
         }
 
         try {
-            const res = await fetch(`http://localhost:3000/admin/users/${user.id}/roles`, {
+            const res = await fetch(getApiUrl(`/admin/users/${user.id}/roles`), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -204,7 +205,7 @@ export function ClassManagement() {
     async function handleRemoveStudent(userId: string) {
         if (!selectedClass || !confirm('确定要从班级中移除该学生吗？')) return;
         try {
-            const res = await fetch(`http://localhost:3000/admin/users/${userId}/roles`, {
+            const res = await fetch(getApiUrl(`/admin/users/${userId}/roles`), {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json',

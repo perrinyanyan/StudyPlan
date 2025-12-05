@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getApiUrl } from '../../config'
 import type { Task } from '../../types'
 import { todayStr, fmtHHmm, parseDurationMin } from '../../utils/datetime'
 
@@ -118,7 +119,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
 
   async function loadTypes(selectId?: string) {
     try {
-      const r = await fetch('/task-types', { headers: authHeaders })
+      const r = await fetch(getApiUrl('/task-types'), { headers: authHeaders })
       const j = await r.json().catch(() => ({}))
       if (r.ok && Array.isArray(j.items)) {
         const list = (j.items as any[]).map((x) => ({ id: String(x.id), name: String(x.name), color: String(x.color) })) as TypeRow[]
@@ -163,7 +164,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       return false
     }
     try {
-      const r = await fetch('/task-types', {
+      const r = await fetch(getApiUrl('/task-types'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ name: trimmed, color }),

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { PlanVisibilityModal } from './PlanVisibilityModal';
 import { SetSelectedPlanModal } from './SetSelectedPlanModal';
@@ -98,10 +99,10 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         const fetchData = async () => {
             try {
                 const [detailsRes, typesRes, tagsRes, profileRes] = await Promise.all([
-                    fetch(`/plans/${planId}`, { headers: headers() }),
-                    fetch('/task-types', { headers: headers() }),
-                    fetch('/tasks/tags-list', { headers: headers() }),
-                    fetch('/auth/me', { headers: headers() })
+                    fetch(getApiUrl(`/plans/${planId}`), { headers: headers() }),
+                    fetch(getApiUrl('/task-types'), { headers: headers() }),
+                    fetch(getApiUrl('/tasks/tags-list'), { headers: headers() }),
+                    fetch(getApiUrl('/auth/me'), { headers: headers() })
                 ]);
 
                 if (!detailsRes.ok) throw new Error('加载计划详情失败');
@@ -193,7 +194,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         const newSettings = { ...currentSettings, [field]: value };
 
         try {
-            const res = await fetch(`/plans/${planId}/items/${item.id}`, {
+            const res = await fetch(getApiUrl(`/plans/${planId}/items/${item.id}`), {
                 method: 'PATCH',
                 headers: { ...headers(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ settings: newSettings })
@@ -216,7 +217,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
             return false;
         }
         try {
-            const r = await fetch('/task-types', {
+            const r = await fetch(getApiUrl('/task-types'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...headers() },
                 body: JSON.stringify({ name: trimmed, color }),
@@ -227,7 +228,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                 return false;
             }
             // Refresh types
-            const typesRes = await fetch('/task-types', { headers: headers() });
+            const typesRes = await fetch(getApiUrl('/task-types'), { headers: headers() });
             if (typesRes.ok) {
                 const j = await typesRes.json();
                 if (Array.isArray(j.items)) {
@@ -266,7 +267,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                 };
             });
 
-            const res = await fetch(`/plans/${planId}/apply`, {
+            const res = await fetch(getApiUrl(`/plans/${planId}/apply`), {
                 method: 'POST',
                 headers: { ...headers(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ courses: coursesWithSettings })
@@ -288,7 +289,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
 
         setDeleting(true);
         try {
-            const res = await fetch(`/plans/${planId}`, {
+            const res = await fetch(getApiUrl(`/plans/${planId}`), {
                 method: 'DELETE',
                 headers: headers()
             });

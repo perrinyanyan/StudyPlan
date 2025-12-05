@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { OptionalPlan } from '../../types'
 import { PlanImportModal } from './PlanImportModal'
 import { PlanDetailsModal } from './PlanDetailsModal'
@@ -19,7 +20,7 @@ export function PlanLibraryPage() {
         setLoading(true)
         try {
             const token = localStorage.getItem('jwt')
-            const res = await fetch('/plans', {
+            const res = await fetch(getApiUrl('/plans'), {
                 headers: { 'Authorization': `Bearer ${token}` }
             })
             if (!res.ok) throw new Error('Failed to fetch plans')

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getApiUrl } from '../../config'
 
 export function ForgotForm() {
   const [email, setEmail] = useState('')
@@ -12,7 +13,7 @@ export function ForgotForm() {
   const [loading, setLoading] = useState(false)
 
   async function loadCaptcha() {
-    const r = await fetch('/auth/captcha')
+    const r = await fetch(getApiUrl('/auth/captcha'))
     const j = await r.json().catch(() => ({}))
     if (r.ok && j.id && j.svg) {
       setCaptchaId(j.id)
@@ -30,7 +31,7 @@ export function ForgotForm() {
     setMsg('')
     setLoading(true)
     try {
-      const r = await fetch('/auth/request-password-reset', {
+      const r = await fetch(getApiUrl('/auth/request-password-reset'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, captcha_id: captchaId, captcha_answer: captchaAnswer }),
@@ -53,7 +54,7 @@ export function ForgotForm() {
     setMsg('')
     setLoading(true)
     try {
-      const r = await fetch('/auth/reset-password', {
+      const r = await fetch(getApiUrl('/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: code, new_password: newPwd }),

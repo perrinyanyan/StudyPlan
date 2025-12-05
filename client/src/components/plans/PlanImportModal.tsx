@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { useAuth } from '../../hooks/useAuth'
 
 interface PlanImportModalProps {
@@ -33,7 +34,7 @@ export function PlanImportModal({ onClose, onSuccess }: PlanImportModalProps) {
     useEffect(() => {
         const fetchUserRoles = async () => {
             try {
-                const res = await fetch('/auth/me', { headers: headers() })
+                const res = await fetch(getApiUrl('/auth/me'), { headers: headers() })
                 if (res.ok) {
                     const data = await res.json()
                     const roles = data.roles || []
@@ -55,8 +56,8 @@ export function PlanImportModal({ onClose, onSuccess }: PlanImportModalProps) {
             try {
                 // Fetch available targets
                 const [schoolsRes, classesRes] = await Promise.all([
-                    fetch('/admin/schools', { headers: headers() }),
-                    fetch('/admin/classes', { headers: headers() })
+                    fetch(getApiUrl('/admin/schools'), { headers: headers() }),
+                    fetch(getApiUrl('/admin/classes'), { headers: headers() })
                 ])
 
                 if (schoolsRes.ok) {
@@ -127,7 +128,7 @@ export function PlanImportModal({ onClose, onSuccess }: PlanImportModalProps) {
                 delete (authHeaders as any)['Content-Type']
             }
 
-            const uploadRes = await fetch('/plans/import', {
+            const uploadRes = await fetch(getApiUrl('/plans/import'), {
                 method: 'POST',
                 headers: authHeaders,
                 body: formData

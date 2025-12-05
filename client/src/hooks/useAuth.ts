@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getApiUrl } from '../config'
 
 import { UserRole } from '../types'
 
@@ -60,7 +61,7 @@ export function useAuth(): UseAuthResult {
 
   async function doLogin(email: string, password: string) {
     setLoginMsg('')
-    const r = await fetch('/auth/login', {
+    const r = await fetch(getApiUrl('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -76,7 +77,7 @@ export function useAuth(): UseAuthResult {
 
   async function changePassword(oldPassword: string, newPassword: string) {
     if (!jwt) return { error: 'Not logged in' }
-    const r = await fetch('/auth/change-password', {
+    const r = await fetch(getApiUrl('/auth/change-password'), {
       method: 'POST',
       headers: { ...headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
@@ -86,7 +87,7 @@ export function useAuth(): UseAuthResult {
 
   async function updateNickname(nickname: string, captchaId: string, captchaAnswer: string) {
     if (!jwt) return { error: 'Not logged in' }
-    const r = await fetch('/auth/profile/nickname', {
+    const r = await fetch(getApiUrl('/auth/profile/nickname'), {
       method: 'PATCH',
       headers: { ...headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ nickname, captcha_id: captchaId, captcha_answer: captchaAnswer }),
@@ -103,7 +104,7 @@ export function useAuth(): UseAuthResult {
     const formData = new FormData()
     formData.append('avatar', file)
 
-    const r = await fetch('/auth/profile/avatar', {
+    const r = await fetch(getApiUrl('/auth/profile/avatar'), {
       method: 'POST',
       headers: { Authorization: `Bearer ${jwt}` }, // No Content-Type for FormData
       body: formData,
@@ -122,7 +123,7 @@ export function useAuth(): UseAuthResult {
     }
     ; (async () => {
       try {
-        const r = await fetch('/auth/me', { headers: headers() })
+        const r = await fetch(getApiUrl('/auth/me'), { headers: headers() })
         if (r.ok) {
           const d = await r.json()
           setProfile(d)
