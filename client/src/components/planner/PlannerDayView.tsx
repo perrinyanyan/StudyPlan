@@ -239,135 +239,150 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
-      <div className="md:col-span-3 lg:col-span-4">
+      <div className="md:col-span-3 lg:col-span-4 relative">
+        {/* Filter Toggle Button */}
+        <div className="absolute -top-[3.25rem] right-0 z-10">
+          <button
+            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+          >
+            <span className="material-symbols-outlined text-sm">
+              {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+            </span>
+          </button>
+        </div>
+
         <section className="rounded-xl border border-white/10 bg-slate-800/50">
-          <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-3 text-white/90 text-sm">
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">类型</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterType}
-                    onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    {(listTypeOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
-                        {name}
+          {state.showFilters && (
+            <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-3 text-white/90 text-sm">
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">类型</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterType}
+                      onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
                       </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">优先</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterPriority}
-                    onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="2" className="text-slate-900">
-                      高
-                    </option>
-                    <option value="1" className="text-slate-900">
-                      中
-                    </option>
-                    <option value="0" className="text-slate-900">
-                      低
-                    </option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">标签</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterTag}
-                    onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    {(listTagOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
-                        {name}
+                      {(listTypeOptions || []).map((name: string) => (
+                        <option key={name} value={name} className="text-slate-900">
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">优先</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterPriority}
+                      onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
                       </option>
-                    ))}
-                  </select>
+                      <option value="2" className="text-slate-900">
+                        高
+                      </option>
+                      <option value="1" className="text-slate-900">
+                        中
+                      </option>
+                      <option value="0" className="text-slate-900">
+                        低
+                      </option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">标签</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterTag}
+                      onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      {(listTagOptions || []).map((name: string) => (
+                        <option key={name} value={name} className="text-slate-900">
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">逾期</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterOverdue}
+                      onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      <option value="yes" className="text-slate-900">
+                        是
+                      </option>
+                      <option value="no" className="text-slate-900">
+                        否
+                      </option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">完成</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={listFilterDone}
+                      onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
+                    >
+                      <option value="all" className="text-slate-900">
+                        所有
+                      </option>
+                      <option value="done" className="text-slate-900">
+                        已完成
+                      </option>
+                      <option value="open" className="text-slate-900">
+                        未完成
+                      </option>
+                    </select>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">逾期</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterOverdue}
-                    onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="yes" className="text-slate-900">
-                      是
-                    </option>
-                    <option value="no" className="text-slate-900">
-                      否
-                    </option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">完成</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterDone}
-                    onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    <option value="done" className="text-slate-900">
-                      已完成
-                    </option>
-                    <option value="open" className="text-slate-900">
-                      未完成
-                    </option>
-                  </select>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 w-full justify-end">
-                <label className="flex items-center gap-2 text-xs text-slate-200" >
-                  <input
-                    type="checkbox"
-                    checked={!!showFutureOnly}
-                    onChange={(e) => setShowFutureOnly && setShowFutureOnly(e.target.checked)}
-                  />
-                  <span>仅显示未来</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                    onClick={() => {
-                      if (!actions.expandAllHours) return
-                      actions.expandAllHours()
-                    }}
-                  >
-                    展开
-                  </button>
-                  <button
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                    onClick={() => {
-                      if (!actions.collapseAllHours) return
-                      actions.collapseAllHours()
-                    }}
-                  >
-                    折叠
-                  </button>
+                <div className="flex items-center gap-3 w-full justify-end">
+                  <label className="flex items-center gap-2 text-xs text-slate-200" >
+                    <input
+                      type="checkbox"
+                      checked={!!showFutureOnly}
+                      onChange={(e) => setShowFutureOnly && setShowFutureOnly(e.target.checked)}
+                    />
+                    <span>仅显示未来</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
+                      onClick={() => {
+                        if (!actions.expandAllHours) return
+                        actions.expandAllHours()
+                      }}
+                    >
+                      展开
+                    </button>
+                    <button
+                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
+                      onClick={() => {
+                        if (!actions.collapseAllHours) return
+                        actions.collapseAllHours()
+                      }}
+                    >
+                      折叠
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="p-3 space-y-3">
             <div className="overflow-x-hidden rounded-xl border border-white/10 bg-black/20">
@@ -541,7 +556,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                   String((currentBlock as any).id) === String(b.id)
                                 const blockId = String(b.id)
                                 const isMenuOpen = listMenuOpenId === blockId
-                                const menuPositionClass = 'top-full mt-1'
+                                const menuPositionClass = h > 18 ? 'bottom-full mb-1' : 'top-full mt-1'
 
                                 return (
                                   <div

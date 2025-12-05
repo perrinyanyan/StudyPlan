@@ -155,64 +155,91 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
-            <div className="lg:col-span-4 h-full flex flex-col">
+            <div className="lg:col-span-4 h-full flex flex-col relative">
+                {/* Filter Toggle Button */}
+                <div className="absolute -top-[3.25rem] right-0 z-10">
+                    <button
+                        onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                        title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+                    >
+                        <span className="material-symbols-outlined text-sm">
+                            {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+                        </span>
+                    </button>
+                </div>
+
                 <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50 overflow-hidden">
                     {/* Filters Toolbar */}
-                    <div className="bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
-                        <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm">
-                            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                                <span className="text-xs text-white/70">类型</span>
-                                <select
-                                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                                    value={listFilterType}
-                                    onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                                >
-                                    <option value="all" className="text-slate-900">所有</option>
-                                    {(listTypeOptions || []).map((name: string) => (
-                                        <option key={name} value={name} className="text-slate-900">{name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                                <span className="text-xs text-white/70">优先</span>
-                                <select
-                                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                                    value={listFilterPriority}
-                                    onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
-                                >
-                                    <option value="all" className="text-slate-900">所有</option>
-                                    <option value="2" className="text-slate-900">高</option>
-                                    <option value="1" className="text-slate-900">中</option>
-                                    <option value="0" className="text-slate-900">低</option>
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                                <span className="text-xs text-white/70">标签</span>
-                                <select
-                                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                                    value={listFilterTag}
-                                    onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
-                                >
-                                    <option value="all" className="text-slate-900">所有</option>
-                                    {(listTagOptions || []).map((name: string) => (
-                                        <option key={name} value={name} className="text-slate-900">{name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                                <span className="text-xs text-white/70">完成</span>
-                                <select
-                                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                                    value={listFilterDone}
-                                    onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
-                                >
-                                    <option value="all" className="text-slate-900">所有</option>
-                                    <option value="done" className="text-slate-900">已完成</option>
-                                    <option value="open" className="text-slate-900">未完成</option>
-                                </select>
+                    {state.showFilters && (
+                        <div className="bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+                            <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm">
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">类型</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterType}
+                                        onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        {(listTypeOptions || []).map((name: string) => (
+                                            <option key={name} value={name} className="text-slate-900">{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">优先</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterPriority}
+                                        onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        <option value="2" className="text-slate-900">高</option>
+                                        <option value="1" className="text-slate-900">中</option>
+                                        <option value="0" className="text-slate-900">低</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">标签</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterTag}
+                                        onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        {(listTagOptions || []).map((name: string) => (
+                                            <option key={name} value={name} className="text-slate-900">{name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">逾期</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterOverdue}
+                                        onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        <option value="yes" className="text-slate-900">是</option>
+                                        <option value="no" className="text-slate-900">否</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">完成</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterDone}
+                                        onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        <option value="done" className="text-slate-900">已完成</option>
+                                        <option value="open" className="text-slate-900">未完成</option>
+                                    </select>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Month Grid */}
                     <div className="flex-1 flex flex-col overflow-hidden">
@@ -267,7 +294,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                     <div
                                                         key={b.id}
                                                         className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 flex items-center ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
-                                                            }`}
+                                                            } ${status === 'done' ? 'line-through opacity-70' : ''}`}
                                                         style={{
                                                             backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
                                                             borderLeft: `2px solid ${isCurrent ? '#F59E0B' : baseColor}`,
@@ -295,6 +322,14 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                     >
                                                         {isOverdue && (
                                                             <span className="mr-1 flex-shrink-0 flex items-center justify-center w-2.5 h-2.5 rounded-full bg-red-500 border border-white text-white text-[8px] font-bold leading-none">!</span>
+                                                        )}
+                                                        {typeof meta?.priority === 'number' && (
+                                                            <span className={`mr-1 flex-shrink-0 text-[8px] px-0.5 rounded ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
+                                                                meta.priority === 1 ? 'bg-yellow-500/80 text-white' :
+                                                                    'bg-green-500/80 text-white'
+                                                                }`}>
+                                                                {meta.priority === 2 ? '高' : meta.priority === 1 ? '中' : '低'}
+                                                            </span>
                                                         )}
                                                         <span className="truncate">{name}</span>
                                                     </div>

@@ -111,46 +111,6 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                      {/* Type */}
-                      {editingCell?.id === String(t.id) && editingCell.field === 'type' ? (
-                        <div className="relative">
-                          {t.type && (
-                            <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
-                              <span>{t.type}</span>
-                            </span>
-                          )}
-                          {!t.type && <span className="text-[10px] text-slate-500">无类型</span>}
-                          <TaskTypeSelector
-                            currentType={editingCell.value}
-                            onSelect={(type) => {
-                              setEditingCell({ ...editingCell, value: type.name })
-                              handleSave(String(t.id), 'type', type.name, { color: type.color })
-                            }}
-                            onClose={() => setEditingCell(null)}
-                            authHeaders={actions.headers ? actions.headers() : {}}
-                          />
-                          {/* Overlay to close on click outside */}
-                          <div
-                            className="fixed inset-0 z-40"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setEditingCell(null)
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        t.type && (
-                          <span
-                            className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
-                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'type', value: t.type })}
-                          >
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
-                            <span>{t.type}</span>
-                          </span>
-                        )
-                      )}
-
                       {/* Priority */}
                       {editingCell?.id === String(t.id) && editingCell.field === 'priority' ? (
                         <div className="relative">
@@ -195,6 +155,46 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                             onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'priority', value: t.priority })}
                           >
                             {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                          </span>
+                        )
+                      )}
+
+                      {/* Type */}
+                      {editingCell?.id === String(t.id) && editingCell.field === 'type' ? (
+                        <div className="relative">
+                          {t.type && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                              <span>{t.type}</span>
+                            </span>
+                          )}
+                          {!t.type && <span className="text-[10px] text-slate-500">无类型</span>}
+                          <TaskTypeSelector
+                            currentType={editingCell.value}
+                            onSelect={(type) => {
+                              setEditingCell({ ...editingCell, value: type.name })
+                              handleSave(String(t.id), 'type', type.name, { color: type.color })
+                            }}
+                            onClose={() => setEditingCell(null)}
+                            authHeaders={actions.headers ? actions.headers() : {}}
+                          />
+                          {/* Overlay to close on click outside */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setEditingCell(null)
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        t.type && (
+                          <span
+                            className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                            onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'type', value: t.type })}
+                          >
+                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color || '#9CA3AF' }}></span>
+                            <span>{t.type}</span>
                           </span>
                         )
                       )}

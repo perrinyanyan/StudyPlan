@@ -1,4 +1,5 @@
 import { PlannerPage } from './PlannerPage'
+import { useState } from 'react'
 import { PlannerListMode } from './PlannerListMode'
 import { PlannerDayView } from './PlannerDayView'
 import { PlannerWeekView } from './PlannerWeekView'
@@ -109,6 +110,8 @@ export function PlannerScreen({
     headers,
   } = actions || {}
 
+  const [showFilters, setShowFilters] = useState(false)
+
   return (
     <div>
       <header className="flex items-center justify-between whitespace-nowrap border-b border-white/10 bg-slate-900 px-6 py-3 mb-4 rounded-md">
@@ -201,6 +204,7 @@ export function PlannerScreen({
             unscheduled,
             rangeTasks,
             unschedMenuOpenId,
+            showFilters, // Added
           }}
 
           actions={{
@@ -228,6 +232,7 @@ export function PlannerScreen({
             fmtHHmm,
             formatYmdWeek,
             headers,
+            setShowFilters, // Added
           }}
         />
       ) : plannerView === 'month' ? (
@@ -251,6 +256,7 @@ export function PlannerScreen({
             unschedMenuOpenId,
             listEdit,
             date,
+            showFilters, // Added
           }}
           actions={{
             deleteTask,
@@ -273,6 +279,7 @@ export function PlannerScreen({
             createTaskAdvanced,
             updateTaskAdvanced,
             headers,
+            setShowFilters, // Added
           }}
         />
       ) : plannerView === 'week' ? (
@@ -296,6 +303,7 @@ export function PlannerScreen({
             unschedMenuOpenId,
             listEdit,
             date,
+            showFilters, // Added
           }}
           actions={{
             deleteTask,
@@ -318,6 +326,7 @@ export function PlannerScreen({
             createTaskAdvanced,
             updateTaskAdvanced,
             headers,
+            setShowFilters, // Added
           }}
         />
       ) : (
@@ -353,6 +362,7 @@ export function PlannerScreen({
             listTagOptions,
             rangeTasks,
             fmtHHmm,
+            showFilters, // Added
           }}
           actions={{
             completeTask,
@@ -382,6 +392,7 @@ export function PlannerScreen({
             createTaskAdvanced,
             updateTaskAdvanced,
             headers,
+            setShowFilters, // Added
           }}
         />
       )}
