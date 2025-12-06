@@ -319,7 +319,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
     const canSetSelectedPlan = ['school_admin', 'class_admin', 'system_admin'].includes(userRole || '');
 
     const canDelete = details && (
-        (details.plan.scope_type === 'personal' && details.plan.created_by === userId) ||
+        (details.plan.scope_type.toLowerCase() === 'personal' && details.plan.created_by === userId) ||
         (userRole === 'system_admin') ||
         (details.plan.scope_type === 'school' && userRoles.some((r: any) => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === details.plan.scope_id)) ||
         (details.plan.scope_type === 'class' && userRoles.some((r: any) => r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === details.plan.scope_id))

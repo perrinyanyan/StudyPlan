@@ -77,7 +77,7 @@ function ymdInZone(d: Date, tz: string): string {
 
 async function runDailySummary() {
   const now = new Date();
-  console.log(`[notifications] runDailySummary checking at ${now.toISOString()}`);
+  // console.log(`[notifications] runDailySummary checking at ${now.toISOString()}`);
 
   // Load users who configured daily summary time
   const { data: rows, error } = await supabase
@@ -91,11 +91,11 @@ async function runDailySummary() {
   }
 
   if (!rows || rows.length === 0) {
-    console.log('[notifications] No users with daily_summary_time configured');
+    // console.log('[notifications] No users with daily_summary_time configured');
     return;
   }
 
-  console.log(`[notifications] Found ${rows.length} user(s) with daily summary configured`);
+  // console.log(`[notifications] Found ${rows.length} user(s) with daily summary configured`);
 
   for (const r of rows as any[]) {
     const uid: string = r.user_id;
@@ -103,16 +103,16 @@ async function runDailySummary() {
     const target: string = String(r.daily_summary_time).slice(0, 5); // HH:MM or HH:MM:SS
     const localNow = hhmmInZone(now, tz);
 
-    console.log(`[notifications] User ${uid}: target=${target}, localNow=${localNow}, tz=${tz}`);
+    // console.log(`[notifications] User ${uid}: target=${target}, localNow=${localNow}, tz=${tz}`);
 
     if (localNow !== target) {
-      console.log(`[notifications] Skipping user ${uid}: time mismatch`);
+      // console.log(`[notifications] Skipping user ${uid}: time mismatch`);
       continue; // only fire at the configured minute
     }
 
     const todayLocal = ymdInZone(now, tz);
     if (lastDailySummaryByUser.get(uid) === todayLocal) {
-      console.log(`[notifications] Skipping user ${uid}: already sent today (${todayLocal})`);
+      // console.log(`[notifications] Skipping user ${uid}: already sent today (${todayLocal})`);
       continue; // already sent today
     }
     lastDailySummaryByUser.set(uid, todayLocal);

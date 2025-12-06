@@ -12,17 +12,15 @@ export function SignupForm({ onLogin }: { onLogin: (email: string, password: str
   const [showPwd, setShowPwd] = useState(false)
 
   async function sendCode() {
-    if (!email.trim()) return alert('请输入邮箱')
-    if (!nickname.trim()) return alert('请输入昵称')
-    if (!password) return alert('请输入密码')
-    if (password !== confirm) return alert('两次输入的密码不一致')
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!email.trim() || !emailPattern.test(email)) return alert('请输入有效的邮箱地址')
     setMsg('')
     setLoading(true)
     try {
-      const r = await fetch(getApiUrl('/auth/signup'), {
+      const r = await fetch(getApiUrl('/auth/send-code'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, nickname }),
+        body: JSON.stringify({ email }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) {
@@ -36,20 +34,26 @@ export function SignupForm({ onLogin }: { onLogin: (email: string, password: str
   }
 
   async function submit() {
+    if (!email.trim()) return alert('请输入邮箱')
+    if (!nickname.trim()) return alert('请输入昵称')
+    if (!password) return alert('请输入密码')
+    if (password !== confirm) return alert('两次输入的密码不一致')
     if (!code.trim()) return alert('请输入邮箱验证码')
+
     setMsg('')
     setLoading(true)
     try {
-      const vr = await fetch(getApiUrl('/auth/verify-email'), {
+      const r = await fetch(getApiUrl('/auth/signup'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: code }),
+        body: JSON.stringify({ email, password, nickname, code }),
       })
-      const vj = await vr.json().catch(() => ({}))
-      if (!vr.ok) {
-        setMsg(vj.error || String(vr.status))
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) {
+        setMsg(j.error || String(r.status))
         return
       }
+      // Signup successful (user created and verified), now auto login
       await onLogin(email, password)
     } finally {
       setLoading(false)
