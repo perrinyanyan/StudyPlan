@@ -304,7 +304,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             };
         });
 
-        console.log(`[${new Date().toISOString()}] Response ready.`);
+        // console.log(`[${new Date().toISOString()}] Response ready.`);
         res.json({ plan, items: detailedItems });
     } else {
         res.json({ plan, items: [] });
