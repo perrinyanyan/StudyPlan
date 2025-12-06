@@ -1,4 +1,5 @@
 import { useState, useRef, useLayoutEffect, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { createPortal } from 'react-dom'
 
 interface TaskTagSelectorProps {
@@ -30,7 +31,7 @@ export function TaskTagSelector({ currentTags, availableTags, onSelect, onClose,
         async function fetchTags() {
             setLoading(true)
             try {
-                const r = await fetch('/tags', { headers: authHeaders })
+                const r = await fetch(getApiUrl('/tags'), { headers: authHeaders })
                 const j = await r.json().catch(() => ({}))
                 if (r.ok && Array.isArray(j.items)) {
                     const fetched = j.items.map((x: any) => x.name)
@@ -70,7 +71,7 @@ export function TaskTagSelector({ currentTags, availableTags, onSelect, onClose,
         // Try to create on backend if it doesn't exist
         if (!allTags.includes(trimmed)) {
             try {
-                await fetch('/tags', {
+                await fetch(getApiUrl('/tags'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify({ name: trimmed }),

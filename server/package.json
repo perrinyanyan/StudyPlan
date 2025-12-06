@@ -19,6 +19,8 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.2.1",
+    "iconv-lite": "^0.7.0",
+    "jschardet": "^3.1.4",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",

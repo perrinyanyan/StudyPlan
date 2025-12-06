@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -45,7 +46,7 @@ export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
     async function fetchTypes() {
         setLoading(true)
         try {
-            const r = await fetch('/task-types', { headers: authHeaders })
+            const r = await fetch(getApiUrl('/task-types'), { headers: authHeaders })
             const j = await r.json()
             if (r.ok && Array.isArray(j.items)) {
                 setTypes(j.items)
@@ -78,13 +79,13 @@ export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
         try {
             let r
             if (editingType) {
-                r = await fetch(`/task-types/${editingType.id}`, {
+                r = await fetch(getApiUrl(`/task-types/${editingType.id}`), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify(payload)
                 })
             } else {
-                r = await fetch('/task-types', {
+                r = await fetch(getApiUrl('/task-types'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify(payload)
@@ -106,7 +107,7 @@ export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
         if (force) setDeleting(true)
 
         try {
-            const url = force ? `/task-types/${id}?force=true` : `/task-types/${id}`
+            const url = force ? getApiUrl(`/task-types/${id}?force=true`) : getApiUrl(`/task-types/${id}`)
             const r = await fetch(url, {
                 method: 'DELETE',
                 headers: authHeaders

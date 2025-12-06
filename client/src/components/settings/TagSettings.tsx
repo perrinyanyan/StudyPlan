@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../../hooks/useAuth'
 
@@ -32,7 +33,7 @@ export function TagSettings({ authHeaders }: TagSettingsProps) {
     async function fetchTags() {
         setLoading(true)
         try {
-            const r = await fetch('/tags', { headers: authHeaders })
+            const r = await fetch(getApiUrl('/tags'), { headers: authHeaders })
             const j = await r.json()
             if (r.ok && Array.isArray(j.items)) {
                 setTags(j.items)
@@ -63,13 +64,13 @@ export function TagSettings({ authHeaders }: TagSettingsProps) {
         try {
             let r
             if (editingTag) {
-                r = await fetch(`/tags/${editingTag.id}`, {
+                r = await fetch(getApiUrl(`/tags/${editingTag.id}`), {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify(payload)
                 })
             } else {
-                r = await fetch('/tags', {
+                r = await fetch(getApiUrl('/tags'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...authHeaders },
                     body: JSON.stringify(payload)
@@ -91,7 +92,7 @@ export function TagSettings({ authHeaders }: TagSettingsProps) {
         if (force) setDeleting(true)
 
         try {
-            const url = force ? `/tags/${id}?force=true` : `/tags/${id}`
+            const url = force ? getApiUrl(`/tags/${id}?force=true`) : getApiUrl(`/tags/${id}`)
             const r = await fetch(url, {
                 method: 'DELETE',
                 headers: authHeaders

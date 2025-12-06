@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getApiUrl } from '../config'
 import type { Share } from '../types'
 
 export interface UseSharesParams {
@@ -24,7 +25,7 @@ export function useShares({ jwt, headers }: UseSharesParams): UseSharesResult {
   const [shareMsg, setShareMsg] = useState<string>('')
 
   async function listShares() {
-    const r = await fetch('/shares', { headers: headers() })
+    const r = await fetch(getApiUrl('/shares'), { headers: headers() })
     const j = await r.json()
     if (!r.ok) {
       setShareMsg('加载分享失败: ' + (j.error || r.status))
@@ -36,7 +37,7 @@ export function useShares({ jwt, headers }: UseSharesParams): UseSharesResult {
   async function createShare() {
     setShareMsg('')
     const payload = { scope: shareScope, expires_in_days: shareDays }
-    const r = await fetch('/shares', {
+    const r = await fetch(getApiUrl('/shares'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),
@@ -52,7 +53,7 @@ export function useShares({ jwt, headers }: UseSharesParams): UseSharesResult {
   }
 
   async function deleteShare(id: Share['id']) {
-    const r = await fetch(`/shares/${id}`, { method: 'DELETE', headers: headers() })
+    const r = await fetch(getApiUrl(`/shares/${id}`), { method: 'DELETE', headers: headers() })
     if (!r.ok) {
       alert('删除失败')
       return

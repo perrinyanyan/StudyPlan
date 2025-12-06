@@ -6,6 +6,9 @@ import { supabase } from '../db/supabase.js';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { randomUUID } from 'crypto';
+import jschardet from 'jschardet';
+import iconv from 'iconv-lite';
+import { fromZonedTime } from 'date-fns-tz';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -187,7 +190,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 // Get plan details
 router.get('/:id', async (req: Request, res: Response) => {
-    console.log(`[${new Date().toISOString()}] GET /plans/${req.params.id} request received`);
+
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         console.log('No auth header');
@@ -208,7 +211,6 @@ router.get('/:id', async (req: Request, res: Response) => {
     const { id } = req.params;
 
     // 1. Get Plan
-    console.log(`[${new Date().toISOString()}] Fetching plan ${id}...`);
     const { data: plan, error: planErr } = await supabase
         .from('optional_plans')
         .select('*')
@@ -219,13 +221,12 @@ router.get('/:id', async (req: Request, res: Response) => {
         console.error('Plan details: Plan not found or error', planErr);
         return res.status(404).json({ error: 'Plan not found' });
     }
-    console.log(`[${new Date().toISOString()}] Plan fetched: ${plan.name}`);
+
 
     // 2. Check visibility (reuse logic or simplify)
     // For MVP, we'll assume if you can see the list, you can see details.
 
     // 3. Get Items
-    console.log(`[${new Date().toISOString()}] Fetching items...`);
     const { data: items, error: itemsErr } = await supabase
         .from('optional_plan_items')
         .select('*')
@@ -235,7 +236,7 @@ router.get('/:id', async (req: Request, res: Response) => {
         console.error('Plan details: Failed to fetch items', itemsErr);
         return res.status(500).json({ error: itemsErr.message });
     }
-    console.log(`[${new Date().toISOString()}] Items fetched: ${items.length}`);
+
 
     // 4. Get Courses and Sessions manually (Manual Join)
     const courseIds = items
@@ -244,7 +245,6 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     if (courseIds.length > 0) {
         // Fetch courses
-        console.log(`[${new Date().toISOString()}] Fetching courses: ${courseIds.length}...`);
         const { data: courses, error: courseErr } = await supabase
             .from('courses')
             .select('*')
@@ -256,17 +256,17 @@ router.get('/:id', async (req: Request, res: Response) => {
         }
 
         // Fetch sessions
-        console.log(`[${new Date().toISOString()}] Fetching sessions...`);
         const { data: sessions, error: sessErr } = await supabase
             .from('course_sessions')
             .select('*')
-            .in('course_id', courseIds);
+            .in('course_id', courseIds)
+            .eq('optional_plan_id', id);
 
         if (sessErr) {
             console.error('Plan details: Failed to fetch sessions', sessErr);
             return res.status(500).json({ error: sessErr.message });
         }
-        console.log(`[${new Date().toISOString()}] Sessions fetched: ${sessions?.length}`);
+
 
         // Map data
         const courseMap = new Map(courses?.map(c => [c.id, c]));
@@ -304,7 +304,7 @@ router.get('/:id', async (req: Request, res: Response) => {
             };
         });
 
-        console.log(`[${new Date().toISOString()}] Response ready.`);
+        // console.log(`[${new Date().toISOString()}] Response ready.`);
         res.json({ plan, items: detailedItems });
     } else {
         res.json({ plan, items: [] });
@@ -421,7 +421,24 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     try {
-        const csvData = parse(req.file.buffer.toString(), {
+        // Detect encoding
+        const detected = jschardet.detect(req.file.buffer);
+        let encoding = detected.encoding || 'utf-8';
+        // console.log(`Import CSV encoding detected: ${encoding} (Confidence: ${detected.confidence})`);
+
+        // Handle common Chinese encodings
+        if (['gb2312', 'gbk', 'gb18030', 'windows-1252'].includes(encoding.toLowerCase())) {
+            // If it detects windows-1252 but confidence is low or user context implies Chinese, might be GBK.
+            // But jschardet is usually decent. Let's explicitly map gb variants to gbk for iconv-lite.
+            if (encoding.toLowerCase() !== 'windows-1252') {
+                encoding = 'gbk'; // iconv-lite supports 'gbk' which covers gb2312
+            }
+        }
+
+        // Decode
+        const str = iconv.decode(req.file.buffer, encoding);
+
+        const csvData = parse(str, {
             columns: true,
             skip_empty_lines: true,
             trim: true,
@@ -450,27 +467,23 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             tags?: string;
         }
 
-        const rows = csvData as CSVRow[];
+        const rows = (csvData as CSVRow[]).filter(r => {
+            // Filter out rows that are effectively empty or missing critical keys
+            return r.plan_name && r.course_code && r.date;
+        });
 
-        // 1. Create Optional Plan
-        const firstRow = rows[0];
-        const planName = firstRow.plan_name;
-        const category = firstRow.category || 'General';
+        if (rows.length === 0) return res.status(400).json({ error: 'No valid rows found in CSV' });
 
         // Determine scope from request body or default to personal
-        console.log('Import Body:', req.body);
         const reqScopeType = req.body.scope_type || 'Personal';
         const reqScopeId = req.body.scope_id || null;
-        console.log(`Import Scope: Type=${reqScopeType}, ID=${reqScopeId}`);
 
         let dbScopeType = reqScopeType;
         let dbScopeId = reqScopeId;
 
         // Native 'Personal' scope is now supported.
-        // If scope is Personal, we can leave scope_id as null or set to userId.
-        // Let's keep it clean: Personal scope implies created_by is the owner.
         if (reqScopeType === 'Personal' || reqScopeType === 'personal') {
-            dbScopeType = 'Personal'; // Ensure DB gets capitalized 'Personal'
+            dbScopeType = 'Personal';
             dbScopeId = userId;
         }
 
@@ -531,26 +544,10 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             }
         }
 
-        const { data: plan, error: planErr } = await supabase
-            .from('optional_plans')
-            .insert({
-                name: planName,
-                category,
-                description: `Imported from CSV on ${new Date().toLocaleDateString()}`,
-                scope_type: dbScopeType,
-                scope_id: dbScopeId,
-                created_by: userId,
-                status: 'published'
-            })
-            .select()
-            .single();
-
-        if (planErr) throw new Error('Failed to create plan: ' + planErr.message);
-
-        // 2. Batch Process Courses
+        // 1. Prepare Data
         const uniqueCodes = [...new Set(rows.map(r => r.course_code))];
 
-        // Fetch existing courses
+        // 2. Batch Process Courses (Global)
         const { data: existingCourses, error: ecErr } = await supabase
             .from('courses')
             .select('id, code')
@@ -584,86 +581,110 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             newCourses?.forEach(c => courseIdMap.set(c.code, c.id));
         }
 
-        // 3. Batch Insert Plan Items
-        const planItemsPayload = uniqueCodes.map(code => {
-            // Find the first row for this course to get settings
-            // Note: If multiple rows have different settings for the same course, this takes the first one.
-            // Ideally, settings should be consistent per course in the CSV.
-            const row = rows.find(r => r.course_code === code);
-            const settings: any = {};
-            if (row) {
-                if (row.type) settings.type = row.type;
-                if (row.priority) settings.priority = parseInt(row.priority) || 1;
-                if (row.tags) {
-                    settings.tags = row.tags.split(/[,，\s]+/).map((t: string) => t.trim()).filter(Boolean);
+
+
+        // 4. Group by Plan Name and Create Plans
+        const planGroups = new Map<string, CSVRow[]>();
+        rows.forEach(r => {
+            const name = r.plan_name || 'Untitled Plan';
+            if (!planGroups.has(name)) planGroups.set(name, []);
+            planGroups.get(name)!.push(r);
+        });
+
+        const createdPlanIds: string[] = [];
+
+        for (const [pName, pRows] of planGroups) {
+            const pCategory = pRows[0].category || 'General';
+
+            // Create Plan
+            const { data: plan, error: planErr } = await supabase
+                .from('optional_plans')
+                .insert({
+                    name: pName,
+                    category: pCategory,
+                    description: `Imported from CSV on ${new Date().toLocaleDateString()}`,
+                    scope_type: dbScopeType,
+                    scope_id: dbScopeId,
+                    created_by: userId,
+                    status: 'published'
+                })
+                .select()
+                .single();
+
+            if (planErr) throw new Error(`Failed to create plan "${pName}": ` + planErr.message);
+            createdPlanIds.push(plan.id);
+
+            // Insert Plan Items
+            const uniquePlanCodes = [...new Set(pRows.map(r => r.course_code))];
+            const planItemsPayload = uniquePlanCodes.map(code => {
+                const row = pRows.find(r => r.course_code === code);
+                const settings: any = {};
+                if (row) {
+                    if (row.type) settings.type = row.type;
+                    if (row.priority) {
+                        const p = row.priority.trim();
+                        if (p === '高') settings.priority = 2;
+                        else if (p === '中') settings.priority = 1;
+                        else if (p === '低') settings.priority = 0;
+                        else settings.priority = parseInt(p) || 1;
+                    }
+                    if (row.tags) {
+                        settings.tags = row.tags.split(/[,，\s]+/).map((t: string) => t.trim()).filter(Boolean);
+                    }
+                }
+
+                return {
+                    optional_plan_id: plan.id,
+                    kind: 'course',
+                    ref_id: courseIdMap.get(code),
+                    settings: Object.keys(settings).length > 0 ? settings : null
+                };
+            });
+
+            if (planItemsPayload.length > 0) {
+                const { error: piErrResult } = await supabase
+                    .from('optional_plan_items')
+                    .insert(planItemsPayload);
+
+                if (piErrResult) throw new Error(`Failed to add items to plan "${pName}": ` + piErrResult.message);
+            }
+
+
+            // Batch Process Sessions (Scoped to Plan)
+            const newSessionsPayload: any[] = [];
+            // We only need to dedup within the current CSV import for this plan
+            const processedSessionKeys = new Set<string>();
+
+            for (const row of pRows) {
+                const courseId = courseIdMap.get(row.course_code);
+                if (!courseId) continue;
+
+                // Unique key: course + time (we assume isolation so we don't check DB for other plans)
+                const key = `${courseId}|${row.date}|${row.start_time}|${row.end_time}`;
+
+                if (!processedSessionKeys.has(key)) {
+                    newSessionsPayload.push({
+                        course_id: courseId,
+                        optional_plan_id: plan.id,
+                        date: row.date,
+                        start_time: row.start_time,
+                        end_time: row.end_time,
+                        location: row.location || 'TBD'
+                    });
+                    processedSessionKeys.add(key);
                 }
             }
 
-            return {
-                optional_plan_id: plan.id,
-                kind: 'course',
-                ref_id: courseIdMap.get(code),
-                settings: Object.keys(settings).length > 0 ? settings : null
-            };
-        });
+            if (newSessionsPayload.length > 0) {
+                const { error: nsErr } = await supabase
+                    .from('course_sessions')
+                    .insert(newSessionsPayload);
 
-        const { error: piErr } = await supabase
-            .from('optional_plan_items')
-            .insert(planItemsPayload);
-
-        if (piErr) throw new Error('Failed to link courses to plan: ' + piErr.message);
-
-        // 4. Batch Process Sessions
-        // Fetch existing sessions for these courses to avoid duplicates
-        const allCourseIds = Array.from(courseIdMap.values());
-
-        // We need to fetch sessions that might match our CSV rows. 
-        // To be safe and avoid a massive query, we could just filter by course_id.
-        // If the dataset is huge, we might need smarter filtering, but for now this is better than N+1.
-        const { data: existingSessions, error: esErr } = await supabase
-            .from('course_sessions')
-            .select('course_id, date, start_time, end_time')
-            .in('course_id', allCourseIds);
-
-        if (esErr) throw new Error('Failed to fetch existing sessions: ' + esErr.message);
-
-        // Create a set of existing session keys: courseId|date|start|end
-        const existingSessionSet = new Set(
-            existingSessions?.map(s => `${s.course_id}|${s.date}|${s.start_time}|${s.end_time}`)
-        );
-
-        const newSessionsPayload: any[] = [];
-        const processedSessionKeys = new Set<string>(); // To handle duplicates within CSV
-
-        for (const row of rows) {
-            const courseId = courseIdMap.get(row.course_code);
-            if (!courseId) continue;
-
-            const key = `${courseId}|${row.date}|${row.start_time}|${row.end_time}`;
-
-            // Check DB duplicates and CSV duplicates
-            if (!existingSessionSet.has(key) && !processedSessionKeys.has(key)) {
-                newSessionsPayload.push({
-                    course_id: courseId,
-                    date: row.date,
-                    start_time: row.start_time,
-                    end_time: row.end_time,
-                    location: row.location || 'TBD'
-                });
-                processedSessionKeys.add(key);
+                if (nsErr) throw new Error('Failed to create sessions: ' + nsErr.message);
             }
         }
 
-        if (newSessionsPayload.length > 0) {
-            // Insert in chunks if necessary (Supabase has limits), but for now assuming reasonable size
-            const { error: nsErr } = await supabase
-                .from('course_sessions')
-                .insert(newSessionsPayload);
-
-            if (nsErr) throw new Error('Failed to create sessions: ' + nsErr.message);
-        }
-
-        res.json({ success: true, planId: plan.id, count: newSessionsPayload.length });
+        res.json({ success: true, planIds: createdPlanIds, count: createdPlanIds.length });
 
     } catch (err: any) {
         console.error('Import error:', err);
@@ -704,12 +725,21 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
         const { data: sessions, error: sessErr } = await supabase
             .from('course_sessions')
             .select('*, course:courses(code, name)')
-            .in('course_id', courseIds);
+            .in('course_id', courseIds)
+            .eq('optional_plan_id', id);
 
         if (sessErr) throw new Error(sessErr.message);
         if (!sessions || sessions.length === 0) {
             return res.json({ success: true, count: 0, message: 'No sessions found for selected courses' });
         }
+
+        // Fetch user timezone
+        const { data: us } = await supabase
+            .from('user_settings')
+            .select('timezone')
+            .eq('user_id', userId)
+            .maybeSingle();
+        const userTz = us?.timezone || 'Asia/Shanghai';
 
         // Build a map of courseId -> settings
         const settingsMap = new Map();
@@ -727,8 +757,9 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
             const courseId = session.course_id;
             const settings = settingsMap.get(courseId) || { type: 'Class', priority: 1, tags: [] };
 
-            const startAt = new Date(`${session.date}T${session.start_time}`);
-            const endAt = new Date(`${session.date}T${session.end_time}`);
+            // IMPORTANT: Parse time in USER's timezone, not server's local time
+            const startAt = fromZonedTime(`${session.date} ${session.start_time}`, userTz);
+            const endAt = fromZonedTime(`${session.date} ${session.end_time}`, userTz);
 
             const durationMin = (endAt.getTime() - startAt.getTime()) / 60000;
 
@@ -1022,7 +1053,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 
     let canDelete = false;
 
-    if (plan.scope_type === 'personal') {
+    if (plan.scope_type.toLowerCase() === 'personal') {
         canDelete = plan.created_by === userId;
     } else if (isSystemAdmin) {
         canDelete = true;

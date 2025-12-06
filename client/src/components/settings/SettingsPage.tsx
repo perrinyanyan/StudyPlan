@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import type { Dispatch, SetStateAction } from 'react'
 import type { UserSettings } from '../../types'
 import { useAuth } from '../../hooks/useAuth'
@@ -37,7 +38,7 @@ export function SettingsPage({
     setDailyEnabled,
     setSettings,
 }: SettingsPageProps) {
-    const { profile, changePassword, updateNickname, updateAvatar, headers } = useAuth()
+    const { profile, changePassword, updateNickname, updateAvatar, headers, rememberJwt } = useAuth()
 
     // Password Change State
     const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' })
@@ -61,6 +62,12 @@ export function SettingsPage({
     const [clearMsg, setClearMsg] = useState('')
     const [clearLoading, setClearLoading] = useState(false)
 
+    // Delete Account State
+    const [showDeleteModal, setShowDeleteModal] = useState(false)
+    const [deleteEmail, setDeleteEmail] = useState('')
+    const [deleteMsg, setDeleteMsg] = useState('')
+    const [deleteLoading, setDeleteLoading] = useState(false)
+
     const handleClearData = async () => {
         if (!confirmEmail) return
         setClearLoading(true)
@@ -68,7 +75,7 @@ export function SettingsPage({
 
         try {
             const token = localStorage.getItem('jwt')
-            const res = await fetch('/settings/clear-data', {
+            const res = await fetch(getApiUrl('/settings/clear-data'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -98,12 +105,46 @@ export function SettingsPage({
         }
     }
 
+    const handleDeleteAccount = async () => {
+        if (!deleteEmail) return
+        setDeleteLoading(true)
+        setDeleteMsg('')
+
+        try {
+            const token = localStorage.getItem('jwt')
+            const res = await fetch(getApiUrl('/auth/account'), {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ email: deleteEmail })
+            })
+
+            const data = await res.json()
+
+            if (!res.ok) {
+                setDeleteMsg(data.error || '操作失败')
+            } else {
+                setDeleteMsg('账户已注销')
+                setTimeout(() => {
+                    rememberJwt(null)
+                    window.location.href = '/' // Force redirect home/login
+                }, 1500)
+            }
+        } catch (err) {
+            setDeleteMsg('网络错误')
+        } finally {
+            setDeleteLoading(false)
+        }
+    }
+
     useEffect(() => {
         if (profile?.nickname) setNickData(profile.nickname)
     }, [profile])
 
     const refreshCaptcha = async () => {
-        const r = await fetch('/auth/captcha')
+        const r = await fetch(getApiUrl('/auth/captcha'))
         const data = await r.json()
         setCaptcha(data)
         setCaptchaAns('')
@@ -617,7 +658,7 @@ export function SettingsPage({
                 </div>
 
                 <div className="p-6">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between mb-8">
                         <div>
                             <h3 className="text-base font-medium text-white mb-1">清空所有规划</h3>
                             <p className="text-sm text-slate-400">这将永久删除您的所有任务和时间块，无法恢复。</p>
@@ -627,6 +668,21 @@ export function SettingsPage({
                             className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors border border-red-500/50 shadow-lg shadow-red-900/20"
                         >
                             清空规划
+                        </button>
+                    </div>
+
+                    <div className="h-px bg-red-500/20 mb-8" />
+
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-medium text-white mb-1">注销账户</h3>
+                            <p className="text-sm text-slate-400">永久删除您的账户及所有相关数据。</p>
+                        </div>
+                        <button
+                            onClick={() => setShowDeleteModal(true)}
+                            className="px-4 py-2 rounded-lg bg-transparent border border-red-500/50 text-red-400 hover:bg-red-950/30 hover:text-red-300 font-medium transition-colors"
+                        >
+                            注销账户
                         </button>
                     </div>
                 </div>
@@ -680,6 +736,60 @@ export function SettingsPage({
                                 className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                             >
                                 {clearLoading ? '执行中...' : '确认清空'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Account Confirmation Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
+                        <div className="flex items-center gap-3 mb-4 text-red-400">
+                            <span className="material-symbols-outlined text-3xl">no_accounts</span>
+                            <h3 className="text-xl font-bold">确认注销账户？</h3>
+                        </div>
+
+                        <p className="text-slate-300 mb-6">
+                            此操作将<span className="text-red-400 font-bold">永久删除</span>您的账户及所有数据。此操作<span className="text-red-400 font-bold">无法撤销</span>！
+                        </p>
+
+                        <div className="space-y-4 mb-6">
+                            <div>
+                                <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
+                                <input
+                                    type="email"
+                                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
+                                    placeholder={profile?.email}
+                                    value={deleteEmail}
+                                    onChange={e => setDeleteEmail(e.target.value)}
+                                />
+                            </div>
+                            {deleteMsg && (
+                                <p className={`text-sm ${deleteMsg.includes('注销') ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {deleteMsg}
+                                </p>
+                            )}
+                        </div>
+
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => {
+                                    setShowDeleteModal(false)
+                                    setDeleteEmail('')
+                                    setDeleteMsg('')
+                                }}
+                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
+                            >
+                                取消
+                            </button>
+                            <button
+                                onClick={handleDeleteAccount}
+                                disabled={deleteLoading || !deleteEmail}
+                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                {deleteLoading ? '注销中...' : '确认注销'}
                             </button>
                         </div>
                     </div>

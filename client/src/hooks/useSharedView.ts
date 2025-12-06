@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getApiUrl } from '../config'
 import type { SharedData } from '../types'
 import { todayStr } from '../utils/datetime'
 
@@ -38,7 +39,7 @@ export function useSharedView({ headers }: UseSharedViewParams): UseSharedViewRe
     setShareLoading(true)
     setShareError('')
     try {
-      const r = await fetch(`/shared/${token}?date=${shareDate}`, { headers: headers() })
+      const r = await fetch(getApiUrl(`/shared/${token}?date=${shareDate}`), { headers: headers() })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) {
         setSharedData(null)
@@ -57,7 +58,7 @@ export function useSharedView({ headers }: UseSharedViewParams): UseSharedViewRe
       setShareError('请先登录后再复制到自己的计划')
       return
     }
-    const r = await fetch(`/shared/${shareToken}/copy?date=${shareDate}`, {
+    const r = await fetch(getApiUrl(`/shared/${shareToken}/copy?date=${shareDate}`), {
       method: 'POST',
       headers: headers(),
     })

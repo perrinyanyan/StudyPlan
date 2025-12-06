@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { getApiUrl } from '../../config'
 import { useAuth } from '../../hooks/useAuth'
 
 interface PlanVisibilityModalProps {
@@ -33,7 +34,7 @@ export function PlanVisibilityModal({ planId, planName, planScope, onClose, onSu
         const fetchData = async () => {
             try {
                 // Fetch existing visibility rules
-                const visRes = await fetch(`/plans/${planId}/visibility`, { headers: headers() })
+                const visRes = await fetch(getApiUrl(`/plans/${planId}/visibility`), { headers: headers() })
                 if (!visRes.ok) throw new Error('Failed to fetch visibility rules')
                 const visData = await visRes.json()
 
@@ -46,14 +47,14 @@ export function PlanVisibilityModal({ planId, planName, planScope, onClose, onSu
                 let availableTargets: any[] = []
                 if (planScope === 'global') {
                     // Fetch all schools for system admin
-                    const res = await fetch('/admin/schools', { headers: headers() })
+                    const res = await fetch(getApiUrl('/admin/schools'), { headers: headers() })
                     if (!res.ok) throw new Error('Failed to fetch schools')
                     const data = await res.json()
                     availableTargets = data.schools || []
                     setSchools(availableTargets)
                 } else if (planScope === 'school') {
                     // Fetch all classes for school admin
-                    const res = await fetch('/admin/classes', { headers: headers() })
+                    const res = await fetch(getApiUrl('/admin/classes'), { headers: headers() })
                     if (!res.ok) throw new Error('Failed to fetch classes')
                     const data = await res.json()
                     availableTargets = data.classes || []
@@ -112,7 +113,7 @@ export function PlanVisibilityModal({ planId, planName, planScope, onClose, onSu
                 id
             }))
 
-            const res = await fetch(`/plans/${planId}/visibility`, {
+            const res = await fetch(getApiUrl(`/plans/${planId}/visibility`), {
                 method: 'PUT',
                 headers: { ...headers(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ targets })

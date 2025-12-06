@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { getApiUrl } from '../config'
 import { useAuth } from './useAuth'
 import { todayStr, toIso } from '../utils/datetime'
 import type { Task, Block, DailyTasks, FetchState } from '../types'
@@ -235,8 +236,8 @@ export function usePlanner(props: UsePlannerProps) {
     setFetchState('loading')
     try {
       const [t, b] = await Promise.all([
-        fetch(`/tasks/daily?date=${date}&with=tags`, { headers: headers() }).then((r) => r.json()),
-        fetch(`/blocks/daily?date=${date}`, { headers: headers() }).then((r) => r.json()),
+        fetch(getApiUrl(`/tasks/daily?date=${date}&with=tags`), { headers: headers() }).then((r) => r.json()),
+        fetch(getApiUrl(`/blocks/daily?date=${date}`), { headers: headers() }).then((r) => r.json()),
       ])
       setTasks(t as DailyTasks)
       const blocksJson = b as { items?: Block[] } | null
@@ -250,7 +251,7 @@ export function usePlanner(props: UsePlannerProps) {
   async function fetchUnscheduled() {
     if (!jwt) return
     try {
-      const r = await fetch('/tasks?status=open&with=tags', { headers: headers() })
+      const r = await fetch(getApiUrl('/tasks?status=open&with=tags'), { headers: headers() })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) return
       const items = (j.items || []) as Task[]
@@ -315,7 +316,7 @@ export function usePlanner(props: UsePlannerProps) {
       ; (async () => {
         try {
           setRangeBlocksLoading(true)
-          const r = await fetch(`/blocks/range?start=${start}&end=${end}`, { headers: headers() })
+          const r = await fetch(getApiUrl(`/blocks/range?start=${start}&end=${end}`), { headers: headers() })
           const j = await r.json().catch(() => ({}))
           if (!r.ok) {
             console.error('Failed to load range blocks', j)
@@ -326,7 +327,7 @@ export function usePlanner(props: UsePlannerProps) {
           setRangeBlocks(items)
           const ids = Array.from(new Set(items.map((b) => b.task_id).filter(Boolean))).map(String)
           if (ids.length > 0) {
-            const tRes = await fetch(`/tasks/by-ids?ids=${encodeURIComponent(ids.join(','))}&with=tags`, { headers: headers() })
+            const tRes = await fetch(getApiUrl(`/tasks/by-ids?ids=${encodeURIComponent(ids.join(','))}&with=tags`), { headers: headers() })
             const tJson = await tRes.json().catch(() => ({}))
             if (!tRes.ok) {
               console.error('Failed to load range tasks', tJson)
@@ -375,7 +376,7 @@ export function usePlanner(props: UsePlannerProps) {
     if ('type' in payload) body.type = payload.type
     if ('color' in payload) body.color = payload.color
     if ('tags' in payload) body.tags = payload.tags
-    const r = await fetch(`/tasks/${id}`, {
+    const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(body),
@@ -443,7 +444,7 @@ export function usePlanner(props: UsePlannerProps) {
         })
       }
     }
-    const r = await fetch('/tasks', {
+    const r = await fetch(getApiUrl('/tasks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),
@@ -495,7 +496,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeTasks(rangeTasks.map(updateLocalTask))
     }
 
-    const r = await fetch(`/tasks/${id}`, {
+    const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),
@@ -530,7 +531,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeTasks(rangeTasks.map(updateLocalTask))
     }
 
-    const r = await fetch(`/tasks/${id}`, {
+    const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify({ status: 'done' }),
@@ -558,7 +559,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeTasks(rangeTasks.filter(filterLocalTask))
     }
 
-    const r = await fetch(`/tasks/${id}`, { method: 'DELETE', headers: headers() })
+    const r = await fetch(getApiUrl(`/tasks/${id}`), { method: 'DELETE', headers: headers() })
     if (!r.ok) {
       alert('删除任务失败')
       return
@@ -587,7 +588,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeBlocks([...rangeBlocks, tempBlock])
     }
 
-    const r = await fetch('/blocks', {
+    const r = await fetch(getApiUrl('/blocks'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),
@@ -627,7 +628,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeBlocks(rangeBlocks.map(updateLocalBlock))
     }
 
-    const r = await fetch(`/blocks/${id}`, {
+    const r = await fetch(getApiUrl(`/blocks/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
       body: JSON.stringify(payload),
@@ -656,7 +657,7 @@ export function usePlanner(props: UsePlannerProps) {
       setRangeBlocks(rangeBlocks.filter(filterLocalBlock))
     }
 
-    const r = await fetch(`/blocks/${id}`, { method: 'DELETE', headers: headers() })
+    const r = await fetch(getApiUrl(`/blocks/${id}`), { method: 'DELETE', headers: headers() })
     if (!r.ok) {
       alert('删除时间块失败')
       return

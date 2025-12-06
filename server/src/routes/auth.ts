@@ -66,50 +66,127 @@ router.get('/captcha', (_req: Request, res: Response) => {
   res.json({ id, svg });
 });
 
-router.post('/signup', async (req: Request, res: Response) => {
-  const schema = z.object({ email: z.string().email(), password: z.string().min(6), nickname: z.string().min(1) });
+router.post('/send-code', async (req: Request, res: Response) => {
+  const schema = z.object({ email: z.string().email() });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid email' });
 
-  const { email, nickname, password } = parsed.data as { email: string; nickname: string; password: string };
+  const { email } = parsed.data;
 
-  // Check existing user
-  const { data: existing, error: exErr } = await supabase
+  // Check if email already registered (verified)
+  const { data: existing } = await supabase
     .from('users')
-    .select('id')
+    .select('id, email_verified_at')
     .eq('email', email)
     .maybeSingle();
-  if (exErr && exErr.code !== 'PGRST116') return res.status(500).json({ error: 'DB error' });
-  if (existing) return res.status(409).json({ error: 'Email already registered' });
 
-  const password_hash = await bcrypt.hash(password, 10);
-  const { error: insErr } = await supabase.from('users').insert({ email, password_hash, nickname });
-  if (insErr) return res.status(500).json({ error: 'Failed to create user' });
-
-  const token = mktoken();
-  emailVerifications.set(token, { email, expireAt: Date.now() + TOKEN_TTL_MS });
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[dev] verify-email token for ${email}: ${token}`);
+  if (existing) {
+    // If verified, return error (user should login)
+    if (existing.email_verified_at) {
+      return res.status(409).json({ error: 'Email already registered' });
+    }
+    // If not verified, we can allow re-sending code (or maybe delete old user row? 
+    // adhering to current logic: we just send code. Signup will handle user creation/update)
   }
-  const base = process.env.APP_BASE_URL || 'http://localhost:3000';
-  const link = `${base}/verify-email?token=${token}`;
-  await sendEmail({ to: email, subject: 'Verify your email', html: `点击验证：<a href="${link}">${link}</a>` });
-  res.status(201).json({ message: 'Signup pending verification. Check email.' });
+
+  // Generate 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store in DB
+  const { error: dbErr } = await supabase
+    .from('email_verification_codes')
+    .insert({ email, code, expires_at: expiresAt.toISOString() });
+
+  if (dbErr) {
+    console.error('Failed to store code:', dbErr);
+    return res.status(500).json({ error: 'Database error' });
+  }
+
+  // Send email
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[dev] Verification code for ${email}: ${code}`);
+  }
+
+  await sendEmail({
+    to: email,
+    subject: 'Your Verification Code',
+    html: `<p>Your verification code is: <strong>${code}</strong></p><p>It expires in 10 minutes.</p>`
+  });
+
+  res.json({ message: 'Code sent' });
 });
 
-router.post('/verify-email', async (req: Request, res: Response) => {
-  const schema = z.object({ token: z.string() });
+router.post('/signup', async (req: Request, res: Response) => {
+  const schema = z.object({
+    email: z.string().email(),
+    password: z.string().min(6),
+    nickname: z.string().min(1),
+    code: z.string().length(6)
+  });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
-  const rec = emailVerifications.get(parsed.data.token);
-  if (!rec || rec.expireAt < Date.now()) return res.status(400).json({ error: 'Token invalid or expired' });
-  emailVerifications.delete(parsed.data.token);
-  const { error: upErr } = await supabase
+
+  const { email, nickname, password, code } = parsed.data;
+
+  // Verify Code
+  const { data: codeRecord, error: codeErr } = await supabase
+    .from('email_verification_codes')
+    .select('*')
+    .eq('email', email)
+    .eq('code', code)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (codeErr || !codeRecord) {
+    return res.status(400).json({ error: 'Invalid or expired verification code' });
+  }
+
+  // Check existing user again to be safe
+  const { data: existing } = await supabase
     .from('users')
-    .update({ email_verified_at: new Date().toISOString() })
-    .eq('email', rec.email);
-  if (upErr) return res.status(500).json({ error: 'Failed to verify email' });
-  res.json({ message: 'Email verified' });
+    .select('id, email_verified_at')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (existing && existing.email_verified_at) {
+    return res.status(409).json({ error: 'Email already registered' });
+  }
+
+  const password_hash = await bcrypt.hash(password, 10);
+
+  if (existing) {
+    // Update existing unverified user
+    const { error: upErr } = await supabase
+      .from('users')
+      .update({
+        nickname,
+        password_hash,
+        email_verified_at: new Date().toISOString()
+      })
+      .eq('id', existing.id);
+
+    if (upErr) return res.status(500).json({ error: 'Failed to update user' });
+  } else {
+    // Create new user
+    const { error: insErr } = await supabase
+      .from('users')
+      .insert({
+        email,
+        password_hash,
+        nickname,
+        email_verified_at: new Date().toISOString()
+      });
+
+    if (insErr) return res.status(500).json({ error: 'Failed to create user' });
+  }
+
+  // Delete used code (optional, or rely on expiry)
+  await supabase.from('email_verification_codes').delete().eq('email', email);
+
+  res.status(201).json({ message: 'User created successfully' });
 });
 
 router.post('/login', async (req: Request, res: Response) => {
@@ -280,6 +357,42 @@ router.post('/profile/avatar', upload.single('avatar'), async (req: Request, res
   }
 
   res.json({ message: 'Avatar updated', avatar_url: avatarUrl });
+});
+
+// Deletion with email confirmation
+router.delete('/account', async (req: Request, res: Response) => {
+  const schema = z.object({ email: z.string().email() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { data: user, error: selErr } = await supabase
+    .from('users')
+    .select('email')
+    .eq('id', userId)
+    .single();
+
+  if (selErr || !user) return res.status(500).json({ error: 'Failed to fetch user' });
+
+  if (user.email !== parsed.data.email) {
+    return res.status(403).json({ error: 'Email does not match' });
+  }
+
+  // Delete user (cascade should handle related data if configured, otherwise might need manual cleanup)
+  // Assuming cascade is ON for user_id foreign keys in other tables.
+  const { error: delErr } = await supabase
+    .from('users')
+    .delete()
+    .eq('id', userId);
+
+  if (delErr) {
+    console.error('Delete user error:', delErr);
+    return res.status(500).json({ error: 'Failed to delete account' });
+  }
+
+  res.json({ message: 'Account deleted' });
 });
 
 export default router;

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { ActionMenu, ActionMenuItem } from '../ui/ActionMenu';
 
@@ -27,7 +28,7 @@ export function SchoolManagement() {
 
     async function fetchSchools() {
         try {
-            const res = await fetch('http://localhost:3000/admin/schools', {
+            const res = await fetch(getApiUrl('/admin/schools'), {
                 headers: { Authorization: `Bearer ${jwt}` },
             });
             if (!res.ok) throw new Error('获取学校列表失败');
@@ -44,8 +45,8 @@ export function SchoolManagement() {
         e.preventDefault();
         try {
             const url = editingSchool
-                ? `http://localhost:3000/admin/schools/${editingSchool.id}`
-                : 'http://localhost:3000/admin/schools';
+                ? getApiUrl(`/admin/schools/${editingSchool.id}`)
+                : getApiUrl('/admin/schools');
             const method = editingSchool ? 'PUT' : 'POST';
 
             const res = await fetch(url, {
@@ -71,7 +72,7 @@ export function SchoolManagement() {
     async function handleDelete(id: string) {
         if (!confirm('确定要删除吗？')) return;
         try {
-            const res = await fetch(`http://localhost:3000/admin/schools/${id}`, {
+            const res = await fetch(getApiUrl(`/admin/schools/${id}`), {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${jwt}` },
             });
