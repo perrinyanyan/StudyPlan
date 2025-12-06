@@ -3,6 +3,8 @@ import type { Request, Response } from 'express';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { supabase } from '../db/supabase.js';
+import jschardet from 'jschardet';
+import iconv from 'iconv-lite';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -28,7 +30,19 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
   if (!auth) return res.status(401).json({ error: 'Unauthorized' });
   if (!req.file) return res.status(400).json({ error: 'file is required (multipart/form-data, field name: file)' });
 
-  const csvText = req.file.buffer.toString('utf8');
+  // Detect encoding
+  const detected = jschardet.detect(req.file.buffer);
+  let encoding = detected.encoding || 'utf-8';
+
+  // Handle common Chinese encodings
+  if (['gb2312', 'gbk', 'gb18030', 'windows-1252'].includes(encoding.toLowerCase())) {
+    if (encoding.toLowerCase() !== 'windows-1252') {
+      encoding = 'gbk';
+    }
+  }
+
+  const csvText = iconv.decode(req.file.buffer, encoding);
+
   let records: any[] = [];
   try {
     records = parse(csvText, { columns: true, skip_empty_lines: true, trim: true });

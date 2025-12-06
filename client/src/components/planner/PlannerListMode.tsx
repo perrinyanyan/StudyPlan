@@ -57,7 +57,23 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     updateTaskAdvanced,
     updateBlock,
     headers,
+    createTaskAdvanced,
   } = actions || {}
+
+  const handleCopyToPool = async (task: any) => {
+    if (!createTaskAdvanced || !task) return
+    const payload = {
+      title: task.title,
+      recurrence_rule: 'POOL',
+      priority: task.priority,
+      type: task.type,
+      color: task.color,
+      tags: task.tags,
+      estimated_time: task.estimated_time,
+      description: task.description,
+    }
+    await createTaskAdvanced(payload)
+  }
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
@@ -745,6 +761,24 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                           }}
                                         >
                                           完成
+                                        </button>
+                                        <button
+                                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                                          onClick={() => {
+                                            if (!taskIdStr) return
+                                            const candidates: Task[] = []
+                                              ; (tasks.today || []).forEach((x: Task) => candidates.push(x))
+                                              ; (tasks.overdue || []).forEach((x: Task) => candidates.push(x))
+                                              ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
+                                              ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
+                                            const t = candidates.find((x) => String(x.id) === taskIdStr)
+                                            if (t) {
+                                              handleCopyToPool(t)
+                                            }
+                                            setListMenuOpenId && setListMenuOpenId(null)
+                                          }}
+                                        >
+                                          到任务池
                                         </button>
                                         <button
                                           className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"

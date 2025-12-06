@@ -6,6 +6,8 @@ import { supabase } from '../db/supabase.js';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { randomUUID } from 'crypto';
+import jschardet from 'jschardet';
+import iconv from 'iconv-lite';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -421,7 +423,24 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     try {
-        const csvData = parse(req.file.buffer.toString(), {
+        // Detect encoding
+        const detected = jschardet.detect(req.file.buffer);
+        let encoding = detected.encoding || 'utf-8';
+        // console.log(`Import CSV encoding detected: ${encoding} (Confidence: ${detected.confidence})`);
+
+        // Handle common Chinese encodings
+        if (['gb2312', 'gbk', 'gb18030', 'windows-1252'].includes(encoding.toLowerCase())) {
+            // If it detects windows-1252 but confidence is low or user context implies Chinese, might be GBK.
+            // But jschardet is usually decent. Let's explicitly map gb variants to gbk for iconv-lite.
+            if (encoding.toLowerCase() !== 'windows-1252') {
+                encoding = 'gbk'; // iconv-lite supports 'gbk' which covers gb2312
+            }
+        }
+
+        // Decode
+        const str = iconv.decode(req.file.buffer, encoding);
+
+        const csvData = parse(str, {
             columns: true,
             skip_empty_lines: true,
             trim: true,

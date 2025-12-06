@@ -40,18 +40,35 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   type TypeRow = { id: string; name: string; color: string }
   const [types, setTypes] = useState<TypeRow[]>([])
   const [typeIdx, setTypeIdx] = useState<number>(-1)
-  const [timeMode, setTimeMode] = useState<'duration' | 'end'>(() => {
+  const [timeMode, setTimeMode] = useState<'duration' | 'end' | 'undetermined'>(() => {
     if (!initialTask) return 'duration'
+    // Pool/Unscheduled task handling
+    if (initialTask.scheduling_status === 'unscheduled' || initialTask.recurrence_rule?.startsWith('POOL') || (!initialTask.estimate_min && !initialTask.due_at)) {
+      if (typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) {
+        return 'duration'
+      }
+      return 'undetermined'
+    }
     if (initialTask.due_at && typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) return 'duration'
     return 'end'
   })
   const [startAt, setStartAt] = useState<string>(() => {
     if (!initialTask || !initialTask.due_at) return `${defaultDate}T20:00`
+
+    const isPool = initialTask.scheduling_status === 'unscheduled' || initialTask.recurrence_rule?.startsWith('POOL')
+
     const end = new Date(initialTask.due_at)
     let start = end
     if (typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) {
       start = new Date(end.getTime() - initialTask.estimate_min * 60000)
     }
+
+    if (isPool) {
+      // If editing a pool task, reset date to today but keep the time
+      const t = new Date()
+      return `${todayStr(t)}T${fmtHHmm(start)}`
+    }
+
     return toInputLocal(start)
   })
   const [duration, setDuration] = useState<string>(() => {
@@ -206,7 +223,19 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     }
     let dueISO: string | undefined
     let estimateMin: number | undefined
-    if (timeMode === 'duration') {
+
+    // 自动转换为“时间未定”的逻辑：
+    // 如果是保存到任务池，且当前模式不是 undetermind，但时长或结束时间没填，则自动视为 undetermined
+    let finalTimeMode = timeMode
+    if (effectiveMode === 'pool') {
+      if (timeMode === 'duration' && (!startAt.trim() || !duration || parseDurationMin(duration) == null || parseDurationMin(duration)! <= 0)) {
+        finalTimeMode = 'undetermined'
+      } else if (timeMode === 'end' && (!startAt.trim() || !endAt.trim())) {
+        finalTimeMode = 'undetermined'
+      }
+    }
+
+    if (finalTimeMode === 'duration') {
       if (!startAt.trim()) {
         alert('请选择开始时间')
         return
@@ -220,7 +249,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       const end = new Date(start.getTime() + est * 60000)
       dueISO = end.toISOString()
       estimateMin = est
-    } else if (timeMode === 'end') {
+    } else if (finalTimeMode === 'end') {
       if (!startAt.trim() || !endAt.trim()) {
         alert('请选择开始与结束时间')
         return
@@ -233,6 +262,10 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       }
       dueISO = e.toISOString()
       estimateMin = Math.round((e.getTime() - s.getTime()) / 60000)
+    } else {
+      // undetermined
+      dueISO = undefined
+      estimateMin = undefined
     }
     const prio = priority === 'high' ? 2 : priority === 'medium' ? 1 : 0
     const recur =
@@ -334,7 +367,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
           <h2 className="text-white text-lg font-semibold">
             {isEdit
               ? ((initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled') ? '编辑任务池' : '修改任务')
-              : '创建新任务'}
+              : '添加新任务'}
           </h2>
           <button className="text-white/60 hover:text-white" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
@@ -415,41 +448,58 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                     开始 & 结束
                   </div>
                 </label>
+                {(!isEdit || (isEdit && (initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled'))) && (
+                  <label>
+                    <input
+                      className="sr-only peer"
+                      name="time-mode"
+                      type="radio"
+                      value="undetermined"
+                      checked={timeMode === 'undetermined'}
+                      onChange={() => setTimeMode('undetermined')}
+                    />
+                    <div className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 peer-checked:bg-[#137fec] peer-checked:text-white cursor-pointer">
+                      时间未定
+                    </div>
+                  </label>
+                )}
 
               </div>
             </div>
-            <div className="flex flex-wrap items-end gap-4">
-              <label className="flex flex-col min-w-40 flex-1">
-                <p className="text-xs text-slate-300 pb-1.5">开始时间</p>
-                <input
-                  className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                  type="datetime-local"
-                  value={startAt}
-                  onChange={(e) => setStartAt(e.target.value)}
-                />
-              </label>
-              {timeMode === 'duration' ? (
+            {timeMode !== 'undetermined' && (
+              <div className="flex flex-wrap items-end gap-4">
                 <label className="flex flex-col min-w-40 flex-1">
-                  <p className="text-xs text-slate-300 pb-1.5">预计时长</p>
-                  <input
-                    className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white placeholder-slate-500 px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                    placeholder="例如, 1h 30m 或 90"
-                    value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
-                  />
-                </label>
-              ) : (
-                <label className="flex flex-col min-w-40 flex-1">
-                  <p className="text-xs text-slate-300 pb-1.5">结束时间</p>
+                  <p className="text-xs text-slate-300 pb-1.5">开始时间</p>
                   <input
                     className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
                     type="datetime-local"
-                    value={endAt}
-                    onChange={(e) => setEndAt(e.target.value)}
+                    value={startAt}
+                    onChange={(e) => setStartAt(e.target.value)}
                   />
                 </label>
-              )}
-            </div>
+                {timeMode === 'duration' ? (
+                  <label className="flex flex-col min-w-40 flex-1">
+                    <p className="text-xs text-slate-300 pb-1.5">预计时长</p>
+                    <input
+                      className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white placeholder-slate-500 px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                      placeholder="例如, 1h 30m 或 90"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                    />
+                  </label>
+                ) : (
+                  <label className="flex flex-col min-w-40 flex-1">
+                    <p className="text-xs text-slate-300 pb-1.5">结束时间</p>
+                    <input
+                      className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                      type="datetime-local"
+                      value={endAt}
+                      onChange={(e) => setEndAt(e.target.value)}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-wrap items-end gap-4">
