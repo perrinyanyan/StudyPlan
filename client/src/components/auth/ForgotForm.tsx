@@ -57,14 +57,17 @@ export function ForgotForm() {
       const r = await fetch(getApiUrl('/auth/reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: code, new_password: newPwd }),
+        body: JSON.stringify({ email, token: code, new_password: newPwd }),
       })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) {
         setMsg(j.error || String(r.status))
         return
       }
-      setMsg('密码已重置，请返回登录')
+      setMsg('密码已重置，请返回登录，2秒后自动跳转...')
+      setTimeout(() => {
+        window.location.hash = '#/planner'
+      }, 2000)
     } finally {
       setLoading(false)
     }

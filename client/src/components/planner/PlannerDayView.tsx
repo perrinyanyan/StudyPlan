@@ -259,6 +259,17 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-3 text-white/90 text-sm">
                   <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                    <span className="text-xs text-white/70">冲突</span>
+                    <select
+                      className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                      value={state.listFilterConflict || 'all'}
+                      onChange={(e) => actions.setListFilterConflict && actions.setListFilterConflict(e.target.value)}
+                    >
+                      <option value="all" className="text-slate-900">所有</option>
+                      <option value="conflicts" className="text-slate-900">仅冲突</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
                     <span className="text-xs text-white/70">类型</span>
                     <select
                       className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"

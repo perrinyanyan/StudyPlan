@@ -3,6 +3,7 @@ import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { PlanVisibilityModal } from './PlanVisibilityModal';
 import { SetSelectedPlanModal } from './SetSelectedPlanModal';
+import { ConflictModal } from './ConflictModal';
 import { TaskTypeSelector } from '../planner/TaskTypeSelector';
 import { TaskTagSelector } from '../planner/TaskTagSelector';
 import { TaskPrioritySelector } from '../planner/TaskPrioritySelector';
@@ -75,6 +76,9 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
 
     const [showVisibilityModal, setShowVisibilityModal] = useState(false);
     const [showSelectedPlanModal, setShowSelectedPlanModal] = useState(false);
+    const [showConflictModal, setShowConflictModal] = useState(false);
+    const [pendingConflicts, setPendingConflicts] = useState<any[]>([]);
+
     const [userRole, setUserRole] = useState<string | null>(null);
     const [userId, setUserId] = useState<string | null>(null);
     const [userRoles, setUserRoles] = useState<any[]>([]);
@@ -249,6 +253,85 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         setNewTypeName('');
     }
 
+    const [sessionOverrides, setSessionOverrides] = useState<Record<string, { start: string, end: string }>>({});
+    const [existingOverrides, setExistingOverrides] = useState<Record<string, { start: string, end: string }>>({});
+
+    const handleResolveConflict = async (sessionId: string, start: string, end: string) => {
+        const tempOverrides = { ...sessionOverrides, [sessionId]: { start, end } };
+        const conflicts = await checkConflicts(tempOverrides, existingOverrides, false); // Dry run
+
+        // If the 'checkConflicts' returns null (empty), it means success implicitly if selectedCourseIds > 0
+        // But we want to see if THIS item is still in conflict.
+        const stillInConflict = conflicts?.some((c: any) => c.sessionId === sessionId);
+        if (stillInConflict) {
+            const conflict = conflicts?.find((c: any) => c.sessionId === sessionId);
+            alert(`修改未生效：与 "${conflict?.existingTitle}" 时间冲突！\n(${conflict?.existingStart} - ${conflict?.existingEnd})`);
+            return false;
+        }
+
+        setSessionOverrides(tempOverrides);
+        // Commit: Update the UI with the new conflict state (should show resolved for this item)
+        await checkConflicts(tempOverrides, existingOverrides, true);
+        return true;
+    };
+
+    const handleResolveExisting = async (blockId: string, start: string, end: string) => {
+        const tempExOverrides = { ...existingOverrides, [blockId]: { start, end } };
+        const conflicts = await checkConflicts(sessionOverrides, tempExOverrides, false); // Dry run
+
+        const stillInConflict = conflicts?.some((c: any) => c.existingBlockId === blockId);
+        if (stillInConflict) {
+            const conflict = conflicts?.find((c: any) => c.existingBlockId === blockId);
+            alert(`修改未生效：修改后的现有日程与 "${conflict?.proposedTitle}" 仍有冲突！`);
+            return false;
+        }
+
+        setExistingOverrides(tempExOverrides);
+        // Commit
+        await checkConflicts(sessionOverrides, tempExOverrides, true);
+        return true;
+    };
+
+    const checkConflicts = async (overrides: Record<string, { start: string, end: string }>, exOverrides: Record<string, { start: string, end: string }> = existingOverrides, updateState = true) => {
+        if (selectedCourseIds.length === 0) return [];
+        setApplying(true);
+        try {
+            const coursesWithSettings = selectedCourseIds.map(courseId => {
+                const settings = courseSettings.get(courseId) || { type: 'Class', priority: 1, tags: [] };
+                const typeObj = types.find(t => t.name === settings.type);
+                return {
+                    courseId,
+                    settings: {
+                        type: settings.type,
+                        color: typeObj ? typeObj.color : undefined,
+                        priority: Number(settings.priority),
+                        tags: settings.tags
+                    }
+                };
+            });
+
+            const checkRes = await fetch(getApiUrl(`/plans/${planId}/apply`), {
+                method: 'POST',
+                headers: { ...headers(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courses: coursesWithSettings, checkOnly: true, sessionOverrides: overrides, existingOverrides: exOverrides })
+            });
+
+            if (!checkRes.ok) throw new Error((await checkRes.json()).error || '检查冲突失败');
+            const checkData = await checkRes.json();
+
+            if (updateState) {
+                setPendingConflicts(checkData.conflicts || []);
+            }
+            return checkData.conflicts || [];
+
+        } catch (err: any) {
+            alert('检查冲突出错: ' + err.message);
+            return [];
+        } finally {
+            setApplying(false);
+        }
+    };
+
     const handleApply = async () => {
         if (selectedCourseIds.length === 0) return;
         setApplying(true);
@@ -267,22 +350,52 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                 };
             });
 
+            // Step 1: Check for conflicts
+            const checkRes = await fetch(getApiUrl(`/plans/${planId}/apply`), {
+                method: 'POST',
+                headers: { ...headers(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ courses: coursesWithSettings, checkOnly: true, sessionOverrides, existingOverrides })
+            });
+
+            if (!checkRes.ok) throw new Error((await checkRes.json()).error || '检查冲突失败');
+            const checkData = await checkRes.json();
+
+            if (checkData.conflicts && checkData.conflicts.length > 0) {
+                setPendingConflicts(checkData.conflicts);
+                setShowConflictModal(true);
+                setApplying(false);
+                return;
+            }
+
+            // Step 2: Apply (No conflicts)
+            await executeApply(coursesWithSettings);
+
+        } catch (err: any) {
+            alert('错误: ' + err.message);
+            setApplying(false);
+        }
+    };
+
+    const executeApply = async (coursesPayload: any[]) => {
+        setApplying(true);
+        try {
             const res = await fetch(getApiUrl(`/plans/${planId}/apply`), {
                 method: 'POST',
                 headers: { ...headers(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({ courses: coursesWithSettings })
+                body: JSON.stringify({ courses: coursesPayload, checkOnly: false, sessionOverrides, existingOverrides })
             });
 
             if (!res.ok) throw new Error((await res.json()).error || '应用计划失败');
 
             alert(`成功！已添加 ${(await res.json()).count} 个日程到您的时间表。`);
+            setShowConflictModal(false);
             onClose();
         } catch (err: any) {
             alert('错误: ' + err.message);
         } finally {
             setApplying(false);
         }
-    };
+    }
 
     const handleDelete = async () => {
         if (!confirm('确定要删除此计划吗？此操作无法撤销。')) return;
@@ -559,6 +672,37 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                         alert('已成功设置为选定计划！');
                         setShowSelectedPlanModal(false);
                     }}
+                />
+            )}
+
+            {showConflictModal && (
+                <ConflictModal
+                    conflicts={pendingConflicts}
+                    onCancel={() => {
+                        setShowConflictModal(false);
+                        setPendingConflicts([]);
+                    }}
+                    onResolve={handleResolveConflict}
+                    onResolveExisting={handleResolveExisting}
+                    onConfirm={() => {
+                        const coursesWithSettings = selectedCourseIds.map(courseId => {
+                            const settings = courseSettings.get(courseId) || { type: 'Class', priority: 1, tags: [] };
+                            const typeObj = types.find(t => t.name === settings.type);
+                            return {
+                                courseId,
+                                settings: {
+                                    type: settings.type,
+                                    color: typeObj ? typeObj.color : undefined,
+                                    priority: Number(settings.priority),
+                                    tags: settings.tags
+                                }
+                            };
+                        });
+                        executeApply(coursesWithSettings);
+                    }}
+                    isApplying={applying}
+                    sessionOverrides={sessionOverrides}
+                    existingOverrides={existingOverrides}
                 />
             )}
 

@@ -34,6 +34,7 @@ export function PlannerScreen({
     listFilterTag,
     listFilterOverdue,
     listFilterDone,
+    listFilterConflict,
     listTypeOptions,
     listTagOptions,
     rangeBlocks,
@@ -80,6 +81,7 @@ export function PlannerScreen({
     setListFilterTag,
     setListFilterOverdue,
     setListFilterDone,
+    setListFilterConflict,
     setListMenuOpenId,
     setListEdit,
     setCenterAlert,
@@ -205,6 +207,7 @@ export function PlannerScreen({
             rangeTasks,
             unschedMenuOpenId,
             showFilters, // Added
+            listFilterConflict,
           }}
 
           actions={{
@@ -233,6 +236,7 @@ export function PlannerScreen({
             formatYmdWeek,
             headers,
             setShowFilters, // Added
+            setListFilterConflict,
           }}
         />
       ) : plannerView === 'month' ? (
@@ -257,6 +261,7 @@ export function PlannerScreen({
             listEdit,
             date,
             showFilters, // Added
+            listFilterConflict,
           }}
           actions={{
             deleteTask,
@@ -280,6 +285,7 @@ export function PlannerScreen({
             updateTaskAdvanced,
             headers,
             setShowFilters, // Added
+            setListFilterConflict,
           }}
         />
       ) : plannerView === 'week' ? (
@@ -304,6 +310,7 @@ export function PlannerScreen({
             listEdit,
             date,
             showFilters, // Added
+            listFilterConflict,
           }}
           actions={{
             deleteTask,
@@ -327,6 +334,7 @@ export function PlannerScreen({
             updateTaskAdvanced,
             headers,
             setShowFilters, // Added
+            setListFilterConflict,
           }}
         />
       ) : (
@@ -363,6 +371,7 @@ export function PlannerScreen({
             rangeTasks,
             fmtHHmm,
             showFilters, // Added
+            listFilterConflict,
           }}
           actions={{
             completeTask,
@@ -386,6 +395,7 @@ export function PlannerScreen({
             setListFilterTag,
             setListFilterOverdue,
             setListFilterDone,
+            setListFilterConflict,
             toggleHourCollapsed,
             setListMenuOpenId,
             setCenterAlert,

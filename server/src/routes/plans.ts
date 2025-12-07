@@ -438,7 +438,12 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
         // Decode
         const str = iconv.decode(req.file.buffer, encoding);
 
-        const csvData = parse(str, {
+        // Strip comment lines starting with ##
+        // Note: This naively strips lines starting with ##. 
+        // If a valid field value starts with ## on a new line, it might be affected.
+        const cleanStr = str.replace(/^\s*##.*$/gm, '');
+
+        const csvData = parse(cleanStr, {
             columns: true,
             skip_empty_lines: true,
             trim: true,
@@ -694,6 +699,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
 
 // Apply plan items to schedule
 // Apply plan items to schedule
+// Apply plan items to schedule
 router.post('/:id/apply', async (req: Request, res: Response) => {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -711,7 +717,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
     }
 
     const { id } = req.params;
-    const { courses } = req.body; // Array of {courseId, settings}
+    const { courses, checkOnly, sessionOverrides, existingOverrides } = req.body; // Array of {courseId, settings}, Overrides map
 
     if (!Array.isArray(courses) || courses.length === 0) {
         return res.status(400).json({ error: 'No courses provided' });
@@ -743,9 +749,210 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
 
         // Build a map of courseId -> settings
         const settingsMap = new Map();
+        const requiredTypes = new Set<string>();
         courses.forEach((c: any) => {
             settingsMap.set(c.courseId, c.settings);
+            if (c.settings?.type) {
+                requiredTypes.add(c.settings.type);
+            }
         });
+
+        // -----------------------------------------------------
+        // CONFLICT DETECTION (checkOnly mode)
+        // -----------------------------------------------------
+        // Helper to get time range for a session (considering overrides)
+        const getSessionRange = (session: any) => {
+            const override = sessionOverrides?.[session.id];
+            let startAt: Date, endAt: Date;
+
+            if (override) {
+                // If override provided full ISO strings or YYYY-MM-DD HH:mm
+                const s = override.start;
+                const e = override.end;
+
+                if (s.includes('T') || (s.includes('-') && s.includes(':'))) {
+                    startAt = fromZonedTime(s, userTz);
+                    endAt = fromZonedTime(e, userTz);
+                } else {
+                    // Fallback to time-only override on same day
+                    startAt = fromZonedTime(`${session.date} ${s}`, userTz);
+                    endAt = fromZonedTime(`${session.date} ${e}`, userTz);
+                }
+            } else {
+                startAt = fromZonedTime(`${session.date} ${session.start_time}`, userTz);
+                endAt = fromZonedTime(`${session.date} ${session.end_time}`, userTz);
+            }
+            return { startAt, endAt };
+        };
+
+        if (checkOnly) {
+            const proposedRanges = sessions.map(session => {
+                const { startAt, endAt } = getSessionRange(session);
+                const courseName = (session.course as any)?.name || 'Unknown Course';
+                return { startAt, endAt, courseName, sessionId: session.id };
+            });
+
+            if (proposedRanges.length > 0) {
+                // Find potential conflicts
+                const minStart = new Date(Math.min(...proposedRanges.map(r => r.startAt.getTime())));
+                const maxEnd = new Date(Math.max(...proposedRanges.map(r => r.endAt.getTime())));
+
+                // Query existing time blocks for this user in the broad range
+                const { data: existingBlocks } = await supabase
+                    .from('time_blocks')
+                    .select('id, start_at, end_at, task_id, tasks(title)')
+                    .eq('user_id', userId)
+                    .gte('end_at', minStart.toISOString())
+                    .lte('start_at', maxEnd.toISOString());
+
+                const conflicts: any[] = [];
+
+                if (existingBlocks && existingBlocks.length > 0) {
+                    for (const prop of proposedRanges) {
+                        for (const exist of existingBlocks) {
+                            let existStart = new Date(exist.start_at);
+                            let existEnd = new Date(exist.end_at);
+
+                            // Check for override on existing block
+                            if (existingOverrides && existingOverrides[exist.id]) {
+                                const ov = existingOverrides[exist.id];
+                                if (ov.start.includes('T') || (ov.start.includes('-') && ov.start.includes(':'))) {
+                                    existStart = fromZonedTime(ov.start, userTz);
+                                    existEnd = fromZonedTime(ov.end, userTz);
+                                } else {
+                                    // Assuming exist block has date, but here override is just time?
+                                    // Actually existing blocks have full dates.
+                                    // If update is time-only, we need to know the block's original date.
+                                    // But existing block start_at is full ISO.
+                                    const origDate = existStart.toISOString().split('T')[0];
+                                    existStart = fromZonedTime(`${origDate} ${ov.start}`, userTz);
+                                    existEnd = fromZonedTime(`${origDate} ${ov.end}`, userTz);
+                                }
+                            }
+
+                            // Check overlap
+                            if (prop.startAt < existEnd && prop.endAt > existStart) {
+                                conflicts.push({
+                                    sessionId: prop.sessionId,
+                                    proposedTitle: prop.courseName,
+                                    proposedStart: prop.startAt,
+                                    proposedEnd: prop.endAt,
+                                    existingBlockId: exist.id,
+                                    existingTitle: (exist.tasks as any)?.title || 'Existing Task',
+                                    existingStart: existStart,
+                                    existingEnd: existEnd
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // Check for conflicts between proposed items (Internal Conflict)
+                for (let i = 0; i < proposedRanges.length; i++) {
+                    for (let j = i + 1; j < proposedRanges.length; j++) {
+                        const p1 = proposedRanges[i];
+                        const p2 = proposedRanges[j];
+
+                        if (p1.startAt < p2.endAt && p1.endAt > p2.startAt) {
+                            // Conflict detected between p1 and p2
+                            // Report for p1
+                            conflicts.push({
+                                sessionId: p1.sessionId,
+                                proposedTitle: p1.courseName,
+                                proposedStart: p1.startAt,
+                                proposedEnd: p1.endAt,
+                                existingBlockId: `proposed-${p2.sessionId}`, // Dummy ID
+                                existingTitle: `New: ${p2.courseName}`,
+                                existingStart: p2.startAt,
+                                existingEnd: p2.endAt
+                            });
+                            // Report for p2
+                            conflicts.push({
+                                sessionId: p2.sessionId,
+                                proposedTitle: p2.courseName,
+                                proposedStart: p2.startAt,
+                                proposedEnd: p2.endAt,
+                                existingBlockId: `proposed-${p1.sessionId}`, // Dummy ID
+                                existingTitle: `New: ${p1.courseName}`,
+                                existingStart: p1.startAt,
+                                existingEnd: p1.endAt
+                            });
+                        }
+                    }
+                }
+
+                return res.json({ success: true, checkOnly: true, conflicts });
+            } else {
+                return res.json({ success: true, checkOnly: true, conflicts: [] });
+            }
+        }
+
+        const autoCreatedTypeColors = new Map<string, string>();
+
+        // Update Existing Blocks if overrides present
+        if (existingOverrides) {
+            for (const [blockId, range] of Object.entries(existingOverrides)) {
+                // range is { start: "YYYY-MM-DD HH:mm", end: ... } or ISO?
+                // Plan says frontend sends full ISO or zoned string?
+                // Let's assume frontend sends formatted string compatible with fromZonedTime or ISO.
+                // Actually, for existing blocks, we might want to update them to specific absolute times.
+                // Let's assume input is ISO string or whatever `fromZonedTime` accepts.
+                // If it is ISO, fromZonedTime might double convert if we are not careful.
+                // Let's stick to strict ISO from frontend for existing edits?
+                // "YYYY-MM-DD HH:mm"
+
+                // Let's assume frontend sends "YYYY-MM-DD HH:mm" string in userTz
+                const s = fromZonedTime((range as any).start, userTz);
+                const e = fromZonedTime((range as any).end, userTz);
+
+                const { error: upErr } = await supabase
+                    .from('time_blocks')
+                    .update({
+                        start_at: s.toISOString(),
+                        end_at: e.toISOString()
+                    })
+                    .eq('id', blockId)
+                    .eq('user_id', userId);
+
+                if (upErr) console.warn('Failed to update existing block override:', upErr);
+            }
+        }
+
+        // Check for missing task types and create them
+        if (requiredTypes.size > 0) {
+            // Fetch existing types for user
+            const { data: existingTypes } = await supabase
+                .from('task_types')
+                .select('name')
+                .eq('user_id', userId)
+                .in('name', Array.from(requiredTypes));
+
+            const existingTypeSet = new Set(existingTypes?.map(t => t.name) || []);
+            const missingTypes = Array.from(requiredTypes).filter(t => !existingTypeSet.has(t));
+
+            if (missingTypes.length > 0) {
+                const typeColors = [
+                    '#F87171', '#FB923C', '#FACC15', '#4ADE80',
+                    '#2DD4BF', '#60A5FA', '#818CF8', '#A78BFA', '#F472B6'
+                ];
+
+                const newTypesPayload = missingTypes.map(name => {
+                    const color = typeColors[Math.floor(Math.random() * typeColors.length)];
+                    autoCreatedTypeColors.set(name, color);
+                    return {
+                        user_id: userId,
+                        name: name,
+                        color: color
+                    };
+                });
+
+                const { error: typeErr } = await supabase
+                    .from('task_types')
+                    .insert(newTypesPayload);
+
+                if (typeErr) console.warn('Failed to auto-create types:', typeErr);
+            }
+        }
 
         // Prepare batch payloads
         const tasksPayload: any[] = [];
@@ -758,8 +965,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
             const settings = settingsMap.get(courseId) || { type: 'Class', priority: 1, tags: [] };
 
             // IMPORTANT: Parse time in USER's timezone, not server's local time
-            const startAt = fromZonedTime(`${session.date} ${session.start_time}`, userTz);
-            const endAt = fromZonedTime(`${session.date} ${session.end_time}`, userTz);
+            const { startAt, endAt } = getSessionRange(session);
 
             const durationMin = (endAt.getTime() - startAt.getTime()) / 60000;
 
@@ -772,12 +978,15 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
             // Generate ID locally to link task and block
             const taskId = randomUUID();
 
+            // Determine color: settings.color (existing) or auto-generated
+            const taskColor = settings.color || autoCreatedTypeColors.get(settings.type || '');
+
             tasksPayload.push({
                 id: taskId,
                 user_id: userId,
                 title: courseName,
                 type: settings.type || 'Class',
-                color: settings.color,
+                color: taskColor,
                 due_at: endAt.toISOString(),
                 estimate_min: durationMin,
                 priority: settings.priority ?? 1,

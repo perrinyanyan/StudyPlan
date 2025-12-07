@@ -186,6 +186,41 @@ router.post('/signup', async (req: Request, res: Response) => {
   // Delete used code (optional, or rely on expiry)
   await supabase.from('email_verification_codes').delete().eq('email', email);
 
+  // Initialize Default Task Types for new user (and existing if checking above succeeded but types missing? No, only new/signup)
+  // Actually, for both new and existing-unverified being verified now, we should ensure defaults exist.
+  // Let's do it for the user.id we just processed.
+  const targetUserId = existing ? existing.id : (await supabase.from('users').select('id').eq('email', email).single()).data?.id;
+
+  if (targetUserId) {
+    const defaultTypes = [
+      { name: '语文', color: '#F87171' },
+      { name: '数学', color: '#60A5FA' },
+      { name: '英语', color: '#FACC15' },
+      { name: '物理', color: '#A78BFA' },
+      { name: '化学', color: '#34D399' },
+      { name: '生物', color: '#2DD4BF' },
+      { name: '历史', color: '#FB923C' },
+      { name: '地理', color: '#818CF8' },
+      { name: '计算机', color: '#9CA3AF' },
+      { name: '艺术', color: '#F472B6' },
+      { name: '运动', color: '#E879F9' },
+      { name: '爱好', color: '#FBBF24' }
+    ];
+
+    const typesPayload = defaultTypes.map(t => ({
+      user_id: targetUserId,
+      name: t.name,
+      color: t.color
+    }));
+
+    // Use upsert to be safe if user already has some
+    const { error: typeErr } = await supabase
+      .from('task_types')
+      .upsert(typesPayload, { onConflict: 'user_id,name' });
+
+    if (typeErr) console.warn('Failed to init default types:', typeErr);
+  }
+
   res.status(201).json({ message: 'User created successfully' });
 });
 
@@ -253,36 +288,77 @@ router.get('/me', async (req: Request, res: Response) => {
   });
 });
 
+
 router.post('/request-password-reset', async (req: Request, res: Response) => {
   const schema = z.object({ email: z.string().email(), captcha_id: z.string(), captcha_answer: z.string() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
+
   const ok = verifyCaptcha(parsed.data.captcha_id, parsed.data.captcha_answer);
   if (!ok) return res.status(400).json({ error: 'Invalid captcha' });
-  const token = mktoken();
-  passwordResets.set(token, { email: parsed.data.email, expireAt: Date.now() + TOKEN_TTL_MS });
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`[dev] reset-password token for ${parsed.data.email}: ${token}`);
+
+  // Generate 6-digit code
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  // Store in DB (reuse email_verification_codes)
+  // Clean up old codes first?
+  await supabase.from('email_verification_codes').delete().eq('email', parsed.data.email);
+
+  const { error: dbErr } = await supabase
+    .from('email_verification_codes')
+    .insert({ email: parsed.data.email, code, expires_at: expiresAt.toISOString() });
+
+  if (dbErr) {
+    console.error('Failed to store code:', dbErr);
+    return res.status(500).json({ error: 'Database error' });
   }
-  const base = process.env.APP_BASE_URL || 'http://localhost:3000';
-  const link = `${base}/reset-password?token=${token}`;
-  await sendEmail({ to: parsed.data.email, subject: 'Reset your password', html: `点击重置：<a href="${link}">${link}</a>` });
-  res.json({ message: 'Reset link sent if email exists' });
+
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`[dev] reset-password code for ${parsed.data.email}: ${code}`);
+  }
+
+  await sendEmail({
+    to: parsed.data.email,
+    subject: 'Verification Code - Reset Password',
+    html: `<p>Your verification code is: <strong>${code}</strong></p><p>It expires in 10 minutes.</p>`
+  });
+  res.json({ message: 'Verification code sent' });
 });
 
 router.post('/reset-password', async (req: Request, res: Response) => {
-  const schema = z.object({ token: z.string(), new_password: z.string().min(6) });
+  const schema = z.object({ email: z.string().email(), token: z.string().length(6), new_password: z.string().min(6) });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid input' });
-  const rec = passwordResets.get(parsed.data.token);
-  if (!rec || rec.expireAt < Date.now()) return res.status(400).json({ error: 'Token invalid or expired' });
-  passwordResets.delete(parsed.data.token);
-  const password_hash = await bcrypt.hash(parsed.data.new_password, 10);
+
+  const { email, token: code, new_password } = parsed.data;
+
+  // Verify Code
+  const { data: codeRecord, error: codeErr } = await supabase
+    .from('email_verification_codes')
+    .select('*')
+    .eq('email', email)
+    .eq('code', code)
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (codeErr || !codeRecord) {
+    return res.status(400).json({ error: 'Invalid or expired verification code' });
+  }
+
+  const password_hash = await bcrypt.hash(new_password, 10);
   const { error: upErr } = await supabase
     .from('users')
     .update({ password_hash })
-    .eq('email', rec.email);
+    .eq('email', email);
+
   if (upErr) return res.status(500).json({ error: 'Failed to update password' });
+
+  // Clean up code
+  await supabase.from('email_verification_codes').delete().eq('email', email);
+
   res.json({ message: 'Password updated' });
 });
 

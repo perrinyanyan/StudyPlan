@@ -52,9 +52,19 @@ export function PlanLibraryPage() {
     const categories = Array.from(new Set(plans.map(p => p.category).filter(Boolean))) as string[]
 
     const handleDownloadTemplate = () => {
-        const headers = ['plan_name', 'category', 'course_code', 'course_name', 'date', 'start_time', 'end_time', 'location', 'type', 'priority', 'tags']
-        const csvContent = headers.join(',') + '\n'
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const csvContent =
+            `plan_name,category,course_code,course_name,date,start_time,end_time,location,type,priority,tags
+## 双#号为注释行，注意英文逗号为分隔符，如果在内容中出现，请在两边使用双引号(excel会自动处理)，Planname不同时，会生成多个计划,计划分类,课程代码、英文 唯一课程标识，可自定义,课程名称 - 和课程代码一一对应,日期,开设时间,截至时间,教室位置,课程大类：语文、数学、英语、物理、化学、生物、历史、地理、计算机、艺术、运动、爱好等,高、中、低,标签，例如ACCP、TOEFL、羽毛球、篮球、钢琴、外教、中教等，多标签用英文逗号分隔
+##托福冲刺计划,TOEFL,ToeflReading01,托福阅读课,2025/10/28,8:00,9:30,线上,英语,高,"TOEFL,李老师"
+##托福冲刺计划,TOEFL,ToeflListening01,托福听力课,2025/10/28,10:00,11:30,线上,英语,高,"TOEFL,张老师"
+##2025 ACCP 秋季B,ACCP,Math02C,微积分2中教辅导,2025/10/28,14:00,15:00,线上,数学,高,"ACCP,中教"
+##2025 ACCP 秋季B,ACCP,Math02F,微积分2外教课,2025/10/28,15:00,17:30,线上,数学,高,"ACCP,外教"
+##托福冲刺计划,TOEFL,ToeflReading01,托福阅读课,2025/10/29,8:00,9:30,线上,英语,高,"TOEFL,李老师"
+##托福冲刺计划,TOEFL,ToeflListening01,托福听力课,2025/10/29,10:00,11:30,线上,英语,高,"TOEFL,张老师"
+`
+        // Add BOM for Excel compatibility
+        const BOM = '\uFEFF'
+        const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
         const link = document.createElement('a')
         const url = URL.createObjectURL(blob)
         link.setAttribute('href', url)

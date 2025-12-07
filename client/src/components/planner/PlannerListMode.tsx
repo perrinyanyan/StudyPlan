@@ -4,6 +4,7 @@ import { PlannerListView } from './PlannerListView'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
+import { getConflictIds } from '../../utils/conflicts'
 
 export interface PlannerListModeProps {
   state: any
@@ -17,6 +18,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     listFilterTag,
     listFilterOverdue,
     listFilterDone,
+    listFilterConflict,
     listTypeOptions,
     listTagOptions,
     rangeBlocks,
@@ -40,6 +42,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     setListFilterTag,
     setListFilterOverdue,
     setListFilterDone,
+    setListFilterConflict,
     setListMenuOpenId,
     setListEdit,
     setCenterAlert,
@@ -84,6 +87,12 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     let arr = [...baseBlocks].sort(
       (a: any, b: any) => new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
     )
+
+    if (listFilterConflict === 'conflicts') {
+      const conflictIds = getConflictIds(arr)
+      arr = arr.filter((b: any) => conflictIds.has(String(b.id)))
+    }
+
     if (listFilterOverdue !== 'all') {
       arr = arr.filter((b: any) => {
         const status = b.task_id ? taskStatusMap[String(b.task_id)] : 'open'
@@ -124,7 +133,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
       })
     }
     return arr
-  }, [rangeBlocks, blocks, listFilterOverdue, listFilterDone, listFilterType, listFilterPriority, listFilterTag, taskStatusMap, taskMetaMap, now])
+  }, [rangeBlocks, blocks, listFilterOverdue, listFilterDone, listFilterType, listFilterPriority, listFilterTag, listFilterConflict, taskStatusMap, taskMetaMap, now])
 
   const visibleTaskIds = useMemo(() => {
     const ids = new Set<string>()
@@ -244,6 +253,17 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                     onChange={toggleSelectAll}
                   />
                   <span className="text-xs text-white/70">全选</span>
+                </div>
+                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                  <span className="text-xs text-white/70">冲突</span>
+                  <select
+                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                    value={listFilterConflict || 'all'}
+                    onChange={(e) => setListFilterConflict && setListFilterConflict(e.target.value)}
+                  >
+                    <option value="all" className="text-slate-900">所有</option>
+                    <option value="conflicts" className="text-slate-900">仅冲突</option>
+                  </select>
                 </div>
                 <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
                   <span className="text-xs text-white/70">类型</span>

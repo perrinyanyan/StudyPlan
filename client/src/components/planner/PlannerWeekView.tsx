@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
+import { getConflictIds } from '../../utils/conflicts'
 import { PlannerListView } from './PlannerListView'
 import { TaskHoverCard } from './TaskHoverCard'
 import type { Task } from '../../types'
@@ -26,6 +27,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         listFilterTag,
         listFilterOverdue,
         listFilterDone,
+        listFilterConflict,
         listTypeOptions,
         listTagOptions,
         fmtHHmm,
@@ -52,6 +54,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         setListFilterTag,
         setListFilterOverdue,
         setListFilterDone,
+        setListFilterConflict,
         setListMenuOpenId,
 
         setCenterAlert,
@@ -92,7 +95,16 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     }
 
     // Filter blocks
+    const conflictIds = useMemo(() => {
+        if (listFilterConflict === 'conflicts') {
+            return getConflictIds(rangeBlocks || [])
+        }
+        return new Set<string>()
+    }, [rangeBlocks, listFilterConflict])
+
     const timelineBlocks = (rangeBlocks || []).filter((b: any) => {
+        if (listFilterConflict === 'conflicts' && !conflictIds.has(String(b.id))) return false
+
         const s = new Date(b.start_at)
         const e = new Date(b.end_at)
 
@@ -165,6 +177,17 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                     {state.showFilters && (
                         <div className="bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
                             <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm">
+                                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                                    <span className="text-xs text-white/70">冲突</span>
+                                    <select
+                                        className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                                        value={listFilterConflict || 'all'}
+                                        onChange={(e) => setListFilterConflict && setListFilterConflict(e.target.value)}
+                                    >
+                                        <option value="all" className="text-slate-900">所有</option>
+                                        <option value="conflicts" className="text-slate-900">仅冲突</option>
+                                    </select>
+                                </div>
                                 <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
                                     <span className="text-xs text-white/70">类型</span>
                                     <select

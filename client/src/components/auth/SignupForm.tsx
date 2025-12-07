@@ -55,6 +55,8 @@ export function SignupForm({ onLogin }: { onLogin: (email: string, password: str
       }
       // Signup successful (user created and verified), now auto login
       await onLogin(email, password)
+      // Redirect to planner/home explicitly
+      window.location.hash = '#/planner'  // Using hash as seen in the 'Back to login' link
     } finally {
       setLoading(false)
     }

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getApiUrl } from '../config'
 import { useAuth } from './useAuth'
 import { todayStr, toIso } from '../utils/datetime'
+import { getConflictIds } from '../utils/conflicts'
 import type { Task, Block, DailyTasks, FetchState } from '../types'
 
 export interface UsePlannerProps {
@@ -67,6 +68,7 @@ export function usePlanner(props: UsePlannerProps) {
   const [listFilterTag, setListFilterTag] = useState('all')
   const [listFilterOverdue, setListFilterOverdue] = useState('yes') // 'yes' | 'no' | 'all'
   const [listFilterDone, setListFilterDone] = useState('open') // 'open' | 'done' | 'all'
+  const [listFilterConflict, setListFilterConflict] = useState<'all' | 'conflicts'>('all')
 
   const now = new Date(nowTick)
   const isToday = date === todayStr(now)
@@ -84,11 +86,18 @@ export function usePlanner(props: UsePlannerProps) {
   const pxPerMin = HOUR_PX / 60
 
   const filteredBlocks = useMemo(
-    () =>
-      isToday && showFutureOnly
+    () => {
+      let res = isToday && showFutureOnly
         ? blocks.filter((b) => new Date(b.end_at) >= now)
-        : blocks,
-    [isToday, showFutureOnly, blocks, now],
+        : blocks
+
+      if (listFilterConflict === 'conflicts') {
+        const conflictIds = getConflictIds(res)
+        res = res.filter(b => conflictIds.has(String(b.id)))
+      }
+      return res
+    },
+    [isToday, showFutureOnly, blocks, now, listFilterConflict],
   )
 
   const [hourCollapsed, setHourCollapsed] = useState<Record<number, boolean>>({})
@@ -721,5 +730,7 @@ export function usePlanner(props: UsePlannerProps) {
     setListFilterOverdue,
     listFilterDone,
     setListFilterDone,
+    listFilterConflict,
+    setListFilterConflict,
   }
 }
