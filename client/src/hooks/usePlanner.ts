@@ -65,7 +65,7 @@ export function usePlanner(props: UsePlannerProps) {
   // Filters
   const [listFilterType, setListFilterType] = useState('all')
   const [listFilterPriority, setListFilterPriority] = useState('all')
-  const [listFilterTag, setListFilterTag] = useState('all')
+  const [listFilterTag, setListFilterTag] = useState<string[]>([])
   const [listFilterOverdue, setListFilterOverdue] = useState('yes') // 'yes' | 'no' | 'all'
   const [listFilterDone, setListFilterDone] = useState('open') // 'open' | 'done' | 'all'
   const [listFilterConflict, setListFilterConflict] = useState<'all' | 'conflicts'>('all')

@@ -196,7 +196,7 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
                 <div className="flex-1 overflow-y-auto p-6 space-y-4">
                     {conflicts.length > 0 && (
                         <div className="bg-slate-800/50 rounded-lg p-4 border border-white/5 text-sm text-slate-300">
-                            <p>双击 <span className="text-[#137fec] font-bold">时间</span> 可直接修改。</p>
+                            <p>双击 <span className="text-[#137fec] font-bold">时间</span> 可直接修改。也可忽略冲突继续后，在规划视图中通过冲突筛选调整解决</p>
                         </div>
                     )}
 

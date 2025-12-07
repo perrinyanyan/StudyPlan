@@ -1,6 +1,7 @@
 import type { Task } from '../../types'
 import { useState, useMemo } from 'react'
 import { PlannerListView } from './PlannerListView'
+import { MultiSelect } from '../ui/MultiSelect'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
@@ -125,9 +126,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           const t = meta.type || ''
           if (t !== listFilterType) return false
         }
-        if (listFilterTag !== 'all') {
+        if (listFilterTag && listFilterTag.length > 0) {
           const tags = meta.tags || []
-          if (!tags.includes(listFilterTag)) return false
+          if (!listFilterTag.some((t: string) => tags.includes(t))) return false
         }
         return true
       })
@@ -254,106 +255,98 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                   />
                   <span className="text-xs text-white/70">全选</span>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">冲突</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterConflict || 'all'}
-                    onChange={(e) => setListFilterConflict && setListFilterConflict(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">所有</option>
-                    <option value="conflicts" className="text-slate-900">仅冲突</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-white/70">类型</span>
                   <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                    className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     value={listFilterType}
                     onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
                   >
-                    <option value="all" className="text-slate-900">
+                    <option value="all" className="bg-slate-800 text-white">
                       所有
                     </option>
                     {(listTypeOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
+                      <option key={name} value={name} className="bg-slate-800 text-white">
                         {name}
                       </option>
                     ))}
                   </select>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-white/70">优先</span>
                   <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                    className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     value={listFilterPriority}
                     onChange={(e) => setListFilterPriority && setListFilterPriority(e.target.value as any)}
                   >
-                    <option value="all" className="text-slate-900">
+                    <option value="all" className="bg-slate-800 text-white">
                       所有
                     </option>
-                    <option value="2" className="text-slate-900">
+                    <option value="2" className="bg-slate-800 text-white">
                       高
                     </option>
-                    <option value="1" className="text-slate-900">
+                    <option value="1" className="bg-slate-800 text-white">
                       中
                     </option>
-                    <option value="0" className="text-slate-900">
+                    <option value="0" className="bg-slate-800 text-white">
                       低
                     </option>
                   </select>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
-                  <span className="text-xs text-white/70">标签</span>
-                  <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
-                    value={listFilterTag}
-                    onChange={(e) => setListFilterTag && setListFilterTag(e.target.value)}
-                  >
-                    <option value="all" className="text-slate-900">
-                      所有
-                    </option>
-                    {(listTagOptions || []).map((name: string) => (
-                      <option key={name} value={name} className="text-slate-900">
-                        {name}
-                      </option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-2">
+                  <MultiSelect
+                    label="标签"
+                    options={listTagOptions || []}
+                    value={listFilterTag || []}
+                    onChange={(tags) => setListFilterTag && setListFilterTag(tags)}
+                  />
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-white/70">逾期</span>
                   <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                    className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     value={listFilterOverdue}
                     onChange={(e) => setListFilterOverdue && setListFilterOverdue(e.target.value as any)}
                   >
-                    <option value="all" className="text-slate-900">
+                    <option value="all" className="bg-slate-800 text-white">
                       所有
                     </option>
-                    <option value="yes" className="text-slate-900">
+                    <option value="yes" className="bg-slate-800 text-white">
                       是
                     </option>
-                    <option value="no" className="text-slate-900">
+                    <option value="no" className="bg-slate-800 text-white">
                       否
                     </option>
                   </select>
                 </div>
-                <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
+                <div className="flex items-center gap-2">
                   <span className="text-xs text-white/70">完成</span>
                   <select
-                    className="rounded-lg bg-white/10 border-white/20 text-white text-xs py-1.5 pl-2 pr-6 focus:ring-[#137fec] focus:border-[#137fec]"
+                    className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
                     value={listFilterDone}
                     onChange={(e) => setListFilterDone && setListFilterDone(e.target.value as any)}
                   >
-                    <option value="all" className="text-slate-900">
+                    <option value="all" className="bg-slate-800 text-white">
                       所有
                     </option>
-                    <option value="done" className="text-slate-900">
+                    <option value="done" className="bg-slate-800 text-white">
                       已完成
                     </option>
-                    <option value="open" className="text-slate-900">
+                    <option value="open" className="bg-slate-800 text-white">
                       未完成
                     </option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-white/70">冲突</span>
+                  <select
+                    className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
+                    value={listFilterConflict || 'all'}
+                    onChange={(e) => setListFilterConflict && setListFilterConflict(e.target.value)}
+                  >
+                    <option value="all" className="bg-slate-800 text-white">所有</option>
+                    <option value="conflicts" className="bg-slate-800 text-white">仅冲突</option>
                   </select>
                 </div>
               </div>
