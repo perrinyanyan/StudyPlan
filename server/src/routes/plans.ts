@@ -998,7 +998,8 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                 estimate_min: durationMin,
                 priority: settings.priority ?? 1,
                 scheduling_status: 'scheduled',
-                status: 'open'
+                status: 'open',
+                content: session.content
             });
 
             timeBlocksPayload.push({
