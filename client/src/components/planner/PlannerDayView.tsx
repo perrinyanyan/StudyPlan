@@ -517,8 +517,31 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                           )}
                           <div className="relative px-2 py-1 space-y-1">
                             {(() => {
-                              let shortIndex = 0
-                              return hourBlocks.map((b: any) => {
+                              // Sort blocks by start time to ensure correct order
+                              const sortedBlocks = [...hourBlocks].sort((a: any, b: any) =>
+                                new Date(a.start_at).getTime() - new Date(b.start_at).getTime()
+                              )
+
+                              // Pre-calculate positions for all blocks to avoid overlap
+                              const blockPositions = new Map<string, { top: number, height: number }>()
+                              let cumulativeTop = 0
+                              const minBlockHeight = 48 // Minimum height for readability
+
+                              sortedBlocks.forEach((b: any) => {
+                                const s = new Date(b.start_at)
+                                const e = new Date(b.end_at)
+                                const startMin = s.getHours() * 60 + s.getMinutes()
+                                const endMin = e.getHours() * 60 + e.getMinutes()
+                                const duration = Math.max(1, endMin - startMin)
+
+                                // Calculate natural height based on duration
+                                const naturalHeight = Math.max(minBlockHeight, (duration / 60) * hourHeight)
+
+                                blockPositions.set(String(b.id), { top: cumulativeTop, height: naturalHeight })
+                                cumulativeTop += naturalHeight + 4 // 4px gap between blocks
+                              })
+
+                              return sortedBlocks.map((b: any) => {
                                 const s = new Date(b.start_at)
                                 const e = new Date(b.end_at)
                                 const startMin = s.getHours() * 60 + s.getMinutes()
@@ -528,43 +551,28 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const clampedEnd = Math.min(24 * 60, endMin)
                                 if (clampedEnd <= clampedStart) return null
 
+                                // Check if this block starts in this hour
+                                const startBlock = Math.floor(clampedStart / 60)
+                                if (h !== startBlock) return null
+
+                                const position = blockPositions.get(String(b.id))!
+                                let top = position.top
+                                let height = position.height
+
                                 const duration = clampedEnd - clampedStart
-                                const fullyWithinHour =
-                                  startMin >= hourStart && endMin <= hourEnd && duration <= 60
+                                const isLong = duration > 60 || endMin > hourEnd
+                                let cardStartMin = startMin
 
-                                let top = 0
-                                let height = hourHeight
-                                let barTopPx = 0
-                                let barBottomPx = 0
-                                let cardStartMin = 0
-                                let cardEndMin = 0
-                                const isLong = !fullyWithinHour
-
-                                if (fullyWithinHour) {
-                                  const stackIndex = shortIndex
-                                  shortIndex += 1
-                                  top = stackIndex * hourHeight
-                                  height = hourHeight
-                                  cardStartMin = hourStart
-                                  cardEndMin = hourEnd
-                                } else {
-                                  const startBlock = Math.floor(clampedStart / 60)
-                                  const endBlockExclusive = Math.ceil(clampedEnd / 60)
-                                  const spanBlocks = Math.max(1, endBlockExclusive - startBlock)
-                                  if (h !== startBlock) {
-                                    return null
-                                  }
-                                  top = 0
-                                  height = spanBlocks * hourHeight
-                                  cardStartMin = startBlock * 60
-                                  cardEndMin = endBlockExclusive * 60
-                                }
-
-                                const barStartOffsetMin = Math.max(0, startMin - cardStartMin)
-                                const barEndOffsetMin = Math.max(0, cardEndMin - endMin)
-                                const totalMinutes = Math.max(1, cardEndMin - cardStartMin)
-                                const topPercent = (barStartOffsetMin / totalMinutes) * 100
-                                const bottomPercent = (barEndOffsetMin / totalMinutes) * 100
+                                // Calculate bar height proportionally
+                                // Bar should represent (duration / 60) of the reference hourHeight
+                                const durationMinutes = Math.max(1, endMin - startMin)
+                                const referenceHeight = hourHeight // 1-hour reference
+                                const barHeightPx = (durationMinutes / 60) * referenceHeight
+                                const cardHeightPx = height - 4 // Subtracting gaps
+                                // The bar fills from top, percentage from bottom = (cardHeight - barHeight) / cardHeight * 100
+                                const fillRatio = Math.min(1, barHeightPx / Math.max(1, cardHeightPx))
+                                const topPercent = 0 // Bar starts at top
+                                const bottomPercent = Math.max(0, (1 - fillRatio) * 100)
 
                                 const taskIdStr = b.task_id ? String(b.task_id) : null
                                 const meta = taskIdStr ? taskMetaMap?.[taskIdStr] : undefined
