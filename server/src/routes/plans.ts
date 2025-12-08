@@ -470,6 +470,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
             type?: string;
             priority?: string;
             tags?: string;
+            content?: string;
         }
 
         const rows = (csvData as CSVRow[]).filter(r => {
@@ -674,7 +675,8 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                         date: row.date,
                         start_time: row.start_time,
                         end_time: row.end_time,
-                        location: row.location || 'TBD'
+                        location: row.location || 'TBD',
+                        content: row.content || null
                     });
                     processedSessionKeys.add(key);
                 }
@@ -789,7 +791,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
             const proposedRanges = sessions.map(session => {
                 const { startAt, endAt } = getSessionRange(session);
                 const courseName = (session.course as any)?.name || 'Unknown Course';
-                return { startAt, endAt, courseName, sessionId: session.id };
+                return { startAt, endAt, courseName, sessionId: session.id, content: session.content };
             });
 
             if (proposedRanges.length > 0) {
@@ -800,7 +802,8 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                 // Query existing time blocks for this user in the broad range
                 const { data: existingBlocks } = await supabase
                     .from('time_blocks')
-                    .select('id, start_at, end_at, task_id, tasks(title)')
+                    .select('id, start_at, end_at, task_id, tasks(title, content)')
+                    .eq('user_id', userId)
                     .eq('user_id', userId)
                     .gte('end_at', minStart.toISOString())
                     .lte('start_at', maxEnd.toISOString());
@@ -837,8 +840,10 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                                     proposedTitle: prop.courseName,
                                     proposedStart: prop.startAt,
                                     proposedEnd: prop.endAt,
+                                    proposedContent: prop.content,
                                     existingBlockId: exist.id,
                                     existingTitle: (exist.tasks as any)?.title || 'Existing Task',
+                                    existingContent: (exist.tasks as any)?.content,
                                     existingStart: existStart,
                                     existingEnd: existEnd
                                 });
@@ -863,6 +868,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                                 proposedEnd: p1.endAt,
                                 existingBlockId: `proposed-${p2.sessionId}`, // Dummy ID
                                 existingTitle: `New: ${p2.courseName}`,
+                                existingContent: p2.content,
                                 existingStart: p2.startAt,
                                 existingEnd: p2.endAt
                             });
@@ -874,6 +880,7 @@ router.post('/:id/apply', async (req: Request, res: Response) => {
                                 proposedEnd: p2.endAt,
                                 existingBlockId: `proposed-${p1.sessionId}`, // Dummy ID
                                 existingTitle: `New: ${p1.courseName}`,
+                                existingContent: p1.content,
                                 existingStart: p1.startAt,
                                 existingEnd: p1.endAt
                             });

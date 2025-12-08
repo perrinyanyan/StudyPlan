@@ -30,6 +30,7 @@ const createTaskSchema = z.object({
   priority: z.number().int().min(0).max(2).optional(),
   recurrence_rule: z.string().optional(),
   tags: z.array(z.string().min(1)).max(20).optional(),
+  content: z.string().nullish(),
 });
 
 const updateTaskSchema = z.object({
@@ -42,6 +43,7 @@ const updateTaskSchema = z.object({
   recurrence_rule: z.string().nullable().optional(),
   status: z.enum(['open', 'done']).optional(),
   tags: z.array(z.string().min(1)).max(20).optional(),
+  content: z.string().nullish(),
 });
 
 router.post('/', async (req: Request, res: Response) => {
@@ -163,6 +165,7 @@ router.post('/', async (req: Request, res: Response) => {
       estimate_min: payload.estimate_min ?? null,
       priority: payload.priority ?? null,
       recurrence_rule: payload.recurrence_rule ?? null,
+      content: payload.content ?? null,
     } as const;
 
     const { data, error } = await supabase.from('tasks').insert(insert).select('id').single();
@@ -448,6 +451,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
   if (payload.priority !== undefined) update.priority = payload.priority;
   if (payload.recurrence_rule !== undefined) update.recurrence_rule = payload.recurrence_rule;
   if (payload.status !== undefined) update.status = payload.status;
+  if (payload.content !== undefined) update.content = payload.content;
   const { error } = await supabase
     .from('tasks')
     .update(update)

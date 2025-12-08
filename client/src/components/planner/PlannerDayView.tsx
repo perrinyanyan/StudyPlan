@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
+import { TaskHoverCard } from './TaskHoverCard'
 import { MultiSelect } from '../ui/MultiSelect'
 
 export interface PlannerDayViewProps {
@@ -71,6 +72,39 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
+
+  const [hoveredTask, setHoveredTask] = useState<any>(null)
+  const [hoverPosition, setHoverPosition] = useState<{ x: number, y: number } | null>(null)
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  const handleBlockMouseEnter = (e: React.MouseEvent, b: any, meta: any, title: any) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current)
+      hoverTimeoutRef.current = null
+    }
+    const rect = e.currentTarget.getBoundingClientRect()
+    // Position to the right of the block
+    setHoverPosition({ x: rect.right + 10, y: rect.top })
+
+    // Construct task data for the card
+    const taskData = {
+      ...b,
+      title: title || '时间块',
+      ...meta,
+      blockId: String(b.id),
+      blockStart: b.start_at,
+      blockEnd: b.end_at,
+      id: b.task_id || b.id // Ensure we have an ID
+    }
+    setHoveredTask(taskData)
+  }
+
+  const handleBlockMouseLeave = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredTask(null)
+      setHoverPosition(null)
+    }, 200) // 200ms delay to allow moving to the card
+  }
 
   const handleSave = (id: string, field: string, value: any, extras?: any) => {
     setEditingCell(null)
@@ -528,8 +562,9 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
                                 const barStartOffsetMin = Math.max(0, startMin - cardStartMin)
                                 const barEndOffsetMin = Math.max(0, cardEndMin - endMin)
-                                barTopPx = barStartOffsetMin * effectivePxPerMin
-                                barBottomPx = barEndOffsetMin * effectivePxPerMin
+                                const totalMinutes = Math.max(1, cardEndMin - cardStartMin)
+                                const topPercent = (barStartOffsetMin / totalMinutes) * 100
+                                const bottomPercent = (barEndOffsetMin / totalMinutes) * 100
 
                                 const taskIdStr = b.task_id ? String(b.task_id) : null
                                 const meta = taskIdStr ? taskMetaMap?.[taskIdStr] : undefined
@@ -565,12 +600,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 return (
                                   <div
                                     key={String(b.id)}
-                                    className={`absolute left-1 right-1 rounded-lg border text-xs text-white/90 flex flex-col gap-1 bg-white/5 border-transparent ${isMenuOpen ? 'z-40' : 'z-10'
+                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 bg-slate-800/90 border-white/5 shadow-sm transition-colors hover:bg-slate-800 ${isMenuOpen ? 'z-40 ring-1 ring-[#137fec]/50' : 'z-10'
                                       }`}
                                     style={{
                                       top,
-                                      height,
+                                      height: Math.max(height - 4, 32), // Increased gap and min height
                                     }}
+                                    onMouseEnter={(e) => handleBlockMouseEnter(e, b, meta, name)}
+                                    onMouseLeave={handleBlockMouseLeave}
                                   >
                                     <div
                                       className={`h-full px-2.5 py-2 flex flex-col relative ${isLong ? 'justify-center' : 'justify-between'
@@ -578,24 +615,23 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                     >
                                       {isCur && (
                                         <div
-                                          className="absolute inset-x-0 rounded-lg bg-amber-500/20 pointer-events-none"
-                                          style={{ top: barTopPx, bottom: barBottomPx }}
+                                          className="absolute inset-0 rounded-xl bg-amber-500/10 pointer-events-none border border-amber-500/30"
                                         />
                                       )}
-                                      <div className="flex h-full items-center gap-2.5 relative z-10">
-                                        <div className="w-1.5 h-full relative">
+                                      <div className="flex h-full items-center gap-3 relative z-10">
+                                        <div className="w-1.5 h-full relative rounded-full overflow-hidden opacity-80">
                                           <div
-                                            className="absolute left-0 right-0 rounded-full"
+                                            className="absolute left-0 right-0"
                                             style={{
-                                              top: barTopPx,
-                                              bottom: barBottomPx,
+                                              top: `${topPercent}%`,
+                                              bottom: `${bottomPercent}%`,
                                               backgroundColor: barColor,
                                             }}
                                           ></div>
                                         </div>
                                         <div className="flex items-center justify-between w-full text-sm">
                                           <div className="flex flex-col flex-1 min-w-0">
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1.5">
                                               {status === 'done' && (
                                                 <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[0.65rem] font-medium text-emerald-300">
                                                   完成
@@ -1000,6 +1036,43 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
           }}
         />
       </div>
+
+      {hoveredTask && hoverPosition && (
+        <TaskHoverCard
+          task={hoveredTask}
+          position={hoverPosition}
+          onClose={() => {
+            setHoveredTask(null)
+            setHoverPosition(null)
+          }}
+          onMouseEnter={() => {
+            if (hoverTimeoutRef.current) {
+              clearTimeout(hoverTimeoutRef.current)
+              hoverTimeoutRef.current = null
+            }
+          }}
+          onMouseLeave={() => {
+            setHoveredTask(null)
+            setHoverPosition(null)
+          }}
+          actions={{
+            updateTaskMeta,
+            updateTaskAdvanced,
+            updateBlock,
+            deleteTask,
+            completeTask,
+            deleteBlock,
+            setEditTask,
+            createTaskAdvanced,
+            setCenterAlert,
+            headers: actions.headers,
+          }}
+          options={{
+            listTypeOptions: listTypeOptions || [],
+            listTagOptions: listTagOptions || [],
+          }}
+        />
+      )}
 
 
     </div >

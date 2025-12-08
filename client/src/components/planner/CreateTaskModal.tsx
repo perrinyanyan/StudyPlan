@@ -13,6 +13,7 @@ export type CreateTaskPayload = {
   priority?: number
   recurrence_rule?: string
   tags?: string[]
+  content?: string
 }
 
 export type CreateTaskModalProps = {
@@ -37,6 +38,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   }
 
   const [title, setTitle] = useState(initialTask ? initialTask.title : '')
+  const [content, setContent] = useState(initialTask ? (initialTask.content || '') : '')
   type TypeRow = { id: string; name: string; color: string }
   const [types, setTypes] = useState<TypeRow[]>([])
   const [typeIdx, setTypeIdx] = useState<number>(-1)
@@ -324,6 +326,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       priority: prio,
       recurrence_rule: finalRecur ?? ((isEdit && !shouldCopy) ? null : undefined),
       tags: finalTags,
+      content: content.trim() || null,
     }
 
     const payload = isEdit
@@ -381,6 +384,16 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
               placeholder="例如，完成TOEFL阅读第一部分"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+            />
+          </label>
+
+          <label className="flex flex-col">
+            <p className="text-sm font-medium text-white pb-1.5">任务内容</p>
+            <textarea
+              className="form-textarea h-24 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white placeholder-slate-500 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60 resize-none"
+              placeholder="添加详细描述..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
             />
           </label>
 

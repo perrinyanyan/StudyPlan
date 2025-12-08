@@ -4,6 +4,9 @@ import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
 import type { Task } from '../../types'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
 interface TaskHoverCardProps {
     task: any // Merged task + block info
@@ -55,6 +58,7 @@ export function TaskHoverCard({
         // Optimistic update
         const newTask = { ...optimisticTask }
         if (field === 'title') newTask.title = value
+        if (field === 'content') newTask.content = value
         if (field === 'priority') newTask.priority = value
         if (field === 'type') {
             newTask.type = value
@@ -90,6 +94,10 @@ export function TaskHoverCard({
         if (field === 'title') {
             if (actions.updateTaskAdvanced) {
                 await actions.updateTaskAdvanced(taskId, { title: value })
+            }
+        } else if (field === 'content') {
+            if (actions.updateTaskAdvanced) {
+                await actions.updateTaskAdvanced(taskId, { content: value })
             }
         } else if (field === 'time') {
             if (blockId && actions.updateBlock) {
@@ -191,6 +199,44 @@ export function TaskHoverCard({
                             >
                                 {optimisticTask.title}
                             </p>
+                        )}
+
+                        {/* Content */}
+                        {editingCell?.field === 'content' ? (
+                            <textarea
+                                autoFocus
+                                className="bg-slate-700 text-white text-xs px-2 py-1.5 rounded w-full mb-2 resize-y focus:outline-none focus:ring-1 focus:ring-slate-500"
+                                style={{ minHeight: '200px', lineHeight: '1.5' }}
+                                value={editingCell.value}
+                                onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                onBlur={() => handleSave('content', editingCell.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault()
+                                        handleSave('content', editingCell.value)
+                                    }
+                                    if (e.key === 'Escape') setEditingCell(null)
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            />
+                        ) : (
+                            optimisticTask.content ? (
+                                <div
+                                    className="text-xs text-slate-400 leading-relaxed mb-2 break-words cursor-pointer hover:bg-slate-800/50 hover:text-slate-300 rounded p-0.5 -m-0.5 transition-colors prose prose-invert prose-xs max-w-none [&>p]:my-0 [&>ul]:my-1 [&>ol]:my-1 [&>ul]:pl-4 [&>ol]:pl-4 [&_mark]:bg-yellow-500/40 [&_mark]:text-yellow-100"
+                                    onDoubleClick={() => setEditingCell({ field: 'content', value: optimisticTask.content })}
+                                >
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                        {optimisticTask.content.replace(/==([^=]+)==/g, '<mark>$1</mark>')}
+                                    </ReactMarkdown>
+                                </div>
+                            ) : (
+                                <div
+                                    className="text-xs text-slate-600 italic mb-2 cursor-pointer hover:text-slate-400"
+                                    onDoubleClick={() => setEditingCell({ field: 'content', value: '' })}
+                                >
+                                    双击添加描述...
+                                </div>
+                            )
                         )}
 
                         {/* Time */}

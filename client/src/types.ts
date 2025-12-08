@@ -12,6 +12,7 @@ export type Task = {
   recurrence_rule?: string | null
   scheduling_status?: string | null
   tags?: string[]
+  content?: string | null
 }
 
 export type Block = {

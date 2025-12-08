@@ -6,6 +6,9 @@ import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
 import { getConflictIds } from '../../utils/conflicts'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
 export interface PlannerListModeProps {
   state: any
@@ -175,6 +178,10 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     } else if (field === 'title') {
       if (block.task_id && updateTaskAdvanced) {
         updateTaskAdvanced(block.task_id, { title: value })
+      }
+    } else if (field === 'content') {
+      if (block.task_id && updateTaskAdvanced) {
+        updateTaskAdvanced(block.task_id, { content: value })
       }
     } else {
       if (block.task_id && updateTaskMeta) {
@@ -574,6 +581,56 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                     )
                                   )}
                                 </div>
+                                {/* Content Field Display */}
+                                {/* Content Field Display */}
+                                {editingCell?.id === blockId && editingCell.field === 'content' ? (
+                                  <textarea
+                                    autoFocus
+                                    className="bg-slate-700 text-white text-xs px-2 py-1.5 mt-1 rounded w-full resize-y focus:outline-none focus:ring-1 focus:ring-slate-500"
+                                    style={{ minHeight: '150px', lineHeight: '1.5' }}
+                                    value={editingCell.value}
+                                    onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                    onBlur={() => handleSave(blockId, 'content', editingCell.value)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault()
+                                        handleSave(blockId, 'content', editingCell.value)
+                                      }
+                                      if (e.key === 'Escape') setEditingCell(null)
+                                    }}
+                                    onClick={e => e.stopPropagation()}
+                                  />
+                                ) : (
+                                  (meta?.content) ? (
+                                    <div className="w-full mt-1">
+                                      <div
+                                        className="text-gray-400 text-xs block cursor-pointer hover:bg-white/5 rounded p-1 -m-1 transition-colors"
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation()
+                                          setEditingCell({ id: blockId, field: 'content', value: meta.content })
+                                        }}
+                                      >
+                                        <div className="prose prose-invert prose-xs max-w-none [&>p]:my-0 [&>ul]:my-1 [&>ol]:my-1 [&>ul]:pl-4 [&>ol]:pl-4 [&_mark]:bg-yellow-500/30 [&_mark]:text-yellow-100">
+                                          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                            {meta.content.replace(/==([^=]+)==/g, '<mark>$1</mark>')}
+                                          </ReactMarkdown>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-full mt-1">
+                                      <span
+                                        className="text-gray-600 text-xs italic cursor-pointer hover:text-gray-400"
+                                        onDoubleClick={(e) => {
+                                          e.stopPropagation()
+                                          setEditingCell({ id: blockId, field: 'content', value: '' })
+                                        }}
+                                      >
+                                        双击添加描述...
+                                      </span>
+                                    </div>
+                                  )
+                                )}
                               </div>
                               <div
                                 className={`flex items-center text-white/80 gap-2 text-xs ${status === 'done' ? 'opacity-60' : ''

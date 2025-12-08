@@ -1,19 +1,13 @@
 ## ADDED Requirements
 
-### Requirement: Focus Sessions
-The system SHALL support starting and ending focus sessions, and tracking statistics.
+### Requirement: Focus Stats Data Structure
+The system SHALL aggregate focus statistics:
+- `total_minutes` (Integer): Total focus time
+- `sessions_count` (Integer): Number of completed sessions
+- `by_day` (Map): Daily breakdown
+    - Key: Date string
+    - Value: Object with `minutes` and `sessions`
 
-#### Scenario: Start focus session
-- **WHEN** a user starts a focus session
-- **THEN** the system records the start time and associated task (if any)
-
-#### Scenario: End focus session
-- **WHEN** a user ends an active focus session
-- **THEN** the system records the end time and calculates duration
-
-### Requirement: Focus Statistics
-The system SHALL provide statistics on focus duration and session counts.
-
-#### Scenario: Get focus stats
-- **WHEN** a user requests focus stats for a date range
-- **THEN** the system returns total minutes, session count, and daily breakdown
+#### Scenario: Stats calculation
+- **WHEN** requesting stats
+- **THEN** total_minutes must equal sum of daily minutes

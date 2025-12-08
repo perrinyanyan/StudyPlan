@@ -20,6 +20,7 @@ interface Session {
     start_time: string;
     end_time: string;
     location: string;
+    content?: string | null;
 }
 
 interface Course {
@@ -591,10 +592,17 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
 
                                                         <div className="bg-slate-800/30 rounded p-2 space-y-1 mt-2 border border-white/5">
                                                             {item.course.sessions.map(s => (
-                                                                <div key={s.id} className="flex text-xs text-slate-400 gap-3">
-                                                                    <div className="w-24">📅 {s.date}</div>
-                                                                    <div className="w-24">⏰ {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</div>
-                                                                    <div>📍 {s.location}</div>
+                                                                <div key={s.id} className="flex flex-col gap-1 border-b border-white/5 last:border-0 pb-1 last:pb-0">
+                                                                    <div className="flex text-xs text-slate-400 gap-3">
+                                                                        <div className="w-24">📅 {s.date}</div>
+                                                                        <div className="w-24">⏰ {s.start_time.slice(0, 5)} - {s.end_time.slice(0, 5)}</div>
+                                                                        <div>📍 {s.location}</div>
+                                                                    </div>
+                                                                    {s.content && (
+                                                                        <div className="text-xs text-slate-500 pl-2 border-l-2 border-slate-700 ml-1">
+                                                                            {s.content}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             ))}
                                                         </div>

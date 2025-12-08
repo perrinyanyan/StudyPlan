@@ -196,18 +196,18 @@ export function usePlanner(props: UsePlannerProps) {
   }, [tasks, rangeTasks])
 
   const taskMetaMap = useMemo(() => {
-    const m: Record<string, { priority?: number | null; type?: string | null; tags?: string[]; color?: string | null }> = {}
+    const m: Record<string, { priority?: number | null; type?: string | null; tags?: string[]; color?: string | null; content?: string | null }> = {}
       ; (tasks.today || []).forEach((t) => {
-        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null, content: t.content ?? null }
       })
       ; (tasks.overdue || []).forEach((t) => {
-        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null, content: t.content ?? null }
       })
       ; (unscheduled || []).forEach((t) => {
-        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null, content: t.content ?? null }
       })
       ; (rangeTasks || []).forEach((t) => {
-        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null }
+        m[String(t.id)] = { priority: t.priority ?? null, type: t.type ?? null, tags: t.tags || [], color: t.color ?? null, content: t.content ?? null }
       })
     return m
   }, [tasks, unscheduled, rangeTasks])

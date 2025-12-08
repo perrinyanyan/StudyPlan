@@ -9,6 +9,8 @@ interface ConflictItem {
     existingTitle: string;
     existingStart: string; // ISO string
     existingEnd: string;   // ISO string
+    proposedContent?: string;
+    existingContent?: string;
 }
 
 interface ConflictModalProps {
@@ -232,6 +234,8 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
                                 <div className={`flex-1 w-full bg-[#137fec]/10 border border-[#137fec]/30 rounded-md p-3 relative group ${c.isResolved ? '' : 'cursor-pointer hover:bg-[#137fec]/20'}`}>
                                     <div className="md:hidden text-[10px] uppercase font-bold text-[#137fec] mb-1">拟添加 New</div>
                                     <div className="font-semibold text-white truncate" title={c.proposedTitle}>{c.proposedTitle}</div>
+                                    {c.proposedContent && <div className="text-xs text-slate-400 truncate mt-0.5" title={c.proposedContent}>{c.proposedContent}</div>}
+
 
                                     {editingId === c.sessionId ? (
                                         <div className="mt-1 flex flex-col gap-1">
@@ -273,6 +277,8 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
                                 <div className={`flex-1 w-full bg-orange-500/10 border border-orange-500/30 rounded-md p-3 relative group ${c.isResolved || !c.existingBlockId ? '' : 'cursor-pointer hover:bg-orange-500/20'}`}>
                                     <div className="md:hidden text-[10px] uppercase font-bold text-orange-400 mb-1">现有 Existing</div>
                                     <div className="font-semibold text-white/90 truncate" title={c.existingTitle}>{c.existingTitle}</div>
+                                    {c.existingContent && <div className="text-xs text-orange-300/70 truncate mt-0.5" title={c.existingContent}>{c.existingContent}</div>}
+
 
                                     {editingExId === c.existingBlockId ? (
                                         <div className="mt-1 flex flex-col gap-1">
