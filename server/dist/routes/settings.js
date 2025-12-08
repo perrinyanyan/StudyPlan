@@ -67,4 +67,41 @@ router.put('/', async (req, res) => {
         return res.status(500).json({ error: 'Failed to save settings' });
     return res.json({ message: 'OK' });
 });
+router.post('/clear-data', async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId)
+        return res.status(401).json({ error: 'Unauthorized' });
+    const { email } = req.body;
+    if (!email)
+        return res.status(400).json({ error: 'Email is required' });
+    // Verify email matches logged in user
+    // We can check auth.users via admin API or check our 'users' table if it syncs email
+    // Assuming 'users' table has email and is synced.
+    const { data: user, error: uErr } = await supabase
+        .from('users')
+        .select('email')
+        .eq('id', userId)
+        .single();
+    if (uErr || !user)
+        return res.status(500).json({ error: 'Failed to fetch user info' });
+    if (user.email !== email) {
+        return res.status(403).json({ error: 'Email does not match' });
+    }
+    // Delete all tasks (cascade should handle time_blocks if configured, but let's be safe)
+    // First delete time_blocks
+    const { error: tbErr } = await supabase
+        .from('time_blocks')
+        .delete()
+        .eq('user_id', userId);
+    if (tbErr)
+        return res.status(500).json({ error: 'Failed to clear time blocks' });
+    // Delete tasks
+    const { error: tErr } = await supabase
+        .from('tasks')
+        .delete()
+        .eq('user_id', userId);
+    if (tErr)
+        return res.status(500).json({ error: 'Failed to clear tasks' });
+    res.json({ message: 'All plans cleared' });
+});
 export default router;

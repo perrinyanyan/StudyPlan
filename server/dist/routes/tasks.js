@@ -28,6 +28,7 @@ const createTaskSchema = z.object({
     priority: z.number().int().min(0).max(2).optional(),
     recurrence_rule: z.string().optional(),
     tags: z.array(z.string().min(1)).max(20).optional(),
+    content: z.string().nullish(),
 });
 const updateTaskSchema = z.object({
     title: z.string().min(1).optional(),
@@ -39,6 +40,7 @@ const updateTaskSchema = z.object({
     recurrence_rule: z.string().nullable().optional(),
     status: z.enum(['open', 'done']).optional(),
     tags: z.array(z.string().min(1)).max(20).optional(),
+    content: z.string().nullish(),
 });
 router.post('/', async (req, res) => {
     const userId = getUserId(req);
@@ -63,71 +65,155 @@ router.post('/', async (req, res) => {
             typeColor = tt.color ?? typeColor;
         }
     }
-    let autoStart = null;
-    let autoEnd = null;
-    if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0) {
-        autoEnd = new Date(payload.due_at).toISOString();
-        autoStart = new Date(new Date(payload.due_at).getTime() - payload.estimate_min * 60000).toISOString();
-        const { data: conflicts, error: cErr } = await supabase
-            .from('time_blocks')
-            .select('id')
-            .eq('user_id', userId)
-            .lt('start_at', autoEnd)
-            .gt('end_at', autoStart);
-        if (cErr)
-            return res.status(500).json({ error: 'Failed to check conflicts' });
-        if (conflicts && conflicts.length > 0)
-            return res.status(409).json({ error: 'Time conflict' });
-    }
-    const insert = {
-        user_id: userId,
-        title: payload.title,
-        type: typeName,
-        color: typeColor,
-        due_at: payload.due_at ? new Date(payload.due_at).toISOString() : null,
-        estimate_min: payload.estimate_min ?? null,
-        priority: payload.priority ?? null,
-        recurrence_rule: payload.recurrence_rule ?? null,
-    };
-    const { data, error } = await supabase.from('tasks').insert(insert).select('id').single();
-    if (error)
-        return res.status(500).json({ error: 'Failed to create task' });
-    const taskId = data.id;
-    // Auto-create time block if explicit time provided (due_at + estimate_min)
-    if (autoStart && autoEnd) {
-        const { error: bErr } = await supabase
-            .from('time_blocks')
-            .insert({ user_id: userId, start_at: autoStart, end_at: autoEnd, task_id: taskId });
-        if (!bErr) {
-            await supabase.from('tasks').update({ scheduling_status: 'scheduled' }).eq('id', taskId).eq('user_id', userId);
+    // Recurrence logic
+    const dates = [];
+    const startBase = payload.due_at ? new Date(payload.due_at) : new Date();
+    if (payload.recurrence_rule && payload.recurrence_rule !== 'POOL' && payload.due_at) {
+        const rule = payload.recurrence_rule;
+        const untilMatch = rule.match(/UNTIL=(\d{8})/);
+        if (!untilMatch) {
+            // No UNTIL, just create one instance (or handle infinite? for now 1)
+            dates.push(startBase);
+        }
+        else {
+            const untilStr = untilMatch[1];
+            const untilDate = new Date(Number(untilStr.slice(0, 4)), Number(untilStr.slice(4, 6)) - 1, Number(untilStr.slice(6, 8)), 23, 59, 59);
+            const freq = rule.startsWith('DAILY') ? 'DAILY' : rule.startsWith('WEEKLY') ? 'WEEKLY' : rule.startsWith('MONTHLY') ? 'MONTHLY' : null;
+            // Parse BYDAY
+            let byDay = [];
+            const byDayMatch = rule.match(/BYDAY=([^;]+)/);
+            if (byDayMatch)
+                byDay = byDayMatch[1].split(',');
+            // Parse BYMONTHDAY
+            let byMonthDay = [];
+            const byMonthDayMatch = rule.match(/BYMONTHDAY=([^;]+)/);
+            if (byMonthDayMatch)
+                byMonthDay = byMonthDayMatch[1].split(',').map(Number);
+            let current = new Date(startBase);
+            let count = 0;
+            const MAX_COUNT = 365; // Safety cap
+            // Helper to check if current date matches criteria
+            const matches = (d) => {
+                if (freq === 'WEEKLY' && byDay.length > 0) {
+                    const dayMap = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+                    const dayStr = dayMap[d.getDay()];
+                    if (!byDay.includes(dayStr))
+                        return false;
+                }
+                if (freq === 'MONTHLY' && byMonthDay.length > 0) {
+                    const dom = d.getDate();
+                    if (!byMonthDay.includes(dom))
+                        return false;
+                }
+                return true;
+            };
+            while (current <= untilDate && count < MAX_COUNT) {
+                if (matches(current)) {
+                    dates.push(new Date(current));
+                    count++;
+                }
+                // Advance
+                if (freq === 'DAILY') {
+                    current.setDate(current.getDate() + 1);
+                }
+                else if (freq === 'WEEKLY') {
+                    // If BYDAY is present, we still advance day by day to catch all days in the week
+                    // Optimization: could jump, but day-by-day is safer for multi-day selection
+                    current.setDate(current.getDate() + 1);
+                }
+                else if (freq === 'MONTHLY') {
+                    // Similar to weekly, if BYMONTHDAY is present, day-by-day is safest to catch multiple dates
+                    // But if no BYMONTHDAY, jump month
+                    if (byMonthDay.length > 0) {
+                        current.setDate(current.getDate() + 1);
+                    }
+                    else {
+                        current.setMonth(current.getMonth() + 1);
+                    }
+                }
+                else {
+                    break; // Should not happen
+                }
+            }
         }
     }
-    // If tags are provided, ensure tag rows and create relations
-    if (payload.tags && payload.tags.length > 0) {
-        const names = Array.from(new Set(payload.tags.map(s => s.trim().toLowerCase()).filter(Boolean)));
-        if (names.length > 0) {
-            const upserts = names.map(n => ({ user_id: userId, name: n }));
-            const { error: upErr } = await supabase
-                .from('tags')
-                .upsert(upserts, { onConflict: 'user_id,name' });
-            if (upErr)
-                return res.status(500).json({ error: 'Failed to upsert tags' });
-            const { data: tagRows, error: selErr } = await supabase
-                .from('tags')
-                .select('id,name')
+    else {
+        // Single task or POOL
+        dates.push(startBase);
+    }
+    if (dates.length === 0)
+        return res.status(400).json({ error: 'No valid dates generated from recurrence rule' });
+    const createdIds = [];
+    // Batch insert is more efficient, but we need to handle time blocks and tags for each.
+    // We'll loop and insert one by one for simplicity and correctness with dependent tables.
+    for (const date of dates) {
+        const insert = {
+            user_id: userId,
+            title: payload.title,
+            type: typeName,
+            color: typeColor,
+            due_at: payload.due_at ? new Date(payload.due_at).toISOString() : null,
+            estimate_min: payload.estimate_min ?? null,
+            priority: payload.priority ?? null,
+            recurrence_rule: payload.recurrence_rule ?? null,
+            content: payload.content ?? null,
+        };
+        const { data, error } = await supabase.from('tasks').insert(insert).select('id').single();
+        if (error) {
+            console.error('Failed to create task instance', error);
+            continue;
+        }
+        const taskId = data.id;
+        createdIds.push(taskId);
+        // Auto-create time block
+        if (payload.estimate_min && payload.estimate_min > 0 && payload.recurrence_rule !== 'POOL') {
+            const autoEnd = date.toISOString();
+            const autoStart = new Date(date.getTime() - payload.estimate_min * 60000).toISOString();
+            // Check for conflicts
+            const { data: conflicts, error: cErr } = await supabase
+                .from('time_blocks')
+                .select('id')
                 .eq('user_id', userId)
-                .in('name', names);
-            if (selErr || !tagRows)
-                return res.status(500).json({ error: 'Failed to load tags' });
-            const links = tagRows.map(r => ({ task_id: taskId, tag_id: r.id }));
-            const { error: linkErr } = await supabase
-                .from('task_tags')
-                .upsert(links, { onConflict: 'task_id,tag_id' });
-            if (linkErr)
-                return res.status(500).json({ error: 'Failed to link tags' });
+                .lt('start_at', autoEnd)
+                .gt('end_at', autoStart);
+            if (cErr) {
+                console.error('Failed to check conflicts', cErr);
+            }
+            else if (conflicts && conflicts.length > 0) {
+                // If conflict, we should probably rollback the task creation?
+                // Or just return error and let the user handle it?
+                // Since we are inside a loop (for recurrence), failing one might be tricky.
+                // But for "Schedule to Calendar" it's usually a single date.
+                // Let's delete the task and return 409.
+                await supabase.from('tasks').delete().eq('id', taskId);
+                return res.status(409).json({ error: 'Time conflict' });
+            }
+            const { error: bErr } = await supabase
+                .from('time_blocks')
+                .insert({ user_id: userId, start_at: autoStart, end_at: autoEnd, task_id: taskId });
+            if (!bErr) {
+                await supabase.from('tasks').update({ scheduling_status: 'scheduled' }).eq('id', taskId).eq('user_id', userId);
+            }
+        }
+        // Link tags
+        if (payload.tags && payload.tags.length > 0) {
+            const names = Array.from(new Set(payload.tags.map(s => s.trim().toLowerCase()).filter(Boolean)));
+            if (names.length > 0) {
+                // Upsert tags (idempotent)
+                const upserts = names.map(n => ({ user_id: userId, name: n }));
+                await supabase.from('tags').upsert(upserts, { onConflict: 'user_id,name' });
+                // Get IDs
+                const { data: tagRows } = await supabase.from('tags').select('id,name').eq('user_id', userId).in('name', names);
+                if (tagRows) {
+                    const links = tagRows.map(r => ({ task_id: taskId, tag_id: r.id }));
+                    await supabase.from('task_tags').upsert(links, { onConflict: 'task_id,tag_id' });
+                }
+            }
         }
     }
-    res.status(201).json({ id: taskId });
+    if (createdIds.length === 0)
+        return res.status(500).json({ error: 'Failed to create any tasks' });
+    res.status(201).json({ id: createdIds[0], count: createdIds.length });
 });
 router.get('/', async (req, res) => {
     const userId = getUserId(req);
@@ -322,7 +408,26 @@ router.patch('/:id', async (req, res) => {
     const payload = parsed.data;
     let autoStart = null;
     let autoEnd = null;
-    if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0) {
+    // Check if it's a pool task (either in payload or existing)
+    let isPool = false;
+    if (payload.recurrence_rule !== undefined) {
+        isPool = (payload.recurrence_rule || '').startsWith('POOL');
+    }
+    else {
+        // Fetch existing to check
+        const { data: existing } = await supabase.from('tasks').select('recurrence_rule').eq('id', id).single();
+        if (existing && existing.recurrence_rule && existing.recurrence_rule.startsWith('POOL')) {
+            isPool = true;
+        }
+    }
+    console.log('PATCH /:id debug:', {
+        id,
+        payloadRecur: payload.recurrence_rule,
+        isPool,
+        due_at: payload.due_at,
+        estimate_min: payload.estimate_min
+    });
+    if (payload.due_at && typeof payload.estimate_min === 'number' && payload.estimate_min > 0 && !isPool) {
         autoEnd = new Date(payload.due_at).toISOString();
         autoStart = new Date(new Date(payload.due_at).getTime() - payload.estimate_min * 60000).toISOString();
         const { data: conflicts, error: cErr } = await supabase
@@ -354,6 +459,8 @@ router.patch('/:id', async (req, res) => {
         update.recurrence_rule = payload.recurrence_rule;
     if (payload.status !== undefined)
         update.status = payload.status;
+    if (payload.content !== undefined)
+        update.content = payload.content;
     const { error } = await supabase
         .from('tasks')
         .update(update)
@@ -361,7 +468,13 @@ router.patch('/:id', async (req, res) => {
         .eq('user_id', userId);
     if (error)
         return res.status(500).json({ error: 'Failed to update task' });
-    if (autoStart && autoEnd) {
+    if (isPool) {
+        // If it's a pool task, ensure NO time blocks exist (so it doesn't block others)
+        // and ensure status is unscheduled
+        await supabase.from('time_blocks').delete().eq('task_id', id).eq('user_id', userId);
+        await supabase.from('tasks').update({ scheduling_status: 'unscheduled' }).eq('id', id).eq('user_id', userId);
+    }
+    else if (autoStart && autoEnd) {
         const { data: blocks, error: bSelErr } = await supabase
             .from('time_blocks')
             .select('id')

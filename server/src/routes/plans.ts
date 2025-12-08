@@ -635,7 +635,7 @@ router.post('/import', upload.single('file'), async (req: Request, res: Response
                         else settings.priority = parseInt(p) || 1;
                     }
                     if (row.tags) {
-                        settings.tags = row.tags.split(/[,，\s]+/).map((t: string) => t.trim()).filter(Boolean);
+                        settings.tags = row.tags.split(/[、;；,，]+/).map((t: string) => t.trim()).filter(Boolean);
                     }
                 }
 
@@ -1338,6 +1338,142 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     res.json({ success: true });
+});
+
+// Export plan
+router.get('/:id/export', async (req, res) => {
+    const { id } = req.params;
+    console.log(`[Export] Starting export for plan ${id}`);
+
+    // 1. Get Plan
+    const { data: plan, error: planErr } = await supabase
+        .from('optional_plans')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (planErr || !plan) {
+        console.error('[Export] Plan not found error:', planErr);
+        return res.status(404).json({ error: 'Plan not found' });
+    }
+    console.log(`[Export] Plan found: ${plan.name}`);
+
+    // 2. Get Plan Items
+    const { data: items, error: itemsErr } = await supabase
+        .from('optional_plan_items')
+        .select('*')
+        .eq('optional_plan_id', id)
+        .eq('kind', 'course');
+
+    if (itemsErr) {
+        console.error('[Export] Items fetch error:', itemsErr);
+        return res.status(500).json({ error: itemsErr.message });
+    }
+    console.log(`[Export] Items found: ${items?.length || 0}`);
+
+    if (!items || items.length === 0) {
+        console.log('[Export] No items, returning empty CSV');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="plan_${plan.id}.csv"`);
+        return res.send('\uFEFFplan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
+    }
+
+    // 3. Get Courses manually
+    const courseIds = items.map(i => i.ref_id);
+    const { data: courses, error: coursesErr } = await supabase
+        .from('courses')
+        .select('*')
+        .in('id', courseIds);
+
+    if (coursesErr) {
+        console.error('[Export] Courses fetch error:', coursesErr);
+        return res.status(500).json({ error: coursesErr.message });
+    }
+    console.log(`[Export] Courses found: ${courses?.length || 0}`);
+
+    const courseMap = new Map(courses?.map(c => [c.id, c]) || []);
+
+    // 4. Get Course Sessions for all courses
+    const { data: sessions, error: sessErr } = await supabase
+        .from('course_sessions')
+        .select('*')
+        .in('course_id', courseIds)
+        .order('date', { ascending: true })
+        .order('start_time', { ascending: true });
+
+    if (sessErr) {
+        console.error('[Export] Sessions fetch error:', sessErr);
+        return res.status(500).json({ error: sessErr.message });
+    }
+    console.log(`[Export] Sessions found: ${sessions?.length || 0}`);
+
+    const rows: string[] = [];
+    // Header
+    rows.push('plan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
+
+    // Data Rows
+    for (const item of items) {
+        const course = courseMap.get(item.ref_id);
+        if (!course) continue;
+
+        const courseSessions = sessions?.filter(s => s.course_id === course.id) || [];
+
+        for (const sess of courseSessions) {
+            // sess has date (YYYY-MM-DD), start_time (HH:MM:SS), end_time (HH:MM:SS)
+
+            // Format Date -> YYYY/MM/DD
+            const dateStr = (sess.date || '').replace(/-/g, '/');
+
+            // Format Time -> HH:mm (strip seconds if present)
+            const startTimeStr = (sess.start_time || '').substring(0, 5);
+            const endTimeStr = (sess.end_time || '').substring(0, 5);
+
+            // Extract settings from item (priority, tags, type)
+            // item.settings is JSONB, so accessing properties is valid
+            const itemSettings: any = item.settings || {};
+            const priority = itemSettings.priority !== undefined ? String(itemSettings.priority) : '';
+            const tags = Array.isArray(itemSettings.tags) ? itemSettings.tags.join(';') : '';
+            // Type can be on session or item settings
+            const type = sess.type || itemSettings.type || '';
+
+            // Prepare row fields
+            const fields = [
+                plan.name,              // plan_name
+                plan.category || '',    // category
+                course.code || '',      // course_code
+                course.name || '',      // course_name
+                sess.content || '',     // content
+                dateStr,                // date
+                startTimeStr,           // start_time
+                endTimeStr,             // end_time
+                sess.location || '',    // location
+                type,                   // type
+                priority,               // priority
+                tags                    // tags
+            ];
+
+            // Initialize row content with escaping needed for CSV format
+            const escapedFields = fields.map(f => {
+                const s = String(f);
+                if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+                    return `"${s.replace(/"/g, '""')}"`;
+                }
+                return s;
+            });
+
+            rows.push(escapedFields.join(','));
+        }
+    }
+
+    // Send CSV
+    const csvContent = '\uFEFF' + rows.join('\n'); // Add BOM for Excel utf-8
+
+    // For browser download, we'd ideally sanitized the filename, but keeping it simple for now
+    const safeName = plan.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5-_]/g, '_');
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="plan_${encodeURIComponent(safeName)}.csv"`);
+    res.send(csvContent);
 });
 
 export default router;

@@ -69,7 +69,7 @@ router.get('/users', async (req, res) => {
     // 1. Fetch all users (base query)
     let userQuery = supabase
         .from('users')
-        .select('id, email, nickname, created_at, last_sign_in_at')
+        .select('id, email, nickname, avatar_url, created_at, last_sign_in_at')
         .order('created_at', { ascending: false });
     // Scope restrictions
     if (!isSystemAdmin) {
@@ -87,8 +87,59 @@ router.get('/users', async (req, res) => {
             if (!hasAccess)
                 return res.status(403).json({ error: 'Forbidden access to this class' });
         }
-        // If no classId, we currently allow fetching all users to support "Add Student" search.
-        // In a stricter environment, we would restrict this.
+        else {
+            // If no classId is provided, restrict based on admin role
+            let allowedUserIds = new Set();
+            let hasRestriction = false;
+            if (schoolAdminSchoolIds.length > 0) {
+                hasRestriction = true;
+                // 1. Get classes in these schools
+                const { data: classes } = await supabase
+                    .from('classes')
+                    .select('id')
+                    .in('school_id', schoolAdminSchoolIds);
+                const classIds = classes?.map(c => c.id) || [];
+                // 2. Get students in these classes
+                if (classIds.length > 0) {
+                    const { data: members } = await supabase
+                        .from('class_memberships')
+                        .select('user_id')
+                        .in('class_id', classIds);
+                    members?.forEach(m => allowedUserIds.add(m.user_id));
+                    // 3. Get Class Admins for these classes
+                    const { data: cAdmins } = await supabase
+                        .from('user_roles')
+                        .select('user_id')
+                        .eq('role', 'class_admin')
+                        .eq('scope_type', 'class')
+                        .in('scope_id', classIds);
+                    cAdmins?.forEach(u => allowedUserIds.add(u.user_id));
+                }
+                // 4. Get School Admins for these schools
+                const { data: sAdmins } = await supabase
+                    .from('user_roles')
+                    .select('user_id')
+                    .eq('role', 'school_admin')
+                    .eq('scope_type', 'school')
+                    .in('scope_id', schoolAdminSchoolIds);
+                sAdmins?.forEach(u => allowedUserIds.add(u.user_id));
+            }
+            else if (classAdminClassIds.length > 0) {
+                hasRestriction = true;
+                const { data: members, error: mErr } = await supabase
+                    .from('class_memberships')
+                    .select('user_id')
+                    .in('class_id', classAdminClassIds);
+                if (!mErr && members) {
+                    members.forEach(m => allowedUserIds.add(m.user_id));
+                }
+            }
+            if (hasRestriction) {
+                if (allowedUserIds.size === 0)
+                    return res.json({ users: [] });
+                userQuery = userQuery.in('id', Array.from(allowedUserIds));
+            }
+        }
     }
     // If filtering by class (explicit filter)
     if (classId) {
@@ -116,24 +167,50 @@ router.get('/users', async (req, res) => {
         console.error('[admin] Failed to fetch roles:', rErr);
         return res.status(500).json({ error: 'Failed to fetch roles: ' + rErr.message });
     }
+    // Fetch classes and schools for lookup
+    const { data: classes } = await supabase.from('classes').select('id, name, school_id');
+    const { data: schools } = await supabase.from('schools').select('id, name');
+    const classMap = new Map(classes?.map(c => [c.id, c]) || []);
+    const schoolMap = new Map(schools?.map(s => [s.id, s]) || []);
     // 3. Fetch all class memberships (for student role)
     const { data: memberships, error: mErr } = await supabase
         .from('class_memberships')
-        .select('user_id, class_id, classes(name)');
+        .select('user_id, class_id, classes(name, schools(name))');
     if (mErr)
         return res.status(500).json({ error: 'Failed to fetch memberships' });
     // 4. Merge data
     const result = users.map(u => {
-        const userRoles = roles.filter(r => r.user_id === u.id).map(r => ({
-            role: r.role,
-            scope_type: r.scope_type,
-            scope_id: r.scope_id
-        }));
+        const userRoles = roles.filter(r => r.user_id === u.id).map(r => {
+            let className = undefined;
+            let schoolName = undefined;
+            if (r.scope_type === 'class' && r.scope_id) {
+                const cls = classMap.get(r.scope_id);
+                if (cls) {
+                    className = cls.name;
+                    const school = schoolMap.get(cls.school_id);
+                    if (school)
+                        schoolName = school.name;
+                }
+            }
+            else if (r.scope_type === 'school' && r.scope_id) {
+                const school = schoolMap.get(r.scope_id);
+                if (school)
+                    schoolName = school.name;
+            }
+            return {
+                role: r.role,
+                scope_type: r.scope_type,
+                scope_id: r.scope_id,
+                class_name: className,
+                school_name: schoolName
+            };
+        });
         const userMemberships = memberships.filter(m => m.user_id === u.id).map(m => ({
             role: 'student',
             scope_type: 'class',
             scope_id: m.class_id,
-            class_name: m.classes?.name
+            class_name: m.classes?.name,
+            school_name: m.classes?.schools?.name
         }));
         // Determine primary role for display
         let primaryRole = 'student';
@@ -304,8 +381,27 @@ router.delete('/users/:id/roles', async (req, res) => {
     }
     res.json({ success: true });
 });
-// Create User (System Admin only)
-router.post('/users', requireSystemAdmin, async (req, res) => {
+// Create User (System Admin, School Admin, Class Admin)
+router.post('/users', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer '))
+        return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let requesterId;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        requesterId = payload.sub;
+    }
+    catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    const userRoles = await getUserRoles(requesterId);
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    const isSchoolAdmin = userRoles.some(r => r.role === 'school_admin');
+    const isClassAdmin = userRoles.some(r => r.role === 'class_admin');
+    if (!isSystemAdmin && !isSchoolAdmin && !isClassAdmin) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
     const schema = z.object({
         email: z.string().email(),
         password: z.string().min(6),
@@ -326,23 +422,81 @@ router.post('/users', requireSystemAdmin, async (req, res) => {
         return res.status(500).json({ error: 'Failed to create user: ' + error.message });
     res.json(data);
 });
-// Update User (System Admin only)
-router.put('/users/:id', requireSystemAdmin, async (req, res) => {
+// Update User (System Admin, School Admin, Class Admin)
+router.put('/users/:id', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer '))
+        return res.status(401).json({ error: 'Unauthorized' });
+    const token = authHeader.slice(7);
+    let requesterId;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        requesterId = payload.sub;
+    }
+    catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
     const id = req.params.id;
     const schema = z.object({
         email: z.string().email().optional(),
         password: z.string().min(6).optional(),
         nickname: z.string().min(1).optional(),
+        avatar_url: z.string().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: 'Invalid input' });
-    const { email, password, nickname } = parsed.data;
+    const { email, password, nickname, avatar_url } = parsed.data;
+    // Permission Check
+    const userRoles = await getUserRoles(requesterId);
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    if (!isSystemAdmin) {
+        const schoolAdminSchoolIds = userRoles.filter(r => r.role === 'school_admin' && r.scope_type === 'school').map(r => r.scope_id);
+        const classAdminClassIds = userRoles.filter(r => r.role === 'class_admin' && r.scope_type === 'class').map(r => r.scope_id);
+        if (schoolAdminSchoolIds.length === 0 && classAdminClassIds.length === 0) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        let hasAccess = false;
+        // Check School Admin access
+        if (schoolAdminSchoolIds.length > 0) {
+            // 1. Get classes in these schools
+            const { data: classes } = await supabase.from('classes').select('id').in('school_id', schoolAdminSchoolIds);
+            const classIds = classes?.map(c => c.id) || [];
+            if (classIds.length > 0) {
+                // Check if target is student in these classes
+                const { data: member } = await supabase.from('class_memberships').select('user_id').eq('user_id', id).in('class_id', classIds).single();
+                if (member)
+                    hasAccess = true;
+                // Check if target is Class Admin in these classes
+                if (!hasAccess) {
+                    const { data: ca } = await supabase.from('user_roles').select('user_id').eq('user_id', id).eq('role', 'class_admin').eq('scope_type', 'class').in('scope_id', classIds).single();
+                    if (ca)
+                        hasAccess = true;
+                }
+            }
+            // Check if target is School Admin in these schools (optional, but consistent with GET /users)
+            if (!hasAccess) {
+                const { data: sa } = await supabase.from('user_roles').select('user_id').eq('user_id', id).eq('role', 'school_admin').eq('scope_type', 'school').in('scope_id', schoolAdminSchoolIds).single();
+                if (sa)
+                    hasAccess = true;
+            }
+        }
+        // Check Class Admin access
+        if (!hasAccess && classAdminClassIds.length > 0) {
+            const { data: member } = await supabase.from('class_memberships').select('user_id').eq('user_id', id).in('class_id', classAdminClassIds).single();
+            if (member)
+                hasAccess = true;
+        }
+        if (!hasAccess)
+            return res.status(403).json({ error: 'Forbidden: You do not have permission to edit this user' });
+    }
     const updates = {};
     if (email)
         updates.email = email;
     if (nickname)
         updates.nickname = nickname;
+    if (avatar_url !== undefined)
+        updates.avatar_url = avatar_url;
     if (password)
         updates.password_hash = await bcrypt.hash(password, 10);
     if (Object.keys(updates).length === 0)
@@ -351,7 +505,7 @@ router.put('/users/:id', requireSystemAdmin, async (req, res) => {
         .from('users')
         .update(updates)
         .eq('id', id)
-        .select('id, email, nickname, created_at')
+        .select('id, email, nickname, avatar_url, created_at')
         .single();
     if (error)
         return res.status(500).json({ error: 'Failed to update user' });
@@ -398,10 +552,36 @@ router.get('/schools', async (req, res) => {
     if (!isSystemAdmin) {
         query = query.in('id', schoolAdminSchoolIds);
     }
-    const { data, error } = await query;
+    const { data: schools, error } = await query;
     if (error)
         return res.status(500).json({ error: 'Failed to fetch schools' });
-    res.json({ schools: data });
+    // Fetch stats
+    const schoolIds = schools.map(s => s.id);
+    // 1. Get classes
+    const { data: classes } = await supabase
+        .from('classes')
+        .select('id, school_id')
+        .in('school_id', schoolIds);
+    const schoolClasses = classes || [];
+    const classIds = schoolClasses.map(c => c.id);
+    // 2. Get memberships (students)
+    // Note: This fetches all memberships for visible schools. If scale is large, this needs optimization (e.g. SQL view or RPC).
+    const { data: memberships } = await supabase
+        .from('class_memberships')
+        .select('class_id')
+        .in('class_id', classIds);
+    const allMemberships = memberships || [];
+    const schoolsWithCounts = schools.map(s => {
+        const myClasses = schoolClasses.filter(c => c.school_id === s.id);
+        const myClassIds = myClasses.map(c => c.id);
+        const studentCount = allMemberships.filter(m => myClassIds.includes(m.class_id)).length;
+        return {
+            ...s,
+            class_count: myClasses.length,
+            student_count: studentCount
+        };
+    });
+    res.json({ schools: schoolsWithCounts });
 });
 // Create School (System Admin only)
 router.post('/schools', requireSystemAdmin, async (req, res) => {
@@ -496,10 +676,25 @@ router.get('/classes', async (req, res) => {
             return res.json({ classes: [] });
         }
     }
-    const { data, error } = await query;
+    const { data: classes, error } = await query;
     if (error)
         return res.status(500).json({ error: 'Failed to fetch classes' });
-    res.json({ classes: data });
+    if (!classes || classes.length === 0)
+        return res.json({ classes: [] });
+    const classIds = classes.map(c => c.id);
+    const { data: memberships } = await supabase
+        .from('class_memberships')
+        .select('class_id')
+        .in('class_id', classIds);
+    const allMemberships = memberships || [];
+    const classesWithCounts = classes.map(c => {
+        const count = allMemberships.filter(m => m.class_id === c.id).length;
+        return {
+            ...c,
+            student_count: count
+        };
+    });
+    res.json({ classes: classesWithCounts });
 });
 // Create Class (System Admin or School Admin)
 router.post('/classes', async (req, res) => {

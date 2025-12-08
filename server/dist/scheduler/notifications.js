@@ -67,7 +67,7 @@ function ymdInZone(d, tz) {
 }
 async function runDailySummary() {
     const now = new Date();
-    console.log(`[notifications] runDailySummary checking at ${now.toISOString()}`);
+    // console.log(`[notifications] runDailySummary checking at ${now.toISOString()}`);
     // Load users who configured daily summary time
     const { data: rows, error } = await supabase
         .from('user_settings')
@@ -78,23 +78,23 @@ async function runDailySummary() {
         return;
     }
     if (!rows || rows.length === 0) {
-        console.log('[notifications] No users with daily_summary_time configured');
+        // console.log('[notifications] No users with daily_summary_time configured');
         return;
     }
-    console.log(`[notifications] Found ${rows.length} user(s) with daily summary configured`);
+    // console.log(`[notifications] Found ${rows.length} user(s) with daily summary configured`);
     for (const r of rows) {
         const uid = r.user_id;
         const tz = r.timezone || 'Asia/Shanghai';
         const target = String(r.daily_summary_time).slice(0, 5); // HH:MM or HH:MM:SS
         const localNow = hhmmInZone(now, tz);
-        console.log(`[notifications] User ${uid}: target=${target}, localNow=${localNow}, tz=${tz}`);
+        // console.log(`[notifications] User ${uid}: target=${target}, localNow=${localNow}, tz=${tz}`);
         if (localNow !== target) {
-            console.log(`[notifications] Skipping user ${uid}: time mismatch`);
+            // console.log(`[notifications] Skipping user ${uid}: time mismatch`);
             continue; // only fire at the configured minute
         }
         const todayLocal = ymdInZone(now, tz);
         if (lastDailySummaryByUser.get(uid) === todayLocal) {
-            console.log(`[notifications] Skipping user ${uid}: already sent today (${todayLocal})`);
+            // console.log(`[notifications] Skipping user ${uid}: already sent today (${todayLocal})`);
             continue; // already sent today
         }
         lastDailySummaryByUser.set(uid, todayLocal);

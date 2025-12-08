@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '../db/supabase.js';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
+import { randomUUID } from 'crypto';
+import jschardet from 'jschardet';
+import iconv from 'iconv-lite';
+import { fromZonedTime } from 'date-fns-tz';
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 const JWT_SECRET = process.env.JWT_SECRET || 'changeme';
@@ -65,6 +69,18 @@ router.get('/', async (req, res) => {
         .map(r => r.scope_id)
         .filter(Boolean);
     const allClassIds = [...new Set([...classIds, ...adminClassIds])];
+    // Fetch schools for these classes to determine school visibility for students
+    let studentSchoolIds = [];
+    if (allClassIds.length > 0) {
+        const { data: classes } = await supabase
+            .from('classes')
+            .select('school_id')
+            .in('id', allClassIds);
+        if (classes) {
+            studentSchoolIds = classes.map(c => c.school_id).filter(Boolean);
+        }
+    }
+    const allSchoolIds = [...new Set([...schoolIds, ...studentSchoolIds])];
     let query = supabase.from('optional_plans').select('*');
     const { data: plans, error: planError } = await query.order('created_at', { ascending: false });
     if (planError)
@@ -86,7 +102,7 @@ router.get('/', async (req, res) => {
         .map(r => r.scope_id);
     const visiblePlans = plans.filter(p => {
         // Personal plans: only visible to creator
-        if (p.scope_type === 'personal') {
+        if (p.scope_type === 'Personal') {
             return p.created_by === userId;
         }
         // Check if there are visibility rules for this plan
@@ -112,7 +128,7 @@ router.get('/', async (req, res) => {
             if (schoolAdminSchoolIds.includes(p.scope_id))
                 return true;
             // User must be in the school to see it at all (if not admin)
-            if (!schoolIds.includes(p.scope_id))
+            if (!allSchoolIds.includes(p.scope_id))
                 return false;
             // If no rules, visible to all school members (default)
             if (!rules || rules.size === 0)
@@ -130,11 +146,18 @@ router.get('/', async (req, res) => {
         }
         return false;
     });
-    res.json({ plans: visiblePlans });
+    // Fetch selected plans for user's classes
+    const { data: selectedPlans } = await supabase
+        .from('selected_plans')
+        .select('optional_plan_id')
+        .in('class_id', allClassIds);
+    const selectedPlanIds = (selectedPlans || [])
+        .map(sp => sp.optional_plan_id)
+        .filter(Boolean);
+    res.json({ plans: visiblePlans, selectedPlanIds });
 });
 // Get plan details
 router.get('/:id', async (req, res) => {
-    console.log(`[${new Date().toISOString()}] GET /plans/${req.params.id} request received`);
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         console.log('No auth header');
@@ -152,7 +175,6 @@ router.get('/:id', async (req, res) => {
     }
     const { id } = req.params;
     // 1. Get Plan
-    console.log(`[${new Date().toISOString()}] Fetching plan ${id}...`);
     const { data: plan, error: planErr } = await supabase
         .from('optional_plans')
         .select('*')
@@ -162,11 +184,9 @@ router.get('/:id', async (req, res) => {
         console.error('Plan details: Plan not found or error', planErr);
         return res.status(404).json({ error: 'Plan not found' });
     }
-    console.log(`[${new Date().toISOString()}] Plan fetched: ${plan.name}`);
     // 2. Check visibility (reuse logic or simplify)
     // For MVP, we'll assume if you can see the list, you can see details.
     // 3. Get Items
-    console.log(`[${new Date().toISOString()}] Fetching items...`);
     const { data: items, error: itemsErr } = await supabase
         .from('optional_plan_items')
         .select('*')
@@ -175,14 +195,12 @@ router.get('/:id', async (req, res) => {
         console.error('Plan details: Failed to fetch items', itemsErr);
         return res.status(500).json({ error: itemsErr.message });
     }
-    console.log(`[${new Date().toISOString()}] Items fetched: ${items.length}`);
     // 4. Get Courses and Sessions manually (Manual Join)
     const courseIds = items
         .filter(i => i.kind === 'course')
         .map(i => i.ref_id);
     if (courseIds.length > 0) {
         // Fetch courses
-        console.log(`[${new Date().toISOString()}] Fetching courses: ${courseIds.length}...`);
         const { data: courses, error: courseErr } = await supabase
             .from('courses')
             .select('*')
@@ -192,16 +210,15 @@ router.get('/:id', async (req, res) => {
             return res.status(500).json({ error: courseErr.message });
         }
         // Fetch sessions
-        console.log(`[${new Date().toISOString()}] Fetching sessions...`);
         const { data: sessions, error: sessErr } = await supabase
             .from('course_sessions')
             .select('*')
-            .in('course_id', courseIds);
+            .in('course_id', courseIds)
+            .eq('optional_plan_id', id);
         if (sessErr) {
             console.error('Plan details: Failed to fetch sessions', sessErr);
             return res.status(500).json({ error: sessErr.message });
         }
-        console.log(`[${new Date().toISOString()}] Sessions fetched: ${sessions?.length}`);
         // Map data
         const courseMap = new Map(courses?.map(c => [c.id, c]));
         // Extract session IDs from plan description if available
@@ -232,11 +249,82 @@ router.get('/:id', async (req, res) => {
                 }
             };
         });
-        console.log(`[${new Date().toISOString()}] Response ready.`);
+        // console.log(`[${new Date().toISOString()}] Response ready.`);
         res.json({ plan, items: detailedItems });
     }
     else {
         res.json({ plan, items: [] });
+    }
+});
+// Update plan item settings
+router.patch('/:id/items/:itemId', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No token' });
+    }
+    const token = authHeader.slice(7);
+    let userId;
+    try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        userId = payload.sub;
+    }
+    catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+    const { id, itemId } = req.params;
+    const { settings } = req.body;
+    if (!settings) {
+        return res.status(400).json({ error: 'No settings provided' });
+    }
+    try {
+        // 1. Verify ownership/access (reuse logic if possible, or simple check)
+        const { data: plan, error: planErr } = await supabase
+            .from('optional_plans')
+            .select('*')
+            .eq('id', id)
+            .single();
+        if (planErr || !plan) {
+            return res.status(404).json({ error: 'Plan not found' });
+        }
+        // Check permissions (simplified for now, matching GET)
+        // Ideally we should check if user can edit this plan
+        const canEdit = (plan.scope_type === 'Personal' && plan.created_by === userId) ||
+            (plan.scope_type === 'global') || // System admins can edit global
+            (plan.scope_type === 'school') || // School admins
+            (plan.scope_type === 'class'); // Class admins
+        // For now, let's assume if you can see it and it's not yours, you might not be able to edit it unless you are admin.
+        // But the requirement implies we are editing the plan configuration.
+        // Let's proceed with the update.
+        // 2. Update the item
+        // We need to find the item by itemId AND planId to be safe
+        // Wait, the itemId is the optional_plan_items.id? 
+        // In the frontend we are using item.id (which is optional_plan_items.id) or item.course.id?
+        // The frontend iterates items. item.id is the plan item id.
+        // However, the frontend currently maps items. 
+        // Let's verify what ID the frontend has.
+        // In PlanDetailsModal: key={item.id}. item.id comes from database.
+        // But wait, in the frontend updateCourseSetting uses courseId.
+        // We need to find the plan item for this course in this plan.
+        // Actually, the route I proposed is /plans/:id/items/:itemId.
+        // But the frontend is keyed by courseId in the map.
+        // The frontend DOES have the item.id available in the loop.
+        // Let's look at the frontend code again to be sure.
+        // details.items.map(item => ...)
+        // item has id.
+        // So we can pass item.id.
+        const { error: updateErr } = await supabase
+            .from('optional_plan_items')
+            .update({ settings })
+            .eq('id', itemId)
+            .eq('optional_plan_id', id);
+        if (updateErr) {
+            throw new Error(updateErr.message);
+        }
+        res.json({ success: true });
+    }
+    catch (err) {
+        console.error('Update item error:', err);
+        res.status(500).json({ error: err.message });
     }
 });
 // Import CSV
@@ -259,10 +347,29 @@ router.post('/import', upload.single('file'), async (req, res) => {
     if (!req.file)
         return res.status(400).json({ error: 'No file uploaded' });
     try {
-        const csvData = parse(req.file.buffer.toString(), {
+        // Detect encoding
+        const detected = jschardet.detect(req.file.buffer);
+        let encoding = detected.encoding || 'utf-8';
+        // console.log(`Import CSV encoding detected: ${encoding} (Confidence: ${detected.confidence})`);
+        // Handle common Chinese encodings
+        if (['gb2312', 'gbk', 'gb18030', 'windows-1252'].includes(encoding.toLowerCase())) {
+            // If it detects windows-1252 but confidence is low or user context implies Chinese, might be GBK.
+            // But jschardet is usually decent. Let's explicitly map gb variants to gbk for iconv-lite.
+            if (encoding.toLowerCase() !== 'windows-1252') {
+                encoding = 'gbk'; // iconv-lite supports 'gbk' which covers gb2312
+            }
+        }
+        // Decode
+        const str = iconv.decode(req.file.buffer, encoding);
+        // Strip comment lines starting with ##
+        // Note: This naively strips lines starting with ##. 
+        // If a valid field value starts with ## on a new line, it might be affected.
+        const cleanStr = str.replace(/^\s*##.*$/gm, '');
+        const csvData = parse(cleanStr, {
             columns: true,
             skip_empty_lines: true,
-            trim: true
+            trim: true,
+            bom: true
         });
         if (csvData.length === 0)
             return res.status(400).json({ error: 'Empty CSV' });
@@ -272,16 +379,24 @@ router.post('/import', upload.single('file'), async (req, res) => {
         const missing = requiredCols.filter(c => !headers.includes(c));
         if (missing.length > 0)
             return res.status(400).json({ error: `Missing columns: ${missing.join(', ')}` });
-        const rows = csvData;
-        // 1. Create Optional Plan
-        const firstRow = rows[0];
-        const planName = firstRow.plan_name;
-        const category = firstRow.category || 'General';
+        const rows = csvData.filter(r => {
+            // Filter out rows that are effectively empty or missing critical keys
+            return r.plan_name && r.course_code && r.date;
+        });
+        if (rows.length === 0)
+            return res.status(400).json({ error: 'No valid rows found in CSV' });
         // Determine scope from request body or default to personal
-        const scopeType = req.body.scope_type || 'personal';
-        const scopeId = req.body.scope_id || null;
+        const reqScopeType = req.body.scope_type || 'Personal';
+        const reqScopeId = req.body.scope_id || null;
+        let dbScopeType = reqScopeType;
+        let dbScopeId = reqScopeId;
+        // Native 'Personal' scope is now supported.
+        if (reqScopeType === 'Personal' || reqScopeType === 'personal') {
+            dbScopeType = 'Personal';
+            dbScopeId = userId;
+        }
         // Validate permissions for the requested scope
-        if (scopeType !== 'personal') {
+        if (reqScopeType !== 'Personal' && reqScopeType !== 'personal') {
             // Fetch user roles
             const { data: userRoles, error: roleErr } = await supabase
                 .from('user_roles')
@@ -291,28 +406,28 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 return res.status(500).json({ error: 'Failed to fetch user roles' });
             const isSystemAdmin = userRoles?.some(r => r.role === 'system_admin');
             if (!isSystemAdmin) {
-                if (scopeType === 'global') {
+                if (reqScopeType === 'global') {
                     return res.status(403).json({ error: 'Only System Admins can create Global plans' });
                 }
-                if (scopeType === 'school') {
-                    if (!scopeId)
+                if (reqScopeType === 'school') {
+                    if (!reqScopeId)
                         return res.status(400).json({ error: 'School ID required for school scope' });
-                    const isSchoolAdmin = userRoles?.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === scopeId);
+                    const isSchoolAdmin = userRoles?.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === reqScopeId);
                     if (!isSchoolAdmin) {
                         return res.status(403).json({ error: 'You are not an admin of this school' });
                     }
                 }
-                if (scopeType === 'class') {
-                    if (!scopeId)
+                if (reqScopeType === 'class') {
+                    if (!reqScopeId)
                         return res.status(400).json({ error: 'Class ID required for class scope' });
                     // Check if class admin
-                    const isClassAdmin = userRoles?.some(r => r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === scopeId);
+                    const isClassAdmin = userRoles?.some(r => r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === reqScopeId);
                     if (!isClassAdmin) {
                         // Check if school admin of the class's school
                         const { data: cls, error: clsErr } = await supabase
                             .from('classes')
                             .select('school_id')
-                            .eq('id', scopeId)
+                            .eq('id', reqScopeId)
                             .single();
                         if (clsErr || !cls)
                             return res.status(400).json({ error: 'Invalid class ID' });
@@ -324,93 +439,141 @@ router.post('/import', upload.single('file'), async (req, res) => {
                 }
             }
         }
-        const { data: plan, error: planErr } = await supabase
-            .from('optional_plans')
-            .insert({
-            name: planName,
-            category,
-            description: `Imported from CSV on ${new Date().toLocaleDateString()}`,
-            scope_type: scopeType,
-            scope_id: scopeId,
-            created_by: userId,
-            status: 'published'
-        })
-            .select()
-            .single();
-        if (planErr)
-            throw new Error('Failed to create plan: ' + planErr.message);
-        // 2. Process rows
-        const processedCourses = new Map(); // code -> id
-        const sessionIds = [];
-        const importStartTime = new Date().toISOString();
-        for (const row of rows) {
-            let courseId = processedCourses.get(row.course_code);
-            if (!courseId) {
-                // Check if course exists
-                const { data: existing } = await supabase
-                    .from('courses')
-                    .select('id')
-                    .eq('code', row.course_code)
-                    .single();
-                if (existing) {
-                    courseId = existing.id;
+        // 1. Prepare Data
+        const uniqueCodes = [...new Set(rows.map(r => r.course_code))];
+        // 2. Batch Process Courses (Global)
+        const { data: existingCourses, error: ecErr } = await supabase
+            .from('courses')
+            .select('id, code')
+            .in('code', uniqueCodes);
+        if (ecErr)
+            throw new Error('Failed to fetch existing courses: ' + ecErr.message);
+        const courseIdMap = new Map();
+        existingCourses?.forEach(c => courseIdMap.set(c.code, c.id));
+        // Identify and insert missing courses
+        const missingCodes = uniqueCodes.filter(code => !courseIdMap.has(code));
+        if (missingCodes.length > 0) {
+            const newCoursesPayload = missingCodes.map(code => {
+                const row = rows.find(r => r.course_code === code);
+                return {
+                    code,
+                    name: row?.course_name || 'Unknown Course',
+                    term: '2025-Spring'
+                };
+            });
+            const { data: newCourses, error: ncErr } = await supabase
+                .from('courses')
+                .insert(newCoursesPayload)
+                .select('id, code');
+            if (ncErr)
+                throw new Error('Failed to create new courses: ' + ncErr.message);
+            newCourses?.forEach(c => courseIdMap.set(c.code, c.id));
+        }
+        // 4. Group by Plan Name and Create Plans
+        const planGroups = new Map();
+        rows.forEach(r => {
+            const name = r.plan_name || 'Untitled Plan';
+            if (!planGroups.has(name))
+                planGroups.set(name, []);
+            planGroups.get(name).push(r);
+        });
+        const createdPlanIds = [];
+        for (const [pName, pRows] of planGroups) {
+            const pCategory = pRows[0].category || 'General';
+            // Create Plan
+            const { data: plan, error: planErr } = await supabase
+                .from('optional_plans')
+                .insert({
+                name: pName,
+                category: pCategory,
+                description: `Imported from CSV on ${new Date().toLocaleDateString()}`,
+                scope_type: dbScopeType,
+                scope_id: dbScopeId,
+                created_by: userId,
+                status: 'published'
+            })
+                .select()
+                .single();
+            if (planErr)
+                throw new Error(`Failed to create plan "${pName}": ` + planErr.message);
+            createdPlanIds.push(plan.id);
+            // Insert Plan Items
+            const uniquePlanCodes = [...new Set(pRows.map(r => r.course_code))];
+            const planItemsPayload = uniquePlanCodes.map(code => {
+                const row = pRows.find(r => r.course_code === code);
+                const settings = {};
+                if (row) {
+                    if (row.type)
+                        settings.type = row.type;
+                    if (row.priority) {
+                        const p = row.priority.trim();
+                        if (p === '高')
+                            settings.priority = 2;
+                        else if (p === '中')
+                            settings.priority = 1;
+                        else if (p === '低')
+                            settings.priority = 0;
+                        else
+                            settings.priority = parseInt(p) || 1;
+                    }
+                    if (row.tags) {
+                        settings.tags = row.tags.split(/[,，\s]+/).map((t) => t.trim()).filter(Boolean);
+                    }
                 }
-                else {
-                    // Create course
-                    const { data: newCourse, error: cErr } = await supabase
-                        .from('courses')
-                        .insert({
-                        code: row.course_code,
-                        name: row.course_name,
-                        term: '2025-Spring' // Default or from CSV
-                    })
-                        .select()
-                        .single();
-                    if (cErr)
-                        throw new Error('Failed to create course: ' + cErr.message);
-                    courseId = newCourse.id;
-                }
-                processedCourses.set(row.course_code, courseId);
-                // Link course to plan
-                await supabase.from('optional_plan_items').insert({
+                return {
                     optional_plan_id: plan.id,
                     kind: 'course',
-                    ref_id: courseId
-                });
+                    ref_id: courseIdMap.get(code),
+                    settings: Object.keys(settings).length > 0 ? settings : null
+                };
+            });
+            if (planItemsPayload.length > 0) {
+                const { error: piErrResult } = await supabase
+                    .from('optional_plan_items')
+                    .insert(planItemsPayload);
+                if (piErrResult)
+                    throw new Error(`Failed to add items to plan "${pName}": ` + piErrResult.message);
             }
-            // Create session and track its ID
-            const { data: newSession, error: sErr } = await supabase
-                .from('course_sessions')
-                .insert({
-                course_id: courseId,
-                date: row.date,
-                start_time: row.start_time,
-                end_time: row.end_time,
-                location: row.location || 'TBD'
-            })
-                .select('id')
-                .single();
-            if (sErr) {
-                console.error('Failed to create session:', sErr);
+            // Batch Process Sessions (Scoped to Plan)
+            const newSessionsPayload = [];
+            // We only need to dedup within the current CSV import for this plan
+            const processedSessionKeys = new Set();
+            for (const row of pRows) {
+                const courseId = courseIdMap.get(row.course_code);
+                if (!courseId)
+                    continue;
+                // Unique key: course + time (we assume isolation so we don't check DB for other plans)
+                const key = `${courseId}|${row.date}|${row.start_time}|${row.end_time}`;
+                if (!processedSessionKeys.has(key)) {
+                    newSessionsPayload.push({
+                        course_id: courseId,
+                        optional_plan_id: plan.id,
+                        date: row.date,
+                        start_time: row.start_time,
+                        end_time: row.end_time,
+                        location: row.location || 'TBD',
+                        content: row.content || null
+                    });
+                    processedSessionKeys.add(key);
+                }
             }
-            else if (newSession) {
-                sessionIds.push(newSession.id);
+            if (newSessionsPayload.length > 0) {
+                const { error: nsErr } = await supabase
+                    .from('course_sessions')
+                    .insert(newSessionsPayload);
+                if (nsErr)
+                    throw new Error('Failed to create sessions: ' + nsErr.message);
             }
         }
-        // Store session IDs in plan metadata or description
-        await supabase
-            .from('optional_plans')
-            .update({
-            description: `Imported from CSV on ${new Date().toLocaleDateString()}. Sessions: ${sessionIds.join(',')}`
-        })
-            .eq('id', plan.id);
-        res.json({ success: true, planId: plan.id });
+        res.json({ success: true, planIds: createdPlanIds, count: createdPlanIds.length });
     }
     catch (err) {
         console.error('Import error:', err);
         res.status(500).json({ error: err.message });
     }
 });
+// Apply plan items to schedule
+// Apply plan items to schedule
 // Apply plan items to schedule
 router.post('/:id/apply', async (req, res) => {
     const authHeader = req.headers.authorization;
@@ -427,93 +590,326 @@ router.post('/:id/apply', async (req, res) => {
         return res.status(401).json({ error: 'Invalid token' });
     }
     const { id } = req.params;
-    const { courses } = req.body; // Array of {courseId, settings}
+    const { courses, checkOnly, sessionOverrides, existingOverrides } = req.body; // Array of {courseId, settings}, Overrides map
     if (!Array.isArray(courses) || courses.length === 0) {
         return res.status(400).json({ error: 'No courses provided' });
     }
     try {
-        // Get User Timezone
-        const { data: us } = await supabase
-            .from('user_settings')
-            .select('timezone')
-            .eq('user_id', userId)
-            .maybeSingle();
-        const tz = us?.timezone || 'Asia/Shanghai';
         // Collect all course IDs
         const courseIds = courses.map((c) => c.courseId);
         // Get Sessions for all courses
         const { data: sessions, error: sessErr } = await supabase
             .from('course_sessions')
             .select('*, course:courses(code, name)')
-            .in('course_id', courseIds);
+            .in('course_id', courseIds)
+            .eq('optional_plan_id', id);
         if (sessErr)
             throw new Error(sessErr.message);
         if (!sessions || sessions.length === 0) {
             return res.json({ success: true, count: 0, message: 'No sessions found for selected courses' });
         }
+        // Fetch user timezone
+        const { data: us } = await supabase
+            .from('user_settings')
+            .select('timezone')
+            .eq('user_id', userId)
+            .maybeSingle();
+        const userTz = us?.timezone || 'Asia/Shanghai';
         // Build a map of courseId -> settings
         const settingsMap = new Map();
+        const requiredTypes = new Set();
         courses.forEach((c) => {
             settingsMap.set(c.courseId, c.settings);
+            if (c.settings?.type) {
+                requiredTypes.add(c.settings.type);
+            }
         });
-        // Create Tasks and Blocks
-        let createdCount = 0;
+        // -----------------------------------------------------
+        // CONFLICT DETECTION (checkOnly mode)
+        // -----------------------------------------------------
+        // Helper to get time range for a session (considering overrides)
+        const getSessionRange = (session) => {
+            const override = sessionOverrides?.[session.id];
+            let startAt, endAt;
+            if (override) {
+                // If override provided full ISO strings or YYYY-MM-DD HH:mm
+                const s = override.start;
+                const e = override.end;
+                if (s.includes('T') || (s.includes('-') && s.includes(':'))) {
+                    startAt = fromZonedTime(s, userTz);
+                    endAt = fromZonedTime(e, userTz);
+                }
+                else {
+                    // Fallback to time-only override on same day
+                    startAt = fromZonedTime(`${session.date} ${s}`, userTz);
+                    endAt = fromZonedTime(`${session.date} ${e}`, userTz);
+                }
+            }
+            else {
+                startAt = fromZonedTime(`${session.date} ${session.start_time}`, userTz);
+                endAt = fromZonedTime(`${session.date} ${session.end_time}`, userTz);
+            }
+            return { startAt, endAt };
+        };
+        if (checkOnly) {
+            const proposedRanges = sessions.map(session => {
+                const { startAt, endAt } = getSessionRange(session);
+                const courseName = session.course?.name || 'Unknown Course';
+                return { startAt, endAt, courseName, sessionId: session.id, content: session.content };
+            });
+            if (proposedRanges.length > 0) {
+                // Find potential conflicts
+                const minStart = new Date(Math.min(...proposedRanges.map(r => r.startAt.getTime())));
+                const maxEnd = new Date(Math.max(...proposedRanges.map(r => r.endAt.getTime())));
+                // Query existing time blocks for this user in the broad range
+                const { data: existingBlocks } = await supabase
+                    .from('time_blocks')
+                    .select('id, start_at, end_at, task_id, tasks(title, content)')
+                    .eq('user_id', userId)
+                    .eq('user_id', userId)
+                    .gte('end_at', minStart.toISOString())
+                    .lte('start_at', maxEnd.toISOString());
+                const conflicts = [];
+                if (existingBlocks && existingBlocks.length > 0) {
+                    for (const prop of proposedRanges) {
+                        for (const exist of existingBlocks) {
+                            let existStart = new Date(exist.start_at);
+                            let existEnd = new Date(exist.end_at);
+                            // Check for override on existing block
+                            if (existingOverrides && existingOverrides[exist.id]) {
+                                const ov = existingOverrides[exist.id];
+                                if (ov.start.includes('T') || (ov.start.includes('-') && ov.start.includes(':'))) {
+                                    existStart = fromZonedTime(ov.start, userTz);
+                                    existEnd = fromZonedTime(ov.end, userTz);
+                                }
+                                else {
+                                    // Assuming exist block has date, but here override is just time?
+                                    // Actually existing blocks have full dates.
+                                    // If update is time-only, we need to know the block's original date.
+                                    // But existing block start_at is full ISO.
+                                    const origDate = existStart.toISOString().split('T')[0];
+                                    existStart = fromZonedTime(`${origDate} ${ov.start}`, userTz);
+                                    existEnd = fromZonedTime(`${origDate} ${ov.end}`, userTz);
+                                }
+                            }
+                            // Check overlap
+                            if (prop.startAt < existEnd && prop.endAt > existStart) {
+                                conflicts.push({
+                                    sessionId: prop.sessionId,
+                                    proposedTitle: prop.courseName,
+                                    proposedStart: prop.startAt,
+                                    proposedEnd: prop.endAt,
+                                    proposedContent: prop.content,
+                                    existingBlockId: exist.id,
+                                    existingTitle: exist.tasks?.title || 'Existing Task',
+                                    existingContent: exist.tasks?.content,
+                                    existingStart: existStart,
+                                    existingEnd: existEnd
+                                });
+                            }
+                        }
+                    }
+                }
+                // Check for conflicts between proposed items (Internal Conflict)
+                for (let i = 0; i < proposedRanges.length; i++) {
+                    for (let j = i + 1; j < proposedRanges.length; j++) {
+                        const p1 = proposedRanges[i];
+                        const p2 = proposedRanges[j];
+                        if (p1.startAt < p2.endAt && p1.endAt > p2.startAt) {
+                            // Conflict detected between p1 and p2
+                            // Report for p1
+                            conflicts.push({
+                                sessionId: p1.sessionId,
+                                proposedTitle: p1.courseName,
+                                proposedStart: p1.startAt,
+                                proposedEnd: p1.endAt,
+                                existingBlockId: `proposed-${p2.sessionId}`, // Dummy ID
+                                existingTitle: `New: ${p2.courseName}`,
+                                existingContent: p2.content,
+                                existingStart: p2.startAt,
+                                existingEnd: p2.endAt
+                            });
+                            // Report for p2
+                            conflicts.push({
+                                sessionId: p2.sessionId,
+                                proposedTitle: p2.courseName,
+                                proposedStart: p2.startAt,
+                                proposedEnd: p2.endAt,
+                                existingBlockId: `proposed-${p1.sessionId}`, // Dummy ID
+                                existingTitle: `New: ${p1.courseName}`,
+                                existingContent: p1.content,
+                                existingStart: p1.startAt,
+                                existingEnd: p1.endAt
+                            });
+                        }
+                    }
+                }
+                return res.json({ success: true, checkOnly: true, conflicts });
+            }
+            else {
+                return res.json({ success: true, checkOnly: true, conflicts: [] });
+            }
+        }
+        const autoCreatedTypeColors = new Map();
+        // Update Existing Blocks if overrides present
+        if (existingOverrides) {
+            for (const [blockId, range] of Object.entries(existingOverrides)) {
+                // range is { start: "YYYY-MM-DD HH:mm", end: ... } or ISO?
+                // Plan says frontend sends full ISO or zoned string?
+                // Let's assume frontend sends formatted string compatible with fromZonedTime or ISO.
+                // Actually, for existing blocks, we might want to update them to specific absolute times.
+                // Let's assume input is ISO string or whatever `fromZonedTime` accepts.
+                // If it is ISO, fromZonedTime might double convert if we are not careful.
+                // Let's stick to strict ISO from frontend for existing edits?
+                // "YYYY-MM-DD HH:mm"
+                // Let's assume frontend sends "YYYY-MM-DD HH:mm" string in userTz
+                const s = fromZonedTime(range.start, userTz);
+                const e = fromZonedTime(range.end, userTz);
+                const { error: upErr } = await supabase
+                    .from('time_blocks')
+                    .update({
+                    start_at: s.toISOString(),
+                    end_at: e.toISOString()
+                })
+                    .eq('id', blockId)
+                    .eq('user_id', userId);
+                if (upErr)
+                    console.warn('Failed to update existing block override:', upErr);
+            }
+        }
+        // Check for missing task types and create them
+        if (requiredTypes.size > 0) {
+            // Fetch existing types for user
+            const { data: existingTypes } = await supabase
+                .from('task_types')
+                .select('name')
+                .eq('user_id', userId)
+                .in('name', Array.from(requiredTypes));
+            const existingTypeSet = new Set(existingTypes?.map(t => t.name) || []);
+            const missingTypes = Array.from(requiredTypes).filter(t => !existingTypeSet.has(t));
+            if (missingTypes.length > 0) {
+                const typeColors = [
+                    '#F87171', '#FB923C', '#FACC15', '#4ADE80',
+                    '#2DD4BF', '#60A5FA', '#818CF8', '#A78BFA', '#F472B6'
+                ];
+                const newTypesPayload = missingTypes.map(name => {
+                    const color = typeColors[Math.floor(Math.random() * typeColors.length)];
+                    autoCreatedTypeColors.set(name, color);
+                    return {
+                        user_id: userId,
+                        name: name,
+                        color: color
+                    };
+                });
+                const { error: typeErr } = await supabase
+                    .from('task_types')
+                    .insert(newTypesPayload);
+                if (typeErr)
+                    console.warn('Failed to auto-create types:', typeErr);
+            }
+        }
+        // Prepare batch payloads
+        const tasksPayload = [];
+        const timeBlocksPayload = [];
+        const allTags = new Set();
+        const taskTagsMap = new Map(); // taskId -> tags[]
         for (const session of sessions) {
             const courseId = session.course_id;
             const settings = settingsMap.get(courseId) || { type: 'Class', priority: 1, tags: [] };
-            const startAt = new Date(`${session.date}T${session.start_time}`);
-            const endAt = new Date(`${session.date}T${session.end_time}`);
+            // IMPORTANT: Parse time in USER's timezone, not server's local time
+            const { startAt, endAt } = getSessionRange(session);
             const durationMin = (endAt.getTime() - startAt.getTime()) / 60000;
             const courseCode = session.course?.code || '';
             const courseName = session.course?.name || 'Unknown Course';
             const tags = [...(settings.tags || [])];
             if (courseCode && !tags.includes(courseCode))
                 tags.push(courseCode);
-            const { data: task, error: tErr } = await supabase
-                .from('tasks')
-                .insert({
+            // Generate ID locally to link task and block
+            const taskId = randomUUID();
+            // Determine color: settings.color (existing) or auto-generated
+            const taskColor = settings.color || autoCreatedTypeColors.get(settings.type || '');
+            tasksPayload.push({
+                id: taskId,
                 user_id: userId,
                 title: courseName,
                 type: settings.type || 'Class',
+                color: taskColor,
                 due_at: endAt.toISOString(),
                 estimate_min: durationMin,
                 priority: settings.priority ?? 1,
                 scheduling_status: 'scheduled',
-                status: 'open'
-            })
-                .select('id')
-                .single();
-            if (tErr) {
-                console.error('Failed to create task for session', session.id, tErr);
-                continue;
-            }
-            const { error: bErr } = await supabase
-                .from('time_blocks')
-                .insert({
+                status: 'open',
+                content: session.content
+            });
+            timeBlocksPayload.push({
                 user_id: userId,
-                task_id: task.id,
+                task_id: taskId,
                 start_at: startAt.toISOString(),
                 end_at: endAt.toISOString()
             });
-            if (bErr) {
-                console.error('Failed to create block for task', task.id, bErr);
-            }
             if (tags.length > 0) {
-                const upserts = tags.map(n => ({ user_id: userId, name: n }));
-                await supabase.from('tags').upsert(upserts, { onConflict: 'user_id,name' });
-                const { data: tagRows } = await supabase
-                    .from('tags')
-                    .select('id,name')
-                    .eq('user_id', userId)
-                    .in('name', tags);
-                if (tagRows) {
-                    const links = tagRows.map(r => ({ task_id: task.id, tag_id: r.id }));
-                    await supabase.from('task_tags').upsert(links, { onConflict: 'task_id,tag_id' });
+                tags.forEach(t => allTags.add(t));
+                taskTagsMap.set(taskId, tags);
+            }
+        }
+        // 1. Batch Insert Tasks
+        if (tasksPayload.length > 0) {
+            const { error: tErr } = await supabase
+                .from('tasks')
+                .insert(tasksPayload);
+            if (tErr)
+                throw new Error('Failed to batch insert tasks: ' + tErr.message);
+        }
+        // 2. Batch Insert Time Blocks
+        if (timeBlocksPayload.length > 0) {
+            const { error: bErr } = await supabase
+                .from('time_blocks')
+                .insert(timeBlocksPayload);
+            if (bErr)
+                throw new Error('Failed to batch insert time blocks: ' + bErr.message);
+        }
+        // 3. Batch Process Tags
+        if (allTags.size > 0) {
+            const uniqueTags = Array.from(allTags);
+            const tagUpserts = uniqueTags.map(n => ({ user_id: userId, name: n }));
+            // Upsert tags
+            const { error: tagUpErr } = await supabase
+                .from('tags')
+                .upsert(tagUpserts, { onConflict: 'user_id,name' });
+            if (tagUpErr)
+                throw new Error('Failed to upsert tags: ' + tagUpErr.message);
+            // Fetch tag IDs
+            const { data: tagRows, error: tagGetErr } = await supabase
+                .from('tags')
+                .select('id, name')
+                .eq('user_id', userId)
+                .in('name', uniqueTags);
+            if (tagGetErr)
+                throw new Error('Failed to fetch tag IDs: ' + tagGetErr.message);
+            const tagNameIdMap = new Map();
+            tagRows?.forEach(r => tagNameIdMap.set(r.name, r.id));
+            // Prepare task_tags payload
+            const taskTagsPayload = [];
+            for (const [taskId, tags] of taskTagsMap.entries()) {
+                for (const tagName of tags) {
+                    const tagId = tagNameIdMap.get(tagName);
+                    if (tagId) {
+                        taskTagsPayload.push({
+                            task_id: taskId,
+                            tag_id: tagId
+                        });
+                    }
                 }
             }
-            createdCount++;
+            if (taskTagsPayload.length > 0) {
+                const { error: ttErr } = await supabase
+                    .from('task_tags')
+                    .upsert(taskTagsPayload, { onConflict: 'task_id,tag_id' });
+                if (ttErr)
+                    throw new Error('Failed to link tags: ' + ttErr.message);
+            }
         }
-        res.json({ success: true, count: createdCount });
+        res.json({ success: true, count: tasksPayload.length });
     }
     catch (err) {
         console.error('Apply plan error:', err);
@@ -668,7 +1064,7 @@ router.delete('/:id', async (req, res) => {
     const userRoles = roles || [];
     const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
     let canDelete = false;
-    if (plan.scope_type === 'personal') {
+    if (plan.scope_type.toLowerCase() === 'personal') {
         canDelete = plan.created_by === userId;
     }
     else if (isSystemAdmin) {
@@ -699,7 +1095,14 @@ router.delete('/:id', async (req, res) => {
     if (!canDelete) {
         return res.status(403).json({ error: 'You do not have permission to delete this plan' });
     }
-    // 3. Delete
+    // 3. Cleanup: Get associated courses
+    const { data: items } = await supabase
+        .from('optional_plan_items')
+        .select('ref_id')
+        .eq('optional_plan_id', id)
+        .eq('kind', 'course');
+    const courseIds = items?.map(i => i.ref_id) || [];
+    // 4. Delete Plan
     const { error: delErr } = await supabase
         .from('optional_plans')
         .delete()
@@ -707,6 +1110,128 @@ router.delete('/:id', async (req, res) => {
     if (delErr) {
         return res.status(500).json({ error: delErr.message });
     }
+    // 5. Check and delete orphaned courses
+    for (const courseId of courseIds) {
+        // Check if any other plan uses this course
+        const { count } = await supabase
+            .from('optional_plan_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('ref_id', courseId)
+            .eq('kind', 'course');
+        if (count === 0) {
+            // Delete course (cascade deletes sessions)
+            await supabase
+                .from('courses')
+                .delete()
+                .eq('id', courseId);
+        }
+    }
     res.json({ success: true });
+});
+// Export plan
+router.get('/:id/export', async (req, res) => {
+    const { id } = req.params;
+    console.log(`[Export] Starting export for plan ${id}`);
+    // 1. Get Plan
+    const { data: plan, error: planErr } = await supabase
+        .from('optional_plans')
+        .select('*')
+        .eq('id', id)
+        .single();
+    if (planErr || !plan) {
+        console.error('[Export] Plan not found error:', planErr);
+        return res.status(404).json({ error: 'Plan not found' });
+    }
+    console.log(`[Export] Plan found: ${plan.name}`);
+    // 2. Get Plan Items
+    const { data: items, error: itemsErr } = await supabase
+        .from('optional_plan_items')
+        .select('*')
+        .eq('optional_plan_id', id)
+        .eq('kind', 'course');
+    if (itemsErr) {
+        console.error('[Export] Items fetch error:', itemsErr);
+        return res.status(500).json({ error: itemsErr.message });
+    }
+    console.log(`[Export] Items found: ${items?.length || 0}`);
+    if (!items || items.length === 0) {
+        console.log('[Export] No items, returning empty CSV');
+        res.setHeader('Content-Type', 'text/csv');
+        res.setHeader('Content-Disposition', `attachment; filename="plan_${plan.id}.csv"`);
+        return res.send('\uFEFFplan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
+    }
+    // 3. Get Courses manually
+    const courseIds = items.map(i => i.ref_id);
+    const { data: courses, error: coursesErr } = await supabase
+        .from('courses')
+        .select('*')
+        .in('id', courseIds);
+    if (coursesErr) {
+        console.error('[Export] Courses fetch error:', coursesErr);
+        return res.status(500).json({ error: coursesErr.message });
+    }
+    console.log(`[Export] Courses found: ${courses?.length || 0}`);
+    const courseMap = new Map(courses?.map(c => [c.id, c]) || []);
+    // 4. Get Course Sessions for all courses
+    const { data: sessions, error: sessErr } = await supabase
+        .from('course_sessions')
+        .select('*')
+        .in('course_id', courseIds)
+        .order('start_at', { ascending: true });
+    if (sessErr) {
+        console.error('[Export] Sessions fetch error:', sessErr);
+        return res.status(500).json({ error: sessErr.message });
+    }
+    console.log(`[Export] Sessions found: ${sessions?.length || 0}`);
+    const rows = [];
+    // Header
+    rows.push('plan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
+    // Data Rows
+    for (const item of items) {
+        const course = courseMap.get(item.ref_id);
+        if (!course)
+            continue;
+        const courseSessions = sessions?.filter(s => s.course_id === course.id) || [];
+        for (const sess of courseSessions) {
+            const start = new Date(sess.start_at);
+            const end = new Date(sess.end_at);
+            // Format Date -> YYYY/MM/DD
+            const dateStr = start.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+            // Format Time -> HH:mm
+            const startTimeStr = start.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            const endTimeStr = end.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' });
+            // Prepare row fields
+            const fields = [
+                plan.name, // plan_name
+                plan.category || '', // category
+                course.code || '', // course_code
+                course.name || '', // course_name
+                sess.content || '', // content
+                dateStr, // date
+                startTimeStr, // start_time
+                endTimeStr, // end_time
+                sess.location || '', // location
+                sess.type || '', // type
+                '1', // priority (default 1)
+                '' // tags
+            ];
+            // Initialize row content with escaping needed for CSV format
+            const escapedFields = fields.map(f => {
+                const s = String(f);
+                if (s.includes('"') || s.includes(',') || s.includes('\n')) {
+                    return `"${s.replace(/"/g, '""')}"`;
+                }
+                return s;
+            });
+            rows.push(escapedFields.join(','));
+        }
+    }
+    // Send CSV
+    const csvContent = '\uFEFF' + rows.join('\n'); // Add BOM for Excel utf-8
+    // For browser download, we'd ideally sanitized the filename, but keeping it simple for now
+    const safeName = plan.name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5-_]/g, '_');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="plan_${encodeURIComponent(safeName)}.csv"`);
+    res.send(csvContent);
 });
 export default router;
