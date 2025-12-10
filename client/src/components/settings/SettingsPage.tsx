@@ -13,14 +13,14 @@ export interface SettingsPageProps {
     dailyEnabled: boolean
     settings: UserSettings
     settingsMsg: string
-    tzOptions: string[]
-    tzPlaceholder: string
+    tzOptions: { value: string, label: string }[]
     subscribePush: () => Promise<boolean>
     unsubscribePush: () => Promise<void>
     testPush: () => Promise<void>
     saveSettings: () => void | Promise<void>
     setDailyEnabled: (value: boolean) => void
     setSettings: Dispatch<SetStateAction<UserSettings>>
+    showToast?: (msg: string) => void
 }
 
 export function SettingsPage({
@@ -30,13 +30,13 @@ export function SettingsPage({
     settings,
     settingsMsg,
     tzOptions,
-    tzPlaceholder,
     subscribePush,
     unsubscribePush,
     testPush,
     saveSettings,
     setDailyEnabled,
     setSettings,
+    showToast,
 }: SettingsPageProps) {
     const { profile, changePassword, updateNickname, updateAvatar, headers, rememberJwt } = useAuth()
 
@@ -477,10 +477,9 @@ export function SettingsPage({
                                     setSettings((s) => ({ ...s, timezone: e.target.value || null }))
                                 }
                             >
-                                <option value="" disabled>{tzPlaceholder}</option>
                                 {tzOptions.map((z) => (
-                                    <option key={z} value={z} className="bg-slate-900 text-white">
-                                        {z}
+                                    <option key={z.value} value={z.value} className="bg-slate-900 text-white">
+                                        {z.label}
                                     </option>
                                 ))}
                             </select>
@@ -638,10 +637,10 @@ export function SettingsPage({
 
             {/* Task Types Section */}
             {/* Task Types Section */}
-            <TaskTypeSettings authHeaders={headers()} />
+            <TaskTypeSettings authHeaders={headers()} showToast={showToast} />
 
             {/* Tag Management */}
-            <TagSettings authHeaders={headers()} />
+            <TagSettings authHeaders={headers()} showToast={showToast} />
 
             {/* Danger Zone */}
             <section className="bg-red-900/10 border border-red-500/20 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:border-red-500/30">

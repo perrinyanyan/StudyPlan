@@ -11,6 +11,7 @@ interface TaskType {
 
 interface TaskTypeSettingsProps {
     authHeaders: Record<string, string>
+    showToast?: (msg: string) => void
 }
 
 const TYPE_COLOR_OPTIONS = [
@@ -25,7 +26,7 @@ const TYPE_COLOR_OPTIONS = [
     '#F472B6', // Pink
 ]
 
-export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
+export function TaskTypeSettings({ authHeaders, showToast }: TaskTypeSettingsProps) {
     const { profile } = useAuth()
     const [types, setTypes] = useState<TaskType[]>([])
     const [loading, setLoading] = useState(false)
@@ -95,6 +96,7 @@ export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
             if (r.ok) {
                 setModalOpen(false)
                 fetchTypes()
+                if (showToast) showToast(editingType ? '类型已更新' : '类型已添加')
             } else {
                 alert('操作失败')
             }
@@ -117,6 +119,7 @@ export function TaskTypeSettings({ authHeaders }: TaskTypeSettingsProps) {
                 fetchTypes()
                 setDeleteConfirm(null)
                 setConfirmEmail('')
+                if (showToast) showToast('类型已删除')
             } else if (r.status === 409 && !force) {
                 const j = await r.json()
                 setDeleteConfirm({ id, name, tasks: j.tasks })

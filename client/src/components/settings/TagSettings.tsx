@@ -11,9 +11,10 @@ interface Tag {
 
 interface TagSettingsProps {
     authHeaders: Record<string, string>
+    showToast?: (msg: string) => void
 }
 
-export function TagSettings({ authHeaders }: TagSettingsProps) {
+export function TagSettings({ authHeaders, showToast }: TagSettingsProps) {
     const { profile } = useAuth()
     const [tags, setTags] = useState<Tag[]>([])
     const [loading, setLoading] = useState(false)
@@ -80,6 +81,7 @@ export function TagSettings({ authHeaders }: TagSettingsProps) {
             if (r.ok) {
                 setModalOpen(false)
                 fetchTags()
+                if (showToast) showToast(editingTag ? '标签已更新' : '标签已添加')
             } else {
                 alert('操作失败')
             }
@@ -102,6 +104,7 @@ export function TagSettings({ authHeaders }: TagSettingsProps) {
                 fetchTags()
                 setDeleteConfirm(null)
                 setConfirmEmail('')
+                if (showToast) showToast('标签已删除')
             } else if (r.status === 409 && !force) {
                 const j = await r.json()
                 setDeleteConfirm({ id, name, tasks: j.tasks })

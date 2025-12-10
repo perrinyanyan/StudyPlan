@@ -455,9 +455,8 @@ export function PlannerScreen({
           onClose={() => setScheduleFor && setScheduleFor(null)}
           onSave={async (dateStr, start, end) => {
             if (!addBlock || !fetchDaily || !fetchUnscheduled) return false
-            const ok = await addBlock(start, end, String((scheduleFor as Task).id), dateStr)
-            if (!ok) return false
-            await Promise.all([fetchDaily(), fetchUnscheduled()])
+            // Optimistic close - don't wait for result
+            addBlock(start, end, String((scheduleFor as Task).id), dateStr)
             setScheduleFor && setScheduleFor(null)
             return true
           }}

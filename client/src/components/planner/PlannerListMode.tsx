@@ -129,7 +129,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           const t = meta.type || ''
           if (t !== listFilterType) return false
         }
-        if (listFilterTag && listFilterTag.length > 0) {
+        if (listFilterTag && listFilterTag.length > 0 && !listFilterTag.includes('all')) {
           const tags = meta.tags || []
           if (!listFilterTag.some((t: string) => tags.includes(t))) return false
         }

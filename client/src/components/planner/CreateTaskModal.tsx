@@ -345,14 +345,17 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
 
     if (shouldCopy) {
       // Create a new task (copy) instead of updating
-      ok = await actions.createTaskAdvanced(payload)
+      actions.createTaskAdvanced(payload)
     } else {
       // Normal behavior: update existing or create new
-      ok = await (isEdit ? actions.updateTaskAdvanced(String(initialTask!.id), payload) : actions.createTaskAdvanced(payload))
+      if (isEdit) {
+        actions.updateTaskAdvanced(String(initialTask!.id), payload)
+      } else {
+        actions.createTaskAdvanced(payload)
+      }
     }
 
-    if (!ok) return
-
+    // Optimistic close - don't wait for result
     onSuccess()
   }
 

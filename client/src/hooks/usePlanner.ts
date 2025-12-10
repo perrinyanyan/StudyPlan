@@ -27,6 +27,7 @@ export interface UsePlannerProps {
   setUnscheduled: (t: Task[]) => void
   setRangeReloadKey: (cb: (k: number) => number) => void
   setCenterAlert: (a: { title: string; detail?: string } | null) => void
+  showToast?: (msg: string) => void
 }
 
 export function usePlanner(props: UsePlannerProps) {
@@ -52,6 +53,7 @@ export function usePlanner(props: UsePlannerProps) {
     setUnscheduled,
     setRangeReloadKey,
     setCenterAlert,
+    showToast,
   } = props
 
   // UI states
@@ -65,7 +67,7 @@ export function usePlanner(props: UsePlannerProps) {
   // Filters
   const [listFilterType, setListFilterType] = useState('all')
   const [listFilterPriority, setListFilterPriority] = useState('all')
-  const [listFilterTag, setListFilterTag] = useState<string[]>([])
+  const [listFilterTag, setListFilterTag] = useState<string[]>(['all'])
   const [listFilterOverdue, setListFilterOverdue] = useState('yes') // 'yes' | 'no' | 'all'
   const [listFilterDone, setListFilterDone] = useState('open') // 'open' | 'done' | 'all'
   const [listFilterConflict, setListFilterConflict] = useState<'all' | 'conflicts'>('all')
@@ -240,9 +242,9 @@ export function usePlanner(props: UsePlannerProps) {
     return Array.from(set)
   }, [tasks, unscheduled])
 
-  async function fetchDaily() {
+  async function fetchDaily(isBackground = false) {
     if (!jwt) return
-    setFetchState('loading')
+    if (!isBackground) setFetchState('loading')
     try {
       const [t, b] = await Promise.all([
         fetch(getApiUrl(`/tasks/daily?date=${date}&with=tags`), { headers: headers() }).then((r) => r.json()),
@@ -251,13 +253,13 @@ export function usePlanner(props: UsePlannerProps) {
       setTasks(t as DailyTasks)
       const blocksJson = b as { items?: Block[] } | null
       setBlocks((blocksJson?.items as Block[]) || [])
-      setFetchState('idle')
+      if (!isBackground) setFetchState('idle')
     } catch {
-      setFetchState('error')
+      if (!isBackground) setFetchState('error')
     }
   }
 
-  async function fetchUnscheduled() {
+  async function fetchUnscheduled(isBackground = false) {
     if (!jwt) return
     try {
       const r = await fetch(getApiUrl('/tasks?status=open&with=tags'), { headers: headers() })
@@ -392,9 +394,9 @@ export function usePlanner(props: UsePlannerProps) {
     })
     if (!r.ok) {
       alert('更新任务信息失败')
-      return
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('任务信息已更新')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
   }
 
   async function createTaskAdvanced(payload: {
@@ -421,37 +423,15 @@ export function usePlanner(props: UsePlannerProps) {
       recurrence_rule: payload.recurrence_rule || null,
       estimate_min: payload.estimate_min || null,
       due_at: payload.due_at || null,
-      // user_id is not in Task type either, so removing it too if it causes error, but let's check.
-      // Task type definition: id, title, status, due_at, estimate_min, priority, type, color, recurrence_rule, scheduling_status, tags.
-      // user_id is NOT in Task type.
     }
 
     if (payload.recurrence_rule === 'POOL') {
       setUnscheduled([tempTask, ...unscheduled])
     } else {
-      // Assuming it's for today if not POOL, or we check due_at?
-      // For simplicity, if it's not POOL, we might add it to today or rangeTasks depending on context.
-      // But usually "create task" from UI puts it in today or pool.
-      // If it has due_at, we might need to check date.
-      // Let's assume it goes to 'today' if no specific rule, or 'unscheduled' if no due date?
-      // Actually, standard create task usually goes to unscheduled if not specified, or today if specified.
-      // If recurrence_rule is 'POOL', it's definitely unscheduled.
-      // If not, let's look at where it's called.
-      // In PlannerDayView, we might create a task for a specific time? No, that's addBlock.
-      // If we create a task from "Create Task" modal, it might be for today.
-      // Let's just add to 'unscheduled' if POOL, else 'today' for now as a safe bet for optimistic.
-      // Wait, if it's POOL, it goes to unscheduled.
-      // If it's not POOL, it likely goes to 'today' tasks if the date matches.
-      // For now, let's handle POOL explicitly, and others to 'today' if it seems to match.
-
-      if (payload.recurrence_rule === 'POOL') {
-        // Already handled above
-      } else {
-        setTasks({
-          ...tasks,
-          today: [tempTask, ...(tasks.today || [])],
-        })
-      }
+      setTasks({
+        ...tasks,
+        today: [tempTask, ...(tasks.today || [])],
+      })
     }
     const r = await fetch(getApiUrl('/tasks'), {
       method: 'POST',
@@ -467,7 +447,8 @@ export function usePlanner(props: UsePlannerProps) {
       }
       return false
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('创建任务成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -515,7 +496,8 @@ export function usePlanner(props: UsePlannerProps) {
       alert('更新任务失败 ' + (j.error || r.status))
       return false
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('更新任务成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -549,7 +531,8 @@ export function usePlanner(props: UsePlannerProps) {
       alert('更新任务失败')
       return
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('已标记完成')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -573,7 +556,8 @@ export function usePlanner(props: UsePlannerProps) {
       alert('删除任务失败')
       return
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('删除成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -617,7 +601,8 @@ export function usePlanner(props: UsePlannerProps) {
 
       return false
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('创建时间块成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -651,7 +636,8 @@ export function usePlanner(props: UsePlannerProps) {
       }
       return false
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('更新时间块成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }
@@ -671,7 +657,8 @@ export function usePlanner(props: UsePlannerProps) {
       alert('删除时间块失败')
       return
     }
-    await Promise.all([fetchDaily(), fetchUnscheduled()])
+    if (showToast) showToast('删除时间块成功')
+    await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && plannerView === 'list') {
       setRangeReloadKey((k) => k + 1)
     }

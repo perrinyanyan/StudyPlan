@@ -24,14 +24,17 @@ export function MultiSelect({ label, options, value, onChange }: MultiSelectProp
     }, []);
 
     const toggleOption = (option: string) => {
-        if (value.includes(option)) {
-            onChange(value.filter(v => v !== option))
+        // If we are currently in "All" mode (value includes 'all'), clear it before adding the specific option
+        let newValue = value.filter(v => v !== 'all')
+
+        if (newValue.includes(option)) {
+            onChange(newValue.filter(v => v !== option))
         } else {
-            onChange([...value, option])
+            onChange([...newValue, option])
         }
     }
 
-    const isAll = value.length === 0
+    const isAll = value.length === 0 || value.includes('all')
 
     return (
         <div className="relative" ref={containerRef}>
@@ -52,7 +55,7 @@ export function MultiSelect({ label, options, value, onChange }: MultiSelectProp
                 <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-white/10 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
                     <div
                         className={`px-3 py-2 text-xs hover:bg-white/5 cursor-pointer flex items-center gap-2 ${isAll ? 'text-blue-400' : 'text-white'}`}
-                        onClick={() => { onChange([]); setIsOpen(false); }}
+                        onClick={() => { onChange(['all']); setIsOpen(false); }}
                     >
                         <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center flex-shrink-0 ${isAll ? 'border-blue-500 bg-blue-500/20' : 'border-white/30'}`}>
                             {isAll && <span className="material-symbols-outlined text-[10px]">check</span>}

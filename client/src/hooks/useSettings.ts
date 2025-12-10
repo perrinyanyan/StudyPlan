@@ -1,7 +1,8 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { getApiUrl } from '../config'
 import type { UserSettings } from '../types'
-import { DEFAULT_TZ_LIST, defaultTimeZone } from '../utils/datetime'
+import { WINDOWS_TIMEZONES } from '../utils/timezones'
+import { defaultTimeZone } from '../utils/datetime'
 
 export interface UseSettingsParams {
   jwt: string | null
@@ -14,7 +15,7 @@ export interface UseSettingsResult {
   settingsMsg: string
   dailyEnabled: boolean
   setDailyEnabled: Dispatch<SetStateAction<boolean>>
-  tzOptions: string[]
+  tzOptions: { value: string, label: string }[]
   loadSettings: () => Promise<void>
   saveSettings: () => Promise<void>
 }
@@ -31,13 +32,7 @@ export function useSettings({ jwt, headers }: UseSettingsParams): UseSettingsRes
   const [dailyEnabled, setDailyEnabled] = useState<boolean>(false)
 
   const tzOptions = useMemo(() => {
-    const anyIntl: any = Intl as any
-    if (anyIntl && typeof anyIntl.supportedValuesOf === 'function') {
-      try {
-        return anyIntl.supportedValuesOf('timeZone') as string[]
-      } catch { }
-    }
-    return DEFAULT_TZ_LIST
+    return WINDOWS_TIMEZONES
   }, [])
 
   async function loadSettings() {

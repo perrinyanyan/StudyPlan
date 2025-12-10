@@ -147,9 +147,6 @@ export function TaskHoverCard({
             estimate_min: optimisticTask.estimate_min,
         }
         await actions.createTaskAdvanced(payload)
-        if (actions.setCenterAlert) {
-            actions.setCenterAlert({ title: '已复制到任务池', detail: `任务 "${optimisticTask.title}" 已复制到任务池` })
-        }
         setCardMenuOpen(false)
         onClose()
     }

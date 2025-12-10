@@ -2,16 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { getApiUrl } from '../../config';
 import { useAuth } from '../../hooks/useAuth';
 import { PlanVisibilityModal } from './PlanVisibilityModal';
-import { SetSelectedPlanModal } from './SetSelectedPlanModal';
 import { ConflictModal } from './ConflictModal';
 import { TaskTypeSelector } from '../planner/TaskTypeSelector';
 import { TaskTagSelector } from '../planner/TaskTagSelector';
 import { TaskPrioritySelector } from '../planner/TaskPrioritySelector';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 interface PlanDetailsModalProps {
     planId: string;
     onClose: () => void;
     onPlanDeleted?: () => void;
+    showToast?: (msg: string) => void;
 }
 
 interface Session {
@@ -58,7 +61,7 @@ interface PlanDetails {
 
 type TypeRow = { id: string; name: string; color: string }
 
-export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetailsModalProps) {
+export function PlanDetailsModal({ planId, onClose, onPlanDeleted, showToast }: PlanDetailsModalProps) {
     const { headers } = useAuth();
     const [details, setDetails] = useState<PlanDetails | null>(null);
     const [loading, setLoading] = useState(true);
@@ -76,7 +79,6 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
     const [availableTags, setAvailableTags] = useState<string[]>([]);
 
     const [showVisibilityModal, setShowVisibilityModal] = useState(false);
-    const [showSelectedPlanModal, setShowSelectedPlanModal] = useState(false);
     const [showConflictModal, setShowConflictModal] = useState(false);
     const [pendingConflicts, setPendingConflicts] = useState<any[]>([]);
 
@@ -210,8 +212,6 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
             }
         } catch (err) {
             console.error('Failed to persist settings:', err);
-            // Revert on error (optional, but good UX)
-            // For now, we'll just log it.
         }
     };
 
@@ -388,7 +388,11 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
 
             if (!res.ok) throw new Error((await res.json()).error || '应用计划失败');
 
-            alert(`成功！已添加 ${(await res.json()).count} 个日程到您的时间表。`);
+            if (showToast) {
+                showToast(`成功！已添加 ${(await res.json()).count} 个日程到您的时间表。`);
+            } else {
+                alert(`成功！已添加 ${(await res.json()).count} 个日程到您的时间表。`);
+            }
             setShowConflictModal(false);
             onClose();
         } catch (err: any) {
@@ -413,7 +417,9 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                 throw new Error(data.error || '删除计划失败');
             }
 
-            alert('计划删除成功');
+            if (showToast) showToast('计划删除成功');
+            else alert('计划删除成功');
+
             if (onPlanDeleted) onPlanDeleted();
             onClose();
         } catch (err: any) {
@@ -430,7 +436,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
         (details.plan.scope_type === 'school' && ['school_admin', 'system_admin'].includes(userRole || ''))
     );
 
-    const canSetSelectedPlan = ['school_admin', 'class_admin', 'system_admin'].includes(userRole || '');
+
 
     const canDelete = details && (
         (details.plan.scope_type.toLowerCase() === 'personal' && details.plan.created_by === userId) ||
@@ -466,7 +472,65 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                         <div className="text-red-400 text-center py-8">{error}</div>
                     ) : details ? (
                         <div className="space-y-6">
-                            {details.plan.description && <div className="bg-slate-800/50 p-4 rounded-lg text-slate-300 border border-white/5">{details.plan.description}</div>}
+                            {details.plan.description || editingCell?.field === 'description' ? (
+                                editingCell?.field === 'description' ? (
+                                    <div className="bg-slate-800/50 p-4 rounded-lg border border-white/5 relative group">
+                                        <textarea
+                                            className="w-full bg-slate-900/50 text-slate-300 text-sm border border-slate-700 rounded p-2 focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+                                            rows={3}
+                                            value={editingCell.value}
+                                            onChange={(e) => setEditingCell({ ...editingCell, value: e.target.value })}
+                                            onBlur={async () => {
+                                                const val = editingCell.value;
+                                                // Optimistic update
+                                                setDetails(prev => prev ? { ...prev, plan: { ...prev.plan, description: val } } : null);
+                                                setEditingCell(null);
+
+                                                try {
+                                                    const res = await fetch(getApiUrl(`/plans/${planId}`), {
+                                                        method: 'PATCH',
+                                                        headers: { ...headers(), 'Content-Type': 'application/json' },
+                                                        body: JSON.stringify({ description: val })
+                                                    });
+                                                    if (!res.ok) throw new Error('Update failed');
+                                                    if (showToast) showToast('描述已更新')
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    alert('保存描述失败');
+                                                }
+                                            }}
+                                            autoFocus
+                                        />
+                                        <div className="text-[10px] text-slate-500 mt-1 text-right">点击外部保存</div>
+                                    </div>
+                                ) : (
+                                    <div
+                                        className="bg-slate-800/50 p-4 rounded-lg text-slate-300 border border-white/5 cursor-pointer hover:bg-slate-800/70 transition-colors group relative"
+                                        onDoubleClick={() => canDelete && setEditingCell({ id: 'plan', field: 'description', value: details.plan.description || '' })}
+                                        title={canDelete ? "双击编辑描述" : ""}
+                                    >
+                                        <div className="prose prose-invert prose-sm max-w-none [&>p]:mb-1 [&>ul]:mb-1 [&>ol]:mb-1 last:[&>*]:mb-0 [&_mark]:bg-yellow-500/40 [&_mark]:text-yellow-100">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                                {(details.plan.description || '').replace(/==([^=]+)==/g, '<mark>$1</mark>')}
+                                            </ReactMarkdown>
+                                        </div>
+                                        {canDelete && (
+                                            <span className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-white transition-opacity">
+                                                <span className="material-symbols-outlined text-sm">edit</span>
+                                            </span>
+                                        )}
+                                    </div>
+                                )
+                            ) : (
+                                canDelete && (
+                                    <div
+                                        className="bg-slate-800/30 p-4 rounded-lg text-slate-500 border border-dashed border-white/10 cursor-pointer hover:bg-slate-800/50 transition-colors text-center text-sm"
+                                        onClick={() => setEditingCell({ id: 'plan', field: 'description', value: '' })}
+                                    >
+                                        + 添加计划描述...
+                                    </div>
+                                )
+                            )}
 
                             <div>
                                 <div className="flex justify-between items-center mb-4">
@@ -629,15 +693,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                                 管理可见性
                             </button>
                         )}
-                        {canSetSelectedPlan && (
-                            <button
-                                onClick={() => setShowSelectedPlanModal(true)}
-                                className="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/50 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors"
-                            >
-                                <span>⭐</span>
-                                设为选定计划
-                            </button>
-                        )}
+
                         {canDelete && (
                             <button
                                 onClick={handleDelete}
@@ -656,7 +712,7 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                         </button>
                     </div>
                 </div>
-            </div>
+            </div >
 
             {showVisibilityModal && details && (
                 <PlanVisibilityModal
@@ -665,20 +721,9 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                     planScope={details.plan.scope_type as 'global' | 'school' | 'class' | 'personal'}
                     onClose={() => setShowVisibilityModal(false)}
                     onSuccess={() => {
-                        alert('可见性设置已更新！');
+                        if (showToast) showToast('可见性设置已更新')
+                        else alert('可见性设置已更新！');
                         setShowVisibilityModal(false);
-                    }}
-                />
-            )}
-
-            {showSelectedPlanModal && details && (
-                <SetSelectedPlanModal
-                    planId={planId}
-                    planName={details.plan.name}
-                    onClose={() => setShowSelectedPlanModal(false)}
-                    onSuccess={() => {
-                        alert('已成功设置为选定计划！');
-                        setShowSelectedPlanModal(false);
                     }}
                 />
             )}
@@ -714,64 +759,66 @@ export function PlanDetailsModal({ planId, onClose, onPlanDeleted }: PlanDetails
                 />
             )}
 
-            {typeModalOpen && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black/60 p-4 z-[60]">
-                    <div className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 shadow-xl flex flex-col">
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-                            <h3 className="text-sm font-medium text-white">添加任务类型</h3>
-                            <button
-                                className="text-white/60 hover:text-white"
-                                type="button"
-                                onClick={() => setTypeModalOpen(false)}
-                            >
-                                <span className="material-symbols-outlined text-base">close</span>
-                            </button>
-                        </div>
-                        <div className="px-4 py-4 space-y-4">
-                            <label className="flex flex-col gap-1.5">
-                                <span className="text-xs text-slate-300">类型名称</span>
-                                <input
-                                    className="h-9 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                                    placeholder="例如：阅读、练习、复习..."
-                                    value={newTypeName}
-                                    onChange={(e) => setNewTypeName(e.target.value)}
-                                />
-                            </label>
-                            <div className="flex flex-col gap-2">
-                                <span className="text-xs text-slate-300">颜色</span>
-                                <div className="flex flex-wrap gap-2">
-                                    {TYPE_COLOR_OPTIONS.map((c) => (
-                                        <button
-                                            key={c}
-                                            type="button"
-                                            className={`w-7 h-7 rounded-full border-2 ${newTypeColor === c ? 'border-white ring-2 ring-[#137fec]' : 'border-transparent'
-                                                }`}
-                                            style={{ backgroundColor: c }}
-                                            onClick={() => setNewTypeColor(c)}
-                                        />
-                                    ))}
+            {
+                typeModalOpen && (
+                    <div className="fixed inset-0 flex items-center justify-center bg-black/60 p-4 z-[60]">
+                        <div className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 shadow-xl flex flex-col">
+                            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+                                <h3 className="text-sm font-medium text-white">添加任务类型</h3>
+                                <button
+                                    className="text-white/60 hover:text-white"
+                                    type="button"
+                                    onClick={() => setTypeModalOpen(false)}
+                                >
+                                    <span className="material-symbols-outlined text-base">close</span>
+                                </button>
+                            </div>
+                            <div className="px-4 py-4 space-y-4">
+                                <label className="flex flex-col gap-1.5">
+                                    <span className="text-xs text-slate-300">类型名称</span>
+                                    <input
+                                        className="h-9 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
+                                        placeholder="例如：阅读、练习、复习..."
+                                        value={newTypeName}
+                                        onChange={(e) => setNewTypeName(e.target.value)}
+                                    />
+                                </label>
+                                <div className="flex flex-col gap-2">
+                                    <span className="text-xs text-slate-300">颜色</span>
+                                    <div className="flex flex-wrap gap-2">
+                                        {TYPE_COLOR_OPTIONS.map((c) => (
+                                            <button
+                                                key={c}
+                                                type="button"
+                                                className={`w-7 h-7 rounded-full border-2 ${newTypeColor === c ? 'border-white ring-2 ring-[#137fec]' : 'border-transparent'
+                                                    }`}
+                                                style={{ backgroundColor: c }}
+                                                onClick={() => setNewTypeColor(c)}
+                                            />
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex justify-end gap-2 px-4 py-3 border-t border-white/10 bg-slate-900 rounded-b-xl">
-                            <button
-                                type="button"
-                                className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-slate-700 hover:bg-slate-600"
-                                onClick={() => setTypeModalOpen(false)}
-                            >
-                                取消
-                            </button>
-                            <button
-                                type="button"
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#137fec] hover:bg-[#0f6cc8]"
-                                onClick={submitNewType}
-                            >
-                                保存
-                            </button>
+                            <div className="flex justify-end gap-2 px-4 py-3 border-t border-white/10 bg-slate-900 rounded-b-xl">
+                                <button
+                                    type="button"
+                                    className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-200 bg-slate-700 hover:bg-slate-600"
+                                    onClick={() => setTypeModalOpen(false)}
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    type="button"
+                                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-[#137fec] hover:bg-[#0f6cc8]"
+                                    onClick={submitNewType}
+                                >
+                                    保存
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }

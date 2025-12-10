@@ -31,6 +31,15 @@ export default function App() {
   const [blocks, setBlocks] = useState<Block[]>([])
   const [fetchState, setFetchState] = useState<FetchState>('idle')
 
+  /* Toast Notification */
+  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null)
+  const showToast = (message: string) => {
+    setToast({ message, visible: true })
+    setTimeout(() => {
+      setToast(prev => prev?.message === message ? { ...prev, visible: false } : prev)
+    }, 3000)
+  }
+
   // Shares
   const {
     shareScope,
@@ -205,6 +214,7 @@ export default function App() {
     setUnscheduled,
     setRangeReloadKey,
     setCenterAlert,
+    showToast,
   })
 
   useEffect(() => {
@@ -279,6 +289,14 @@ export default function App() {
         if (unschedMenuOpenId !== null) setUnschedMenuOpenId(null)
       }}
     >
+      {/* Toast UI */}
+      <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[10000] transition-all duration-300 ${toast?.visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+        <div className="bg-slate-800 border border-white/10 text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-2">
+          <span className="material-symbols-outlined text-green-400 text-lg">check_circle</span>
+          <span className="text-sm font-medium">{toast?.message}</span>
+        </div>
+      </div>
+
       {centerAlert && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-slate-900 p-6 text-center shadow-2xl">
@@ -410,20 +428,6 @@ export default function App() {
                   {!sidebarCollapsed && <span className="font-medium">专注</span>}
                 </a>
               </li>
-
-              {/* <li>
-                <a
-                  href="#/shares"
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm ${pathOnly === '/shares'
-                    ? 'bg-white/10 text-white'
-                    : 'text-white/80 hover:bg-white/10'
-                    }`}
-                >
-                  <span className="material-symbols-outlined">share</span>
-                  {!sidebarCollapsed && <span className="font-medium">鍒嗕韩</span>}
-                </a>
-              </li> */}
-
               <li>
                 <a
                   href="#/settings"
@@ -550,7 +554,7 @@ export default function App() {
               {pathOnly === '/admin/users' && <UserManagement />}
             </AdminLayout>
           ) : pathOnly === '/plans' ? (
-            <PlanLibraryPage />
+            <PlanLibraryPage showToast={showToast} />
           ) : pathOnly === '/settings' ? (
             <SettingsPage
               isSubscribed={isSubscribed}
@@ -559,13 +563,13 @@ export default function App() {
               settings={settings}
               settingsMsg={settingsMsg}
               tzOptions={tzOptions}
-              tzPlaceholder={defaultTimeZone()}
               subscribePush={subscribePush}
               unsubscribePush={unsubscribePush}
               testPush={testPush}
               saveSettings={saveSettings}
               setDailyEnabled={setDailyEnabled}
               setSettings={setSettings}
+              showToast={showToast}
             />
           ) : pathOnly === '/shares' ? (
             <SharesPage

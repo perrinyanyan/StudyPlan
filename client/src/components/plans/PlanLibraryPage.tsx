@@ -3,8 +3,11 @@ import { getApiUrl } from '../../config'
 import { OptionalPlan } from '../../types'
 import { PlanImportModal } from './PlanImportModal'
 import { PlanDetailsModal } from './PlanDetailsModal'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
-export function PlanLibraryPage() {
+export function PlanLibraryPage({ showToast }: { showToast?: (msg: string) => void }) {
     const [plans, setPlans] = useState<OptionalPlan[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -14,7 +17,7 @@ export function PlanLibraryPage() {
     const [filterCategory, setFilterCategory] = useState<string>('all')
     const [showSelectedOnly, setShowSelectedOnly] = useState(false)
 
-    const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set())
+
 
     const fetchPlans = async () => {
         setLoading(true)
@@ -28,9 +31,7 @@ export function PlanLibraryPage() {
             setPlans(data.plans)
 
             // Set selected plan IDs directly from response
-            if (data.selectedPlanIds && Array.isArray(data.selectedPlanIds)) {
-                setSelectedPlanIds(new Set(data.selectedPlanIds))
-            }
+
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -45,7 +46,6 @@ export function PlanLibraryPage() {
     const filteredPlans = plans.filter(p => {
         if (filterScope !== 'all' && p.scope_type !== filterScope) return false
         if (filterCategory !== 'all' && p.category !== filterCategory) return false
-        if (showSelectedOnly && !selectedPlanIds.has(p.id)) return false
         return true
     })
 
@@ -151,16 +151,6 @@ export function PlanLibraryPage() {
                     >
                         <span>📥</span> 导入 CSV
                     </button>
-
-                    <button
-                        onClick={() => setShowSelectedOnly(!showSelectedOnly)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 border transition-colors ${showSelectedOnly
-                            ? 'bg-amber-500 hover:bg-amber-600 border-amber-400/30 text-white'
-                            : 'bg-black/20 hover:bg-white/10 border-white/10 text-white/90'
-                            }`}
-                    >
-                        <span>⭐</span> {showSelectedOnly ? '显示全部' : '仅选定计划'}
-                    </button>
                 </div>
             </div>
 
@@ -176,14 +166,8 @@ export function PlanLibraryPage() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredPlans.map(plan => {
-                        const isSelected = selectedPlanIds.has(plan.id)
                         return (
                             <div key={plan.id} className="bg-slate-800 border border-white/10 rounded-lg p-5 hover:border-blue-500/50 transition-colors group relative">
-                                {isSelected && (
-                                    <div className="absolute top-3 right-3 bg-amber-500 text-white text-[10px] px-2 py-1 rounded-full font-medium flex items-center gap-1">
-                                        <span>⭐</span> 选定计划
-                                    </div>
-                                )}
                                 <div className="flex justify-between items-start mb-3">
                                     <span className={`text-[10px] px-2 py-0.5 rounded uppercase font-medium tracking-wider
                                     ${plan.scope_type === 'global' ? 'bg-purple-500/20 text-purple-300' :
@@ -200,30 +184,34 @@ export function PlanLibraryPage() {
                                     {plan.name}
                                 </h3>
 
-                                <div className="text-xs text-slate-400 mb-4 line-clamp-2 h-8">
-                                    {plan.description || 'No description'}
+                                <div className="text-xs text-slate-400 mb-4 line-clamp-2 h-8 prose prose-invert prose-p:my-0 prose-ul:my-0 prose-ol:my-0 prose-li:my-0 max-w-none [&_*]:text-xs [&_*]:leading-normal [&_mark]:bg-yellow-500/40 [&_mark]:text-yellow-100">
+                                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                        {(plan.description || 'No description').replace(/==([^=]+)==/g, '<mark>$1</mark>')}
+                                    </ReactMarkdown>
                                 </div>
 
                                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-white/5">
                                     <span className="text-xs text-slate-500 bg-slate-900 px-2 py-1 rounded">
                                         {plan.category || 'Uncategorized'}
                                     </span>
-                                    <button
-                                        onClick={() => setSelectedPlanId(plan.id)}
-                                        className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
-                                    >
-                                        查看详情
-                                    </button>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleExport(plan.id, plan.name);
-                                        }}
-                                        className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors ml-2"
-                                        title="导出为CSV"
-                                    >
-                                        <span className="material-symbols-outlined text-[14px] align-text-bottom">download</span>
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setSelectedPlanId(plan.id)}
+                                            className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
+                                        >
+                                            查看详情
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleExport(plan.id, plan.name);
+                                            }}
+                                            className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded transition-colors"
+                                            title="导出为CSV"
+                                        >
+                                            <span className="material-symbols-outlined text-[14px] align-text-bottom">download</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )
@@ -234,7 +222,10 @@ export function PlanLibraryPage() {
             {showImportModal && (
                 <PlanImportModal
                     onClose={() => setShowImportModal(false)}
-                    onSuccess={fetchPlans}
+                    onSuccess={() => {
+                        fetchPlans()
+                        if (showToast) showToast('计划导入成功')
+                    }}
                 />
             )}
 
@@ -243,6 +234,7 @@ export function PlanLibraryPage() {
                     planId={selectedPlanId}
                     onClose={() => setSelectedPlanId(null)}
                     onPlanDeleted={fetchPlans}
+                    showToast={showToast}
                 />
             )}
         </div>

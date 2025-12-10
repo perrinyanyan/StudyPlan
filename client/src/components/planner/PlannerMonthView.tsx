@@ -71,9 +71,6 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
             // No due_at for pool tasks
         }
         await createTaskAdvanced(payload)
-        if (setCenterAlert) {
-            setCenterAlert({ title: '已复制到任务池', detail: `任务 "${task.title}" 已复制到任务池` })
-        }
     }
 
     // Calculate month days (including padding)
@@ -150,7 +147,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                 const t = meta.type || ''
                 if (t !== listFilterType) return false
             }
-            if (listFilterTag && listFilterTag.length > 0) {
+            if (listFilterTag && listFilterTag.length > 0 && !listFilterTag.includes('all')) {
                 const tags = meta.tags || []
                 if (!listFilterTag.some((t: string) => tags.includes(t))) return false
             }

@@ -1343,7 +1343,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
 // Export plan
 router.get('/:id/export', async (req, res) => {
     const { id } = req.params;
-    console.log(`[Export] Starting export for plan ${id}`);
+
 
     // 1. Get Plan
     const { data: plan, error: planErr } = await supabase
@@ -1356,7 +1356,7 @@ router.get('/:id/export', async (req, res) => {
         console.error('[Export] Plan not found error:', planErr);
         return res.status(404).json({ error: 'Plan not found' });
     }
-    console.log(`[Export] Plan found: ${plan.name}`);
+
 
     // 2. Get Plan Items
     const { data: items, error: itemsErr } = await supabase
@@ -1369,10 +1369,10 @@ router.get('/:id/export', async (req, res) => {
         console.error('[Export] Items fetch error:', itemsErr);
         return res.status(500).json({ error: itemsErr.message });
     }
-    console.log(`[Export] Items found: ${items?.length || 0}`);
+
 
     if (!items || items.length === 0) {
-        console.log('[Export] No items, returning empty CSV');
+
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename="plan_${plan.id}.csv"`);
         return res.send('\uFEFFplan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
@@ -1389,7 +1389,7 @@ router.get('/:id/export', async (req, res) => {
         console.error('[Export] Courses fetch error:', coursesErr);
         return res.status(500).json({ error: coursesErr.message });
     }
-    console.log(`[Export] Courses found: ${courses?.length || 0}`);
+
 
     const courseMap = new Map(courses?.map(c => [c.id, c]) || []);
 
@@ -1405,14 +1405,24 @@ router.get('/:id/export', async (req, res) => {
         console.error('[Export] Sessions fetch error:', sessErr);
         return res.status(500).json({ error: sessErr.message });
     }
-    console.log(`[Export] Sessions found: ${sessions?.length || 0}`);
+
 
     const rows: string[] = [];
     // Header
     rows.push('plan_name,category,course_code,course_name,content,date,start_time,end_time,location,type,priority,tags');
 
-    // Data Rows
+    // Deduplicate items by ref_id (course id) to avoid duplicate rows
+    const uniqueItems: typeof items = [];
+    const seenRefIds = new Set<string>();
     for (const item of items) {
+        if (!seenRefIds.has(item.ref_id)) {
+            seenRefIds.add(item.ref_id);
+            uniqueItems.push(item);
+        }
+    }
+
+    // Data Rows
+    for (const item of uniqueItems) {
         const course = courseMap.get(item.ref_id);
         if (!course) continue;
 
@@ -1474,6 +1484,82 @@ router.get('/:id/export', async (req, res) => {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="plan_${encodeURIComponent(safeName)}.csv"`);
     res.send(csvContent);
+});
+
+// Update plan details
+router.patch('/:id', async (req: Request, res: Response) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'No token' });
+    }
+
+    const token = authHeader.slice(7);
+    let userId: string;
+
+    try {
+        const payload = jwt.verify(token, JWT_SECRET) as any;
+        userId = payload.sub;
+    } catch {
+        return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const { id } = req.params;
+    const { name, description, category } = req.body;
+
+    // 1. Get Plan
+    const { data: plan, error: planErr } = await supabase
+        .from('optional_plans')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (planErr || !plan) {
+        return res.status(404).json({ error: 'Plan not found' });
+    }
+
+    // 2. Check Permissions (same as delete/edit)
+    const { data: roles } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+    const userRoles = roles || [];
+    const isSystemAdmin = userRoles.some(r => r.role === 'system_admin');
+    let canEdit = false;
+
+    if (plan.scope_type.toLowerCase() === 'personal') {
+        canEdit = plan.created_by === userId;
+    } else if (isSystemAdmin) {
+        canEdit = true;
+    } else if (plan.scope_type === 'school') {
+        canEdit = userRoles.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === plan.scope_id);
+    } else if (plan.scope_type === 'class') {
+        const isClassAdmin = userRoles.some(r => r.role === 'class_admin' && r.scope_type === 'class' && r.scope_id === plan.scope_id);
+        if (isClassAdmin) canEdit = true;
+        else {
+            const { data: cls } = await supabase.from('classes').select('school_id').eq('id', plan.scope_id).single();
+            if (cls) {
+                canEdit = userRoles.some(r => r.role === 'school_admin' && r.scope_type === 'school' && r.scope_id === cls.school_id);
+            }
+        }
+    }
+
+    if (!canEdit) {
+        return res.status(403).json({ error: 'Permission denied to edit this plan' });
+    }
+
+    // 3. Update
+    const updates: any = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (category !== undefined) updates.category = category;
+
+    if (Object.keys(updates).length > 0) {
+        const { error: updErr } = await supabase
+            .from('optional_plans')
+            .update(updates)
+            .eq('id', id);
+
+        if (updErr) return res.status(500).json({ error: updErr.message });
+    }
+
+    res.json({ success: true });
 });
 
 export default router;
