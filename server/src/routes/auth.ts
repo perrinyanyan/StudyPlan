@@ -12,21 +12,9 @@ import fs from 'fs';
 
 const router = Router();
 
-// Configure multer for avatar uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'avatars');
-    fs.mkdirSync(uploadDir, { recursive: true });
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Configure multer for avatar uploads (memory storage for cloud deployment)
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
     const allowedTypes = /jpeg|jpg|png|gif|webp/;
@@ -419,24 +407,65 @@ router.post('/profile/avatar', upload.single('avatar'), async (req: Request, res
 
   const userId = getUserId(req);
   if (!userId) {
-    // Clean up uploaded file if unauthorized
-    fs.unlinkSync(req.file.path);
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+  try {
+    const file = req.file;
+    const fileExt = path.extname(file.originalname);
+    const fileName = `${userId}-${Date.now()}${fileExt}`;
+    const filePath = `avatars/${fileName}`;
 
-  const { error: upErr } = await supabase
-    .from('users')
-    .update({ avatar_url: avatarUrl })
-    .eq('id', userId);
+    // Upload to Supabase Storage
+    let { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file.buffer, {
+        contentType: file.mimetype,
+        upsert: true // Allow overwriting for same user
+      });
 
-  if (upErr) {
-    fs.unlinkSync(req.file.path);
-    return res.status(500).json({ error: 'Failed to update avatar' });
+    if (error) {
+      // Try to create bucket if not found
+      if (error.message.includes('Bucket not found') || error.message.includes('The resource was not found')) {
+        const { error: bucketError } = await supabase.storage.createBucket('avatars', { public: true });
+        if (bucketError) {
+          console.error('Failed to create avatars bucket:', bucketError);
+          return res.status(500).json({ error: 'Storage bucket missing' });
+        }
+        // Retry upload
+        const retry = await supabase.storage
+          .from('avatars')
+          .upload(filePath, file.buffer, { contentType: file.mimetype, upsert: true });
+        data = retry.data;
+        error = retry.error;
+        if (error) {
+          return res.status(500).json({ error: 'Upload failed: ' + error.message });
+        }
+      } else {
+        return res.status(500).json({ error: 'Upload failed: ' + error.message });
+      }
+    }
+
+    // Get Public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    // Update user record
+    const { error: upErr } = await supabase
+      .from('users')
+      .update({ avatar_url: publicUrl })
+      .eq('id', userId);
+
+    if (upErr) {
+      return res.status(500).json({ error: 'Failed to update avatar' });
+    }
+
+    res.json({ message: 'Avatar updated', avatar_url: publicUrl });
+  } catch (err: any) {
+    console.error('Avatar upload error:', err);
+    res.status(500).json({ error: err.message || 'Upload failed' });
   }
-
-  res.json({ message: 'Avatar updated', avatar_url: avatarUrl });
 });
 
 // Deletion with email confirmation
