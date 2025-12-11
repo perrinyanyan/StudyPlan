@@ -611,6 +611,9 @@ export function usePlanner(props: UsePlannerProps) {
 
   async function updateBlock(id: Block['id'], payload: { start_at?: string; end_at?: string; task_id?: string }) {
     // Optimistic update
+    const previousBlocks = [...blocks]
+    const previousRangeBlocks = rangeBlocks ? [...rangeBlocks] : null
+
     const updateLocalBlock = (b: Block) => {
       if (String(b.id) === String(id)) {
         return { ...b, ...payload }
@@ -633,6 +636,11 @@ export function usePlanner(props: UsePlannerProps) {
         setCenterAlert({ title: '时间冲突', detail: '该时间与其他任务重叠，请调整后再试。' })
       } else {
         alert('更新时间块失败: ' + (j.error || r.status))
+      }
+      // Revert optimistic update
+      setBlocks(previousBlocks)
+      if (previousRangeBlocks) {
+        setRangeBlocks(previousRangeBlocks)
       }
       return false
     }

@@ -586,6 +586,7 @@ export default function App() {
           ) : pathOnly === '/focus' ? (
             <FocusPage
               tasks={tasks.today || []}
+              blocks={blocks}
               initialTaskId={new URLSearchParams(current.split('?')[1] || '').get('taskId') || undefined}
               defaultDuration={settings.focus_duration_minutes || 25}
               startSoundType={settings.focus_start_sound || 'gentle'}

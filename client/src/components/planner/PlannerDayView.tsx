@@ -130,6 +130,11 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         const newStart = parseTime(originalStart, startStr)
         const newEnd = parseTime(originalEnd, endStr)
 
+        if (newEnd.getTime() <= newStart.getTime()) {
+          alert('结束时间必须晚于开始时间')
+          return
+        }
+
         updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
       }
     } else {

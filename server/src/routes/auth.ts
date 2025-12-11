@@ -201,7 +201,11 @@ router.post('/signup', async (req: Request, res: Response) => {
       { name: '生物', color: '#2DD4BF' },
       { name: '历史', color: '#FB923C' },
       { name: '地理', color: '#818CF8' },
-      { name: '计算机', color: '#9CA3AF' },
+      { name: '计算机', color: '#060eff' },
+      { name: '政治', color: '#F87171' },
+      { name: '经济', color: '#60A5FA' },
+      { name: '心理', color: '#FACC15' },
+      { name: '社会', color: '#A78BFA' },
       { name: '艺术', color: '#F472B6' },
       { name: '运动', color: '#E879F9' },
       { name: '爱好', color: '#FBBF24' }
