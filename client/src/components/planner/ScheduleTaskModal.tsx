@@ -83,15 +83,14 @@ export function ScheduleTaskModal({
               )}
               {typeof task.priority === 'number' && (
                 <span
-                  className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${
-                    task.priority === 2
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium ${task.priority === 2
                       ? 'bg-red-500/20 text-red-300'
                       : task.priority === 1
-                      ? 'bg-yellow-500/20 text-yellow-300'
-                      : 'bg-green-500/20 text-green-300'
-                  }`}
+                        ? 'bg-yellow-500/20 text-yellow-300'
+                        : 'bg-green-500/20 text-green-300'
+                    }`}
                 >
-                  {task.priority === 2 ? '高' : task.priority === 1 ? '中' : '低'}
+                  {task.priority === 2 ? 'H' : task.priority === 1 ? 'M' : 'L'}
                 </span>
               )}
               {(task.tags || []).map((g) => (

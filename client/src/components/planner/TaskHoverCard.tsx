@@ -340,7 +340,7 @@ export function TaskHoverCard({
                                             optimisticTask.priority === 1 ? 'bg-yellow-500/20 text-yellow-300' :
                                                 'bg-green-500/20 text-green-300'
                                             }`}>
-                                            {optimisticTask.priority === 2 ? '高' : optimisticTask.priority === 1 ? '中' : '低'}
+                                            {optimisticTask.priority === 2 ? 'H' : optimisticTask.priority === 1 ? 'M' : 'L'}
                                         </span>
                                     ) : (
                                         <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium bg-slate-500/20 text-slate-300">无</span>
@@ -362,7 +362,7 @@ export function TaskHoverCard({
                                             }`}
                                         onDoubleClick={() => setEditingCell({ field: 'priority', value: optimisticTask.priority })}
                                     >
-                                        {optimisticTask.priority === 2 ? '高' : optimisticTask.priority === 1 ? '中' : '低'}
+                                        {optimisticTask.priority === 2 ? 'H' : optimisticTask.priority === 1 ? 'M' : 'L'}
                                     </span>
                                 ) : (
                                     <span
@@ -416,7 +416,9 @@ export function TaskHoverCard({
                             )}
 
                             {optimisticTask.status === 'done' && (
-                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">已完成</span>
+                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20" title="已完成">
+                                    <span className="material-symbols-outlined text-emerald-400 text-sm">check</span>
+                                </span>
                             )}
                         </div>
                     </div>

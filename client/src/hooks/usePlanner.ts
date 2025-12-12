@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { getApiUrl } from '../config'
 import { useAuth } from './useAuth'
 import { todayStr, toIso } from '../utils/datetime'
@@ -55,6 +55,12 @@ export function usePlanner(props: UsePlannerProps) {
     setCenterAlert,
     showToast,
   } = props
+
+  // Ref to track latest unscheduled state (fixes stale closure in fetchUnscheduled)
+  const unscheduledRef = useRef<Task[]>(unscheduled)
+  useEffect(() => {
+    unscheduledRef.current = unscheduled
+  }, [unscheduled])
 
   // UI states
   const [unschedMenuOpenId, setUnschedMenuOpenId] = useState<string | null>(null)
@@ -159,6 +165,20 @@ export function usePlanner(props: UsePlannerProps) {
 
   function toggleHourCollapsed(hour: number) {
     setHourCollapsed((prev) => ({ ...prev, [hour]: !(prev[hour] ?? false) }))
+  }
+
+  function expandHours(hours: number[]) {
+    setHourCollapsed((prev) => {
+      let changed = false
+      const next = { ...prev }
+      hours.forEach((h) => {
+        if (next[h] !== false) {
+          next[h] = false
+          changed = true
+        }
+      })
+      return changed ? next : prev
+    })
   }
 
   const tasksFlat = useMemo(
@@ -266,7 +286,16 @@ export function usePlanner(props: UsePlannerProps) {
       const j = await r.json().catch(() => ({}))
       if (!r.ok) return
       const items = (j.items || []) as Task[]
-      setUnscheduled(items.filter((t) => (t.scheduling_status || 'unscheduled') !== 'scheduled' || t.recurrence_rule === 'POOL' || t.recurrence_rule?.includes('PINNED')))
+      const filtered = items.filter((t) => (t.scheduling_status || 'unscheduled') !== 'scheduled' || t.recurrence_rule === 'POOL' || t.recurrence_rule?.includes('PINNED'))
+
+      // Merge with existing temp tasks (negative IDs) to prevent flicker
+      // Temp tasks are removed only when their real counterparts appear (matched by title)
+      // Use ref to get latest state (fixes stale closure issue)
+      const currentUnscheduled = unscheduledRef.current
+      const tempTasks = currentUnscheduled.filter((t) => Number(t.id) < 0)
+      const serverTitles = new Set(filtered.map((t) => t.title))
+      const remainingTemps = tempTasks.filter((t) => !serverTitles.has(t.title))
+      setUnscheduled([...remainingTemps, ...filtered])
     } catch {
     }
   }
@@ -684,6 +713,7 @@ export function usePlanner(props: UsePlannerProps) {
     expandAllHours,
     collapseAllHours,
     toggleHourCollapsed,
+    expandHours,
     tasksFlat,
     taskTitleMap,
     taskStatusMap,

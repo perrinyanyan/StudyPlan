@@ -164,8 +164,8 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
     const weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
-            <div className="lg:col-span-4 h-full flex flex-col relative">
+        <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
+            <div className="lg:col-span-6 h-full flex flex-col relative">
                 {/* Filter Toggle Button */}
                 <div className="absolute -top-[3.25rem] right-0 z-10">
                     <button
@@ -310,7 +310,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                 return (
                                                     <div
                                                         key={b.id}
-                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:opacity-80 flex items-center ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
+                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
                                                             } ${status === 'done' ? 'line-through opacity-70' : ''}`}
                                                         style={{
                                                             backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
@@ -338,14 +338,21 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                         }}
                                                     >
                                                         {isOverdue && (
-                                                            <span className="mr-1 flex-shrink-0 flex items-center justify-center w-2.5 h-2.5 rounded-full bg-red-500 border border-white text-white text-[8px] font-bold leading-none">!</span>
+                                                            <span className="mr-0.5 flex-shrink-0 w-3 h-3" title="逾期">
+                                                                <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
+                                                                    <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="3" fill="none" strokeDasharray="50 10" />
+                                                                    <circle cx="12" cy="12" r="6" stroke="#4B5563" strokeWidth="2" fill="none" />
+                                                                    <rect x="10" y="7" width="4" height="6" rx="2" fill="#ef4444" />
+                                                                    <circle cx="12" cy="16" r="2" fill="#ef4444" />
+                                                                </svg>
+                                                            </span>
                                                         )}
                                                         {typeof meta?.priority === 'number' && (
                                                             <span className={`mr-1 flex-shrink-0 text-[8px] px-0.5 rounded ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
                                                                 meta.priority === 1 ? 'bg-yellow-500/80 text-white' :
                                                                     'bg-green-500/80 text-white'
                                                                 }`}>
-                                                                {meta.priority === 2 ? '高' : meta.priority === 1 ? '中' : '低'}
+                                                                {meta.priority === 2 ? 'H' : meta.priority === 1 ? 'M' : 'L'}
                                                             </span>
                                                         )}
                                                         <span className="truncate">{name}</span>

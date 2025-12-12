@@ -42,6 +42,8 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     setEditingCell(null)
     if (field === 'title') {
       updateTaskAdvanced(id, { title: value })
+    } else if (field === 'duration') {
+      updateTaskAdvanced(id, { estimate_min: value })
     } else {
       // For meta fields (priority, type, tags)
       const t = list.find(t => String(t.id) === id)
@@ -71,22 +73,37 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
             return (
               <div
                 key={String(t.id)}
-                className={`p-3 rounded-lg ${isTodayMust ? 'bg-amber-500/10' : 'bg-white/5'}`}
+                className={`p-3 rounded-lg ${isTodayMust ? 'bg-amber-500/10' : 'bg-white/5'} hover:ring-1 hover:ring-blue-400/50`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <div className="flex flex-col items-center justify-center w-4 gap-1">
-                      {t.recurrence_rule?.includes('TODAY_MUST') && (
-                        <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center shadow-sm">
-                          <span className="text-[10px] text-white leading-none font-bold scale-90">今</span>
-                        </div>
-                      )}
-                      {t.recurrence_rule?.includes('PINNED') && (
-                        <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
-                      )}
+                <div className="flex items-center gap-1.5">
+                  {/* Drag Handle */}
+                  <div
+                    className="flex items-center justify-center w-3 h-8 cursor-grab active:cursor-grabbing hover:bg-white/10 rounded transition-colors -ml-2.5"
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify({
+                        type: 'pool-task',
+                        taskId: String(t.id),
+                        taskTitle: t.title,
+                        estimateMin: t.estimate_min || 30,
+                        color: t.color,
+                        recurrenceRule: t.recurrence_rule || '',
+                      }))
+                      e.dataTransfer.effectAllowed = 'move'
+                    }}
+                  >
+                    {/* Grip Dots 2x3 */}
+                    <div className="grid grid-cols-2 gap-0.5 opacity-40">
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                      <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
                     </div>
-                    <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
                   </div>
+                  {/* Color bar */}
+                  <div className="w-1.5 h-10 rounded-full" style={{ backgroundColor: (t.color || '#4B5563') + '80' }}></div>
                   <div className="flex-1 space-y-1.5">
                     <div className="flex items-center gap-1.5">
                       {editingCell?.id === String(t.id) && editingCell.field === 'title' ? (
@@ -124,7 +141,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                                 }`}
                               onClick={e => e.stopPropagation()}
                             >
-                              {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                              {t.priority === 2 ? 'H' : t.priority === 1 ? 'M' : 'L'}
                             </span>
                           ) : (
                             <span
@@ -154,7 +171,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                               }`}
                             onDoubleClick={() => setEditingCell({ id: String(t.id), field: 'priority', value: t.priority })}
                           >
-                            {t.priority === 2 ? '高' : t.priority === 1 ? '中' : '低'}
+                            {t.priority === 2 ? 'H' : t.priority === 1 ? 'M' : 'L'}
                           </span>
                         )
                       )}
@@ -245,6 +262,44 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                       )}
                     </div>
                   </div>
+                  {/* Duration Display */}
+                  <div className="px-1.5 min-w-[3.5rem] flex justify-end">
+                    {editingCell?.id === String(t.id) && editingCell.field === 'duration' ? (
+                      <div className="flex items-center justify-end">
+                        <input
+                          autoFocus
+                          type="number"
+                          className="bg-slate-700 text-white text-xs px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
+                          value={editingCell.value}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => {
+                            const val = parseInt(e.target.value) || 0
+                            setEditingCell({
+                              ...editingCell,
+                              value: val
+                            })
+                          }}
+                          onBlur={() => handleSave(String(t.id), 'duration', editingCell.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSave(String(t.id), 'duration', editingCell.value)
+                            if (e.key === 'Escape') setEditingCell(null)
+                          }}
+                        />
+                        <span className="text-xs text-slate-400 ml-0.5">min</span>
+                      </div>
+                    ) : (
+                      <p
+                        className="text-xs text-slate-400 cursor-pointer hover:text-slate-200 hover:underline decoration-dashed decoration-slate-500 text-right"
+                        onDoubleClick={(e) => {
+                          e.stopPropagation()
+                          setEditingCell({ id: String(t.id), field: 'duration', value: t.estimate_min || 30 })
+                        }}
+                      >
+                        {t.estimate_min || 30} min
+                      </p>
+                    )}
+                  </div>
+                  {/* Action menu */}
                   <div className="relative">
                     <button
                       className="flex h-7 w-7 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
@@ -335,6 +390,17 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                           删除
                         </button>
                       </div>
+                    )}
+                  </div>
+                  {/* TODAY_MUST and PINNED icons */}
+                  <div className="flex flex-col items-center justify-center w-4 gap-1">
+                    {t.recurrence_rule?.includes('TODAY_MUST') && (
+                      <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center shadow-sm">
+                        <span className="text-[10px] text-white leading-none font-bold scale-90">今</span>
+                      </div>
+                    )}
+                    {t.recurrence_rule?.includes('PINNED') && (
+                      <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
                     )}
                   </div>
                 </div>

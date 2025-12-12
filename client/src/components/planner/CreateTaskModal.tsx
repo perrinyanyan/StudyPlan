@@ -44,12 +44,9 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   const [typeIdx, setTypeIdx] = useState<number>(-1)
   const [timeMode, setTimeMode] = useState<'duration' | 'end' | 'undetermined'>(() => {
     if (!initialTask) return 'duration'
-    // Pool/Unscheduled task handling
+    // Pool/Unscheduled task handling -> default to duration now
     if (initialTask.scheduling_status === 'unscheduled' || initialTask.recurrence_rule?.startsWith('POOL') || (!initialTask.estimate_min && !initialTask.due_at)) {
-      if (typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) {
-        return 'duration'
-      }
-      return 'undetermined'
+      return 'duration'
     }
     if (initialTask.due_at && typeof initialTask.estimate_min === 'number' && initialTask.estimate_min > 0) return 'duration'
     return 'end'
@@ -74,7 +71,8 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     return toInputLocal(start)
   })
   const [duration, setDuration] = useState<string>(() => {
-    if (!initialTask || typeof initialTask.estimate_min !== 'number') return ''
+    if (!initialTask) return '30'
+    if (typeof initialTask.estimate_min !== 'number') return ''
     return String(initialTask.estimate_min)
   })
   const [endAt, setEndAt] = useState<string>(() => {
@@ -226,16 +224,8 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     let dueISO: string | undefined
     let estimateMin: number | undefined
 
-    // 自动转换为“时间未定”的逻辑：
-    // 如果是保存到任务池，且当前模式不是 undetermind，但时长或结束时间没填，则自动视为 undetermined
+    // Auto-fallback logic removed. Enforce validation even for pool tasks.
     let finalTimeMode = timeMode
-    if (effectiveMode === 'pool') {
-      if (timeMode === 'duration' && (!startAt.trim() || !duration || parseDurationMin(duration) == null || parseDurationMin(duration)! <= 0)) {
-        finalTimeMode = 'undetermined'
-      } else if (timeMode === 'end' && (!startAt.trim() || !endAt.trim())) {
-        finalTimeMode = 'undetermined'
-      }
-    }
 
     if (finalTimeMode === 'duration') {
       if (!startAt.trim()) {
@@ -264,10 +254,6 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       }
       dueISO = e.toISOString()
       estimateMin = Math.round((e.getTime() - s.getTime()) / 60000)
-    } else {
-      // undetermined
-      dueISO = undefined
-      estimateMin = undefined
     }
     const prio = priority === 'high' ? 2 : priority === 'medium' ? 1 : 0
     const recur =
@@ -464,21 +450,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                     开始 & 结束
                   </div>
                 </label>
-                {(!isEdit || (isEdit && (initialTask?.recurrence_rule?.startsWith('POOL') || initialTask?.scheduling_status === 'unscheduled'))) && (
-                  <label>
-                    <input
-                      className="sr-only peer"
-                      name="time-mode"
-                      type="radio"
-                      value="undetermined"
-                      checked={timeMode === 'undetermined'}
-                      onChange={() => setTimeMode('undetermined')}
-                    />
-                    <div className="px-3 py-1.5 rounded-md text-xs font-medium text-slate-300 peer-checked:bg-[#137fec] peer-checked:text-white cursor-pointer">
-                      时间未定
-                    </div>
-                  </label>
-                )}
+
 
               </div>
             </div>

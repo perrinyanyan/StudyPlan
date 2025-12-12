@@ -491,7 +491,7 @@ export default function App() {
             : ''
         }
       >
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+        <div className={`mx-auto px-4 sm:px-6 lg:px-8 py-6 ${pathOnly === '/planner' ? 'max-w-full' : 'max-w-7xl'}`}>
           {pathOnly !== '/planner' && pathOnly !== '/plans' && !pathOnly.startsWith('/admin') && pathOnly !== '/settings' && pathOnly !== '/shares' && pathOnly !== '/focus' && (
             <header className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-6">

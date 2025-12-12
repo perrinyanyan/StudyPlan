@@ -29,29 +29,37 @@ export function TaskItem({ t, overdue, highlight, onDone, onDelete, onMetaChange
     setEditing(false)
   }
 
-  const prioLabel = prio === 2 ? '高' : prio === 1 ? '中' : prio === 0 ? '低' : null
+  const prioLabel = prio === 2 ? 'H' : prio === 1 ? 'M' : prio === 0 ? 'L' : null
   const prioClass =
     prio === 2
       ? 'bg-red-500/20 text-red-300'
       : prio === 1
-      ? 'bg-yellow-500/20 text-yellow-300'
-      : prio === 0
-      ? 'bg-green-500/20 text-green-300'
-      : 'bg-slate-500/20 text-slate-300'
+        ? 'bg-yellow-500/20 text-yellow-300'
+        : prio === 0
+          ? 'bg-green-500/20 text-green-300'
+          : 'bg-slate-500/20 text-slate-300'
   const isDone = t.status === 'done'
 
   return (
     <div
-      className={`p-3 rounded border ${
-        highlight ? 'border-amber-400 ring-2 ring-amber-400' : 'border-slate-700'
-      } bg-slate-900 flex items-start justify-between gap-3 ${isDone ? 'opacity-60' : ''}`}
+      className={`p-3 rounded border ${highlight ? 'border-amber-400 ring-2 ring-amber-400' : 'border-slate-700'
+        } bg-slate-900 flex items-start justify-between gap-3 ${isDone ? 'opacity-60' : ''}`}
     >
       <div className="flex-1">
         <div className={`text-sm text-white font-medium ${isDone ? 'line-through' : ''}`}>{t.title}</div>
         <div className="text-xs text-slate-300 mt-1 flex flex-wrap gap-2 items-center">
           <span>状态: {t.status}</span>
           {t.due_at ? <span>截止: {new Date(t.due_at).toLocaleString()}</span> : null}
-          {overdue ? <span className="text-rose-300">逾期</span> : null}
+          {overdue ? (
+            <span className="inline-flex items-center justify-center w-4 h-4" title="逾期">
+              <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" fill="none" strokeDasharray="50 10" />
+                <circle cx="12" cy="12" r="7" stroke="#374151" strokeWidth="1.5" fill="none" />
+                <rect x="11" y="7" width="2" height="6" rx="1" fill="#ef4444" />
+                <circle cx="12" cy="15.5" r="1" fill="#ef4444" />
+              </svg>
+            </span>
+          ) : null}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-white/80">
           {t.type && (

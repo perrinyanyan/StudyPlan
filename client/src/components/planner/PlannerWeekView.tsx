@@ -155,8 +155,8 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     const [cardMenuOpen, setCardMenuOpen] = useState(false)
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-6 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
-            <div className="lg:col-span-4 h-full flex flex-col relative">
+        <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
+            <div className="lg:col-span-6 h-full flex flex-col relative">
                 {/* Filter Toggle Button */}
                 <div className="absolute -top-[3.25rem] right-0 z-10">
                     <button
@@ -338,15 +338,15 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                 return (
                                                     <div
                                                         key={String(b.id)}
-                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden ${isCurrent
+                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden bg-slate-800/90 hover:bg-slate-800 hover:ring-1 hover:ring-blue-400/50 ${isCurrent
                                                             ? 'border-2 border-amber-400 shadow-lg shadow-amber-500/50 z-30 ring-2 ring-amber-400/30 animate-pulse'
-                                                            : `border ${isMenuOpen ? 'z-50' : 'z-10'}`
+                                                            : `border border-white/5 ${isMenuOpen ? 'z-50' : 'z-10'}`
                                                             }`}
                                                         style={{
                                                             top: Math.max(0, top),
                                                             height: Math.max(20, height),
-                                                            backgroundColor: isCurrent ? '#F59E0B20' : barColor,
-                                                            borderColor: isCurrent ? '#F59E0B' : borderColor
+                                                            borderLeftColor: isCurrent ? '#F59E0B' : baseColor,
+                                                            borderLeftWidth: 3
                                                         }}
                                                         onClick={(e) => {
                                                             e.stopPropagation()
@@ -372,19 +372,26 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                             }, 300)
                                                         }}
                                                     >
-                                                        <div className={`px-1 py-0.5 truncate leading-tight flex items-center ${status === 'done' ? 'line-through opacity-70' : ''}`}>
+                                                        <div className={`px-1 py-0.5 leading-tight flex items-start overflow-hidden ${status === 'done' ? 'line-through opacity-70' : ''}`} style={{ maxHeight: height - 4 }}>
                                                             {isOverdue && (
-                                                                <span className="mr-1 flex items-center justify-center w-3 h-3 rounded-full bg-red-500 border border-white text-white text-[9px] font-bold leading-none">!</span>
+                                                                <span className="mr-0.5 flex-shrink-0 w-3.5 h-3.5" title="逾期">
+                                                                    <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
+                                                                        <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2.5" fill="none" strokeDasharray="50 10" />
+                                                                        <circle cx="12" cy="12" r="6.5" stroke="#4B5563" strokeWidth="1.5" fill="none" />
+                                                                        <rect x="10.5" y="7" width="3" height="6" rx="1.5" fill="#ef4444" />
+                                                                        <circle cx="12" cy="15.5" r="1.5" fill="#ef4444" />
+                                                                    </svg>
+                                                                </span>
                                                             )}
                                                             {typeof meta?.priority === 'number' && (
-                                                                <span className={`mr-1 text-[9px] px-0.5 rounded ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
+                                                                <span className={`mr-1 text-[9px] px-0.5 rounded flex-shrink-0 ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
                                                                     meta.priority === 1 ? 'bg-yellow-500/80 text-white' :
                                                                         'bg-green-500/80 text-white'
                                                                     }`}>
-                                                                    {meta.priority === 2 ? '高' : meta.priority === 1 ? '中' : '低'}
+                                                                    {meta.priority === 2 ? 'H' : meta.priority === 1 ? 'M' : 'L'}
                                                                 </span>
                                                             )}
-                                                            {name}
+                                                            <span className="break-words" style={{ display: '-webkit-box', WebkitLineClamp: Math.max(1, Math.floor((height - 8) / 14)), WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{name}</span>
                                                         </div>
 
                                                         {isMenuOpen && (

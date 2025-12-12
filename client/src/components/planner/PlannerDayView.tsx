@@ -64,6 +64,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setListFilterOverdue,
     setListFilterDone,
     toggleHourCollapsed,
+    expandHours, // Added for auto-expand during drag
     setListMenuOpenId,
 
     setCenterAlert,
@@ -72,6 +73,189 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
+
+  // Drag-to-resize state
+  const SNAP_MINUTES = 5
+  const [dragging, setDragging] = useState<{
+    blockId: string
+    edge: 'top' | 'bottom' | 'move'
+    startY: number
+    originalStart: Date
+    originalEnd: Date
+  } | null>(null)
+  const [dragPreview, setDragPreview] = useState<{ start: Date, end: Date } | null>(null)
+
+  // Drag handlers
+  const handleDragStart = (e: React.MouseEvent, blockId: string, edge: 'top' | 'bottom' | 'move', block: any) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const originalStart = new Date(block.start_at)
+    const originalEnd = new Date(block.end_at)
+    setDragging({
+      blockId,
+      edge,
+      startY: e.clientY,
+      originalStart,
+      originalEnd,
+    })
+    setDragPreview({ start: originalStart, end: originalEnd })
+  }
+
+  // Check for conflicts with other blocks
+  const checkConflicts = (blockId: string, start: Date, end: Date): string[] => {
+    if (!filteredBlocks) return []
+    const conflicts: string[] = []
+    for (const block of filteredBlocks) {
+      if (String(block.id) === blockId) continue // Skip self
+      const blockStart = new Date(block.start_at).getTime()
+      const blockEnd = new Date(block.end_at).getTime()
+      const newStart = start.getTime()
+      const newEnd = end.getTime()
+      // Check overlap: two ranges overlap if one starts before the other ends
+      if (newStart < blockEnd && newEnd > blockStart) {
+        conflicts.push(String(block.id))
+      }
+    }
+    return conflicts
+  }
+
+  const [dragConflicts, setDragConflicts] = useState<string[]>([])
+
+  const handleDragMove = (e: React.MouseEvent) => {
+    if (!dragging || !pxPerMin) return
+    const deltaY = e.clientY - dragging.startY
+    const deltaMinutes = deltaY / pxPerMin
+    const snappedDelta = Math.round(deltaMinutes / SNAP_MINUTES) * SNAP_MINUTES
+
+    let newStart = new Date(dragging.originalStart)
+    let newEnd = new Date(dragging.originalEnd)
+
+    if (dragging.edge === 'top') {
+      newStart = new Date(dragging.originalStart.getTime() + snappedDelta * 60000)
+      // Prevent start from going past end - minimum 5 min block
+      if (newStart.getTime() >= newEnd.getTime() - 5 * 60000) {
+        newStart = new Date(newEnd.getTime() - 5 * 60000)
+      }
+    } else if (dragging.edge === 'bottom') {
+      newEnd = new Date(dragging.originalEnd.getTime() + snappedDelta * 60000)
+      // Prevent end from going before start - minimum 5 min block
+      if (newEnd.getTime() <= newStart.getTime() + 5 * 60000) {
+        newEnd = new Date(newStart.getTime() + 5 * 60000)
+      }
+    } else if (dragging.edge === 'move') {
+      // Move entire block - keep duration constant
+      newStart = new Date(dragging.originalStart.getTime() + snappedDelta * 60000)
+      newEnd = new Date(dragging.originalEnd.getTime() + snappedDelta * 60000)
+    }
+
+    setDragPreview({ start: newStart, end: newEnd })
+    // Check for conflicts
+    const conflicts = checkConflicts(dragging.blockId, newStart, newEnd)
+    setDragConflicts(conflicts)
+  }
+
+  const handleDragEnd = () => {
+    if (!dragging || !dragPreview || !updateBlock) {
+      setDragging(null)
+      setDragPreview(null)
+      setDragConflicts([])
+      return
+    }
+
+    // If there are conflicts, show alert and don't save
+    if (dragConflicts.length > 0) {
+      setCenterAlert && setCenterAlert('时间冲突！无法移动到该时间段')
+      setDragging(null)
+      setDragPreview(null)
+      setDragConflicts([])
+      return
+    }
+
+    // Only update if time actually changed
+    if (
+      dragPreview.start.getTime() !== dragging.originalStart.getTime() ||
+      dragPreview.end.getTime() !== dragging.originalEnd.getTime()
+    ) {
+      updateBlock(dragging.blockId, {
+        start_at: dragPreview.start.toISOString(),
+        end_at: dragPreview.end.toISOString(),
+      })
+    }
+
+    setDragging(null)
+    setDragPreview(null)
+    setDragConflicts([])
+  }
+
+  // External drag from task pool
+  const [dropHoverHour, setDropHoverHour] = useState<number | null>(null)
+  const [dropHoverMinute, setDropHoverMinute] = useState<number>(0)
+
+  const handleExternalDragOver = (e: React.DragEvent, hour: number, containerRect: DOMRect) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDropHoverHour(hour)
+    // Calculate minute from mouse Y position within hour row
+    const relativeY = e.clientY - containerRect.top
+    const minute = Math.round((relativeY / HOUR_PX) * 60 / SNAP_MINUTES) * SNAP_MINUTES
+    setDropHoverMinute(Math.min(55, Math.max(0, minute)))
+  }
+
+  const handleExternalDragLeave = () => {
+    setDropHoverHour(null)
+  }
+
+  const handleExternalDrop = async (e: React.DragEvent, hour: number, containerRect: DOMRect) => {
+    e.preventDefault()
+    setDropHoverHour(null)
+
+    try {
+      const data = JSON.parse(e.dataTransfer.getData('application/json'))
+      if (data.type !== 'pool-task') return
+
+      // Calculate drop time
+      const relativeY = e.clientY - containerRect.top
+      const minute = Math.round((relativeY / HOUR_PX) * 60 / SNAP_MINUTES) * SNAP_MINUTES
+      const clampedMinute = Math.min(55, Math.max(0, minute))
+
+      // Create start and end time based on today's date with the dropped hour/minute
+      // Use explicit date construction to avoid timezone issues
+      const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, clampedMinute, 0, 0)
+
+      const estimateMin = data.estimateMin || 30
+      const endTime = new Date(startTime.getTime() + estimateMin * 60000)
+
+      // Update the task with scheduled time
+      // Server expects due_at (end time) and estimate_min to create time_block
+      if (updateTaskAdvanced) {
+        const isPinned = data.recurrenceRule?.includes('PINNED')
+
+        if (isPinned) {
+          // For pinned pool tasks: just create a time block without changing the task
+          // Use addBlock to create the time block directly
+          if (addBlock) {
+            const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
+            const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
+            const dateStr = now.toISOString().split('T')[0] // Get YYYY-MM-DD from now
+            await addBlock(startStr, endStr, data.taskId, dateStr)
+          }
+        } else {
+          // For non-pinned pool tasks: update task to remove from pool and schedule it
+          await updateTaskAdvanced(data.taskId, {
+            title: data.taskTitle, // Required field
+            due_at: endTime.toISOString(), // Server uses this as end time
+            estimate_min: estimateMin, // Duration in minutes
+            recurrence_rule: '', // Clear POOL flag (empty string, not null)
+          })
+        }
+
+        // Refresh data
+        fetchUnscheduled && fetchUnscheduled()
+      }
+    } catch (err) {
+      console.error('Drop error:', err)
+    }
+  }
 
   const [hoveredTask, setHoveredTask] = useState<any>(null)
   const [hoverPosition, setHoverPosition] = useState<{ x: number, y: number } | null>(null)
@@ -135,9 +319,23 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
           return
         }
 
-        updateBlock(id, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+        updateBlock(id, {
+          start_at: newStart.toISOString(),
+          end_at: newEnd.toISOString()
+        })
       }
-    } else {
+    } else if (field === 'duration') {
+      if (updateBlock) {
+        const { start, currentDurationMin, newDurationMin } = value
+
+        // Optimistic update
+        const newEnd = new Date(start.getTime() + newDurationMin * 60000)
+        updateBlock(id, {
+          start_at: start.toISOString(),
+          end_at: newEnd.toISOString()
+        })
+      }
+    } else { // This 'else' block now handles priority, type, and tags
       if (block.task_id && updateTaskMeta) {
         const updates: any = {}
         if (field === 'priority') updates.priority = value
@@ -460,10 +658,16 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                       const rowFactor = Math.max(1, shortCount || 0)
                       const localRowHeight = hourHeight * rowFactor
 
+                      // Check if drag border aligns with this hour line
+                      const dragAlignedWithThisHour = dragging && dragPreview && (
+                        (dragPreview.start.getMinutes() === 0 && dragPreview.start.getHours() === h) ||
+                        (dragPreview.end.getMinutes() === 0 && dragPreview.end.getHours() === h)
+                      )
+
                       return (
                         <div
                           key={`hour-${h}`}
-                          className="relative border-t border-white/10 flex items-center justify-center text-xs text-gray-400"
+                          className={`relative border-t flex items-center justify-center text-xs ${dragAlignedWithThisHour ? 'border-orange-400 border-t-2 text-orange-400 font-bold' : 'border-white/10 text-gray-400'}`}
                           style={{ height: localRowHeight }}
                         >
                           <span>{String(h).padStart(2, '0')}:00</span>
@@ -471,7 +675,13 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                       )
                     })}
                   </div>
-                  <div className="relative pb-12">
+                  <div
+                    className="relative pb-12"
+                    onMouseMove={handleDragMove}
+                    onMouseUp={handleDragEnd}
+                    onMouseLeave={handleDragEnd}
+                    style={{ cursor: dragging ? (dragging.edge === 'top' ? 'n-resize' : dragging.edge === 'bottom' ? 's-resize' : 'grabbing') : undefined }}
+                  >
 
                     {hourRows.map((row, rowIndex) => {
                       if (row.kind === 'collapsed') {
@@ -482,10 +692,28 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                         return (
                           <div
                             key={`collapsed-body-${start}-${end}`}
-                            className="h-8 border-t border-white/10 flex items-center justify-center"
+                            className="h-8 border-t border-white/10 flex items-center justify-center transition-colors hover:bg-white/5"
+                            onDragEnter={(e) => {
+                              // For external drag (task pool)
+                              e.preventDefault()
+                              e.stopPropagation() // Prevent bubbling
+                              if (expandHours) {
+                                const hoursToExpand: number[] = []
+                                for (let h = start; h < end; h++) hoursToExpand.push(h)
+                                expandHours(hoursToExpand)
+                              }
+                            }}
+                            onMouseEnter={() => {
+                              // For internal drag (resizing/moving blocks)
+                              if (dragging && expandHours) {
+                                const hoursToExpand: number[] = []
+                                for (let h = start; h < end; h++) hoursToExpand.push(h)
+                                expandHours(hoursToExpand)
+                              }
+                            }}
                           >
-                            <span className="text-xs text-gray-500">
-                              {startLabel}-{endLabel} 已折叠
+                            <span className="text-xs text-gray-500 pointer-events-none">
+                              {startLabel}-{endLabel} 已折叠 (拖动展开)
                             </span>
                           </div>
                         )
@@ -497,11 +725,26 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                       const rowFactor = Math.max(1, shortCount || 0)
                       const localRowHeight = hourHeight * rowFactor
 
+                      // Check if drag border aligns with this hour line
+                      const dragAlignedWithThisHour = dragging && dragPreview && (
+                        (dragPreview.start.getMinutes() === 0 && dragPreview.start.getHours() === h) ||
+                        (dragPreview.end.getMinutes() === 0 && dragPreview.end.getHours() === h)
+                      )
+
                       return (
                         <div
                           key={`hour-body-${h}`}
-                          className="relative border-t border-white/10 bg-slate-900"
+                          className={`relative border-t bg-slate-900 ${dragAlignedWithThisHour ? 'border-orange-400 border-t-2' : dropHoverHour === h ? 'border-blue-400 border-t-2 bg-blue-900/20' : 'border-white/10'}`}
                           style={{ height: localRowHeight }}
+                          onDragOver={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            handleExternalDragOver(e, h, rect)
+                          }}
+                          onDragLeave={handleExternalDragLeave}
+                          onDrop={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            handleExternalDrop(e, h, rect)
+                          }}
                         >
                           <div className="absolute inset-0 pointer-events-none grid grid-rows-[repeat(2,1fr)]">
                             <div className="border-b border-dashed border-white/5" />
@@ -515,6 +758,17 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                               <div
                                 className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-yellow-500"
                               />
+                            </div>
+                          )}
+                          {/* Drop indicator */}
+                          {dropHoverHour === h && (
+                            <div
+                              className="absolute left-0 right-0 h-0.5 bg-blue-400 z-40 pointer-events-none"
+                              style={{ top: dropHoverMinute * pxPerMin }}
+                            >
+                              <span className="absolute -left-1 -top-3 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded font-mono">
+                                {String(h).padStart(2, '0')}:{String(dropHoverMinute).padStart(2, '0')}
+                              </span>
                             </div>
                           )}
                           <div className="relative px-2 py-1 space-y-1">
@@ -589,7 +843,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const isOverdue = over && status !== 'done'
                                 const prio = meta?.priority ?? null
                                 const prioLabel =
-                                  prio === 2 ? '高' : prio === 1 ? '中' : prio === 0 ? '低' : null
+                                  prio === 2 ? 'H' : prio === 1 ? 'M' : prio === 0 ? 'L' : null
                                 const prioClass =
                                   prio === 2
                                     ? 'bg-red-500/20 text-red-300'
@@ -606,22 +860,84 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const blockId = String(b.id)
                                 const isMenuOpen = listMenuOpenId === blockId
                                 const menuPositionClass = h > 18 ? 'bottom-full mb-1' : 'top-full mt-1'
+                                const isConflicting = dragConflicts.includes(blockId)
+                                const isDraggingThis = dragging?.blockId === blockId
+                                const hasConflict = isDraggingThis && dragConflicts.length > 0
 
                                 return (
                                   <div
                                     key={String(b.id)}
-                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 bg-slate-800/90 border-white/5 shadow-sm transition-colors hover:bg-slate-800 ${isMenuOpen ? 'z-40 ring-1 ring-[#137fec]/50' : 'z-10'
-                                      }`}
+                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 bg-slate-800/90 shadow-sm transition-colors hover:bg-slate-800 hover:ring-1 hover:ring-blue-400/50 ${isMenuOpen ? 'z-40 ring-1 ring-[#137fec]/50' : 'z-10'} group ${isConflicting ? 'border-red-500 ring-2 ring-red-500/50 bg-red-900/30' : hasConflict ? 'border-red-500 ring-2 ring-red-500/50' : isDraggingThis ? 'border-blue-400 ring-2 ring-blue-400/50' : 'border-white/5'}`}
                                     style={{
-                                      top,
-                                      height: Math.max(height - 4, 32), // Increased gap and min height
+                                      top: isDraggingThis && dragPreview ?
+                                        // During drag: minute within hour plus time delta, minus container padding (4px from py-1)
+                                        // This ensures 0 min aligns with hour line at top of row
+                                        (new Date(b.start_at).getMinutes() + (dragPreview.start.getTime() - new Date(b.start_at).getTime()) / 60000) * pxPerMin - 4 :
+                                        top,
+                                      height: isDraggingThis && dragPreview ?
+                                        ((dragPreview.end.getTime() - dragPreview.start.getTime()) / 60000) * pxPerMin :
+                                        Math.max(height - 4, 32),
                                     }}
                                     onMouseEnter={(e) => handleBlockMouseEnter(e, b, meta, name)}
                                     onMouseLeave={handleBlockMouseLeave}
                                   >
+                                    {/* Conflict overlay */}
+                                    {isConflicting && (
+                                      <div className="absolute inset-0 rounded-xl bg-red-500/20 pointer-events-none z-30 flex items-center justify-center">
+                                        <span className="text-red-300 text-xs font-medium">冲突</span>
+                                      </div>
+                                    )}
+                                    {/* Conflict warning on dragged block */}
+                                    {hasConflict && (
+                                      <div className="absolute -top-6 left-0 right-0 text-center z-50">
+                                        <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded">时间冲突!</span>
+                                      </div>
+                                    )}
+                                    {/* Real-time time display during drag */}
+                                    {isDraggingThis && dragPreview && (
+                                      <div className="absolute -bottom-6 left-0 right-0 text-center z-50">
+                                        <span className="bg-blue-500 text-white text-xs px-2 py-0.5 rounded font-mono">
+                                          {String(dragPreview.start.getHours()).padStart(2, '0')}:{String(dragPreview.start.getMinutes()).padStart(2, '0')}
+                                          {' - '}
+                                          {String(dragPreview.end.getHours()).padStart(2, '0')}:{String(dragPreview.end.getMinutes()).padStart(2, '0')}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {/* Top drag handle */}
                                     <div
-                                      className={`h-full px-2.5 py-2 flex flex-col relative ${isLong ? 'justify-center' : 'justify-between'
+                                      className={`absolute top-0 left-0 right-0 h-1 cursor-n-resize rounded-t-xl transition-opacity z-20 ${isDraggingThis && dragging?.edge === 'top'
+                                        ? 'opacity-100 bg-blue-500/60'
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-blue-500/30'
                                         }`}
+                                      onMouseDown={(e) => handleDragStart(e, blockId, 'top', b)}
+                                    />
+                                    {/* Bottom drag handle */}
+                                    <div
+                                      className={`absolute bottom-0 left-0 right-0 h-1 cursor-s-resize rounded-b-xl transition-opacity z-20 ${isDraggingThis && dragging?.edge === 'bottom'
+                                        ? 'opacity-100 bg-blue-500/60'
+                                        : 'opacity-0 group-hover:opacity-100 hover:bg-blue-500/30'
+                                        }`}
+                                      onMouseDown={(e) => handleDragStart(e, blockId, 'bottom', b)}
+                                    />
+                                    {/* Grip Handle - Left Side */}
+                                    <div
+                                      className="absolute left-0 top-0 bottom-0 w-3 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-black/10 transition-colors z-20 rounded-l-xl"
+                                      onMouseDown={(e) => handleDragStart(e, blockId, 'move', b)}
+                                    >
+                                      {/* Grip Dots */}
+                                      {/* Grip Dots 2x3 */}
+                                      <div className="grid grid-cols-2 gap-0.5 opacity-40">
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                        <div className="w-0.5 h-0.5 rounded-full bg-white"></div>
+                                      </div>
+                                    </div>
+                                    <div
+                                      className={`h-full pl-4 pr-2.5 py-2 flex flex-col relative ${isLong ? 'justify-center' : 'justify-between'}`}
+
                                     >
                                       {isCur && (
                                         <div
@@ -643,8 +959,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                           <div className="flex flex-col flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5">
                                               {status === 'done' && (
-                                                <span className="inline-flex items-center rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[0.65rem] font-medium text-emerald-300">
-                                                  完成
+                                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20" title="已完成">
+                                                  <span className="material-symbols-outlined text-emerald-400 text-sm">check</span>
                                                 </span>
                                               )}
                                               {editingCell?.id === blockId && editingCell.field === 'title' ? (
@@ -676,6 +992,38 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                               )}
                                             </div>
                                             <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
+                                              {/* Priority Label */}
+                                              {editingCell?.id === blockId && editingCell.field === 'priority' ? (
+                                                <div className="relative">
+                                                  <span
+                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                    onClick={e => e.stopPropagation()}
+                                                  >
+                                                    {prioLabel || '无'}
+                                                  </span>
+                                                  <TaskPrioritySelector
+                                                    currentPriority={editingCell.value}
+                                                    onSelect={(val) => {
+                                                      handleSave(blockId, 'priority', val)
+                                                      setEditingCell(null)
+                                                    }}
+                                                    onClose={() => setEditingCell(null)}
+                                                  />
+                                                </div>
+                                              ) : (
+                                                prioLabel && (
+                                                  <span
+                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                    onDoubleClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell({ id: blockId, field: 'priority', value: prio })
+                                                    }}
+                                                  >
+                                                    {prioLabel}
+                                                  </span>
+                                                )
+                                              )}
+                                              {/* Type */}
                                               {editingCell?.id === blockId && editingCell.field === 'type' ? (
                                                 <div className="relative">
                                                   <span
@@ -795,11 +1143,28 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                               </button>
                                             )}
                                             {isOverdue && (
-                                              <span className="inline-flex items-center gap-1 rounded-md bg-red-500/80 px-2 py-1 font-bold text-white text-xs">
-                                                <span className="material-symbols-outlined text-sm">
-                                                  error
-                                                </span>
-                                                逾期
+                                              <span className="inline-flex items-center justify-center w-6 h-6" title="逾期">
+                                                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
+                                                  {/* Outer red ring */}
+                                                  <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" fill="none" strokeDasharray="50 10" />
+                                                  {/* Inner clock circle */}
+                                                  <circle cx="12" cy="12" r="7" stroke="#374151" strokeWidth="1.5" fill="none" />
+                                                  {/* Clock tick marks */}
+                                                  {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => (
+                                                    <line
+                                                      key={angle}
+                                                      x1={12 + 5.5 * Math.cos((angle - 90) * Math.PI / 180)}
+                                                      y1={12 + 5.5 * Math.sin((angle - 90) * Math.PI / 180)}
+                                                      x2={12 + 6.5 * Math.cos((angle - 90) * Math.PI / 180)}
+                                                      y2={12 + 6.5 * Math.sin((angle - 90) * Math.PI / 180)}
+                                                      stroke="#374151"
+                                                      strokeWidth="1"
+                                                    />
+                                                  ))}
+                                                  {/* Exclamation mark */}
+                                                  <rect x="11" y="7" width="2" height="6" rx="1" fill="#ef4444" />
+                                                  <circle cx="12" cy="15.5" r="1" fill="#ef4444" />
+                                                </svg>
                                               </span>
                                             )}
                                             {editingCell?.id === blockId && editingCell.field === 'time' ? (
@@ -841,68 +1206,82 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                 />
                                               </div>
                                             ) : (
-                                              <p
-                                                className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
-                                                onDoubleClick={(ev) => {
-                                                  ev.stopPropagation()
-                                                  const fmt = (d: Date) => {
-                                                    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-                                                  }
-                                                  setEditingCell({
-                                                    id: blockId,
-                                                    field: 'time',
-                                                    value: {
-                                                      startStr: fmt(s),
-                                                      endStr: fmt(e),
-                                                      originalStart: s,
-                                                      originalEnd: e
+                                              <div className="flex flex-col items-center gap-1">
+                                                <p
+                                                  className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                                                  onDoubleClick={(ev) => {
+                                                    ev.stopPropagation()
+                                                    const fmt = (d: Date) => {
+                                                      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
                                                     }
-                                                  })
-                                                }}
-                                              >
-                                                {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
-                                              </p>
-                                            )}
-
-                                            {editingCell?.id === blockId && editingCell.field === 'priority' ? (
-                                              <div className="relative">
-                                                {prioLabel && (
-                                                  <span
-                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
-                                                    onClick={e => e.stopPropagation()}
-                                                  >
-                                                    <span>{prioLabel}</span>
-                                                  </span>
-                                                )}
-                                                {!prioLabel && (
-                                                  <span
-                                                    className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 bg-slate-500/20 text-slate-300"
-                                                    onClick={e => e.stopPropagation()}
-                                                  >
-                                                    <span>无</span>
-                                                  </span>
-                                                )}
-                                                <TaskPrioritySelector
-                                                  currentPriority={editingCell.value}
-                                                  onSelect={(val) => {
-                                                    handleSave(blockId, 'priority', val)
-                                                    setEditingCell(null)
-                                                  }}
-                                                  onClose={() => setEditingCell(null)}
-                                                />
-                                              </div>
-                                            ) : (
-                                              prioLabel && (
-                                                <span
-                                                  className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
-                                                  onDoubleClick={(e) => {
-                                                    e.stopPropagation()
-                                                    setEditingCell({ id: blockId, field: 'priority', value: prio })
+                                                    setEditingCell({
+                                                      id: blockId,
+                                                      field: 'time',
+                                                      value: {
+                                                        startStr: fmt(s),
+                                                        endStr: fmt(e),
+                                                        originalStart: s,
+                                                        originalEnd: e
+                                                      }
+                                                    })
                                                   }}
                                                 >
-                                                  <span>{prioLabel}</span>
-                                                </span>
-                                              )
+                                                  {isDraggingThis && dragPreview ? (
+                                                    <>
+                                                      {String(dragPreview.start.getHours()).padStart(2, '0')}:{String(dragPreview.start.getMinutes()).padStart(2, '0')}
+                                                      {' - '}
+                                                      {String(dragPreview.end.getHours()).padStart(2, '0')}:{String(dragPreview.end.getMinutes()).padStart(2, '0')}
+                                                    </>
+                                                  ) : (
+                                                    <>{fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}</>
+                                                  )}
+                                                </p>
+                                                {editingCell?.id === blockId && editingCell.field === 'duration' ? (
+                                                  <div className="flex items-center justify-center">
+                                                    <input
+                                                      autoFocus
+                                                      type="number"
+                                                      className="bg-slate-700 text-white text-[10px] px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
+                                                      value={editingCell.value.newDurationMin}
+                                                      onClick={e => e.stopPropagation()}
+                                                      onChange={e => {
+                                                        const val = parseInt(e.target.value) || 0
+                                                        setEditingCell({
+                                                          ...editingCell,
+                                                          value: { ...editingCell.value, newDurationMin: val }
+                                                        })
+                                                      }}
+                                                      onBlur={() => handleSave(blockId, 'duration', editingCell.value)}
+                                                      onKeyDown={e => {
+                                                        if (e.key === 'Enter') handleSave(blockId, 'duration', editingCell.value)
+                                                        if (e.key === 'Escape') setEditingCell(null)
+                                                      }}
+                                                    />
+                                                    <span className="text-[10px] text-slate-400 ml-0.5">min</span>
+                                                  </div>
+                                                ) : (
+                                                  <p
+                                                    className="text-slate-400 cursor-pointer hover:text-slate-300 hover:underline decoration-dashed decoration-slate-500"
+                                                    onDoubleClick={(ev) => {
+                                                      ev.stopPropagation()
+                                                      const durationMin = Math.round((e.getTime() - s.getTime()) / 60000)
+                                                      setEditingCell({
+                                                        id: blockId,
+                                                        field: 'duration',
+                                                        value: {
+                                                          start: s,
+                                                          currentDurationMin: durationMin,
+                                                          newDurationMin: durationMin
+                                                        }
+                                                      })
+                                                    }}
+                                                  >
+                                                    {isDraggingThis && dragPreview
+                                                      ? Math.round((dragPreview.end.getTime() - dragPreview.start.getTime()) / 60000)
+                                                      : Math.round((e.getTime() - s.getTime()) / 60000)} min
+                                                  </p>
+                                                )}
+                                              </div>
                                             )}
                                           </div>
                                           <div className="flex items-center gap-2 pl-3">
@@ -1017,7 +1396,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                           </div>
                         </div>
                       )
-                    })}
+                    })
+                    }
                   </div>
                 </div>
               </div>
