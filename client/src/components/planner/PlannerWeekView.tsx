@@ -345,8 +345,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                         style={{
                                                             top: Math.max(0, top),
                                                             height: Math.max(20, height),
-                                                            borderLeftColor: isCurrent ? '#F59E0B' : baseColor,
-                                                            borderLeftWidth: 3
+                                                            borderColor: isCurrent ? undefined : baseColor,
                                                         }}
                                                         onClick={(e) => {
                                                             e.stopPropagation()
@@ -372,21 +371,21 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                             }, 300)
                                                         }}
                                                     >
-                                                        <div className={`px-1 py-0.5 leading-tight flex items-start overflow-hidden ${status === 'done' ? 'line-through opacity-70' : ''}`} style={{ maxHeight: height - 4 }}>
+                                                        <div className={`px-1 py-0.5 leading-tight flex items-start overflow-hidden ${status === 'done' ? 'opacity-70' : ''}`} style={{ maxHeight: height - 4 }}>
+                                                            {status === 'done' && (
+                                                                <span className="mr-0.5 flex-shrink-0 inline-flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500/20" title="已完成">
+                                                                    <span className="material-symbols-outlined text-emerald-400 text-[10px]">check</span>
+                                                                </span>
+                                                            )}
                                                             {isOverdue && (
-                                                                <span className="mr-0.5 flex-shrink-0 w-3.5 h-3.5" title="逾期">
-                                                                    <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
-                                                                        <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2.5" fill="none" strokeDasharray="50 10" />
-                                                                        <circle cx="12" cy="12" r="6.5" stroke="#4B5563" strokeWidth="1.5" fill="none" />
-                                                                        <rect x="10.5" y="7" width="3" height="6" rx="1.5" fill="#ef4444" />
-                                                                        <circle cx="12" cy="15.5" r="1.5" fill="#ef4444" />
-                                                                    </svg>
+                                                                <span className="mr-0.5 flex-shrink-0 inline-flex items-center justify-center w-3 h-3 rounded-full bg-red-500/20" title="逾期">
+                                                                    <span className="material-symbols-outlined text-red-500 text-[10px]">close</span>
                                                                 </span>
                                                             )}
                                                             {typeof meta?.priority === 'number' && (
-                                                                <span className={`mr-1 text-[9px] px-0.5 rounded flex-shrink-0 ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
-                                                                    meta.priority === 1 ? 'bg-yellow-500/80 text-white' :
-                                                                        'bg-green-500/80 text-white'
+                                                                <span className={`mr-1 text-[9px] px-0.5 rounded flex-shrink-0 ${meta.priority === 2 ? 'bg-red-500/20 text-red-300' :
+                                                                    meta.priority === 1 ? 'bg-yellow-500/20 text-yellow-300' :
+                                                                        'bg-green-500/20 text-green-300'
                                                                     }`}>
                                                                     {meta.priority === 2 ? 'H' : meta.priority === 1 ? 'M' : 'L'}
                                                                 </span>

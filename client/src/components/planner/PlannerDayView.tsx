@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
@@ -65,6 +65,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setListFilterDone,
     toggleHourCollapsed,
     expandHours, // Added for auto-expand during drag
+    expandAllHours, // Expand all on drag start
+    autoCollapseEmptyHours, // Restore cleanup state on drag end
     setListMenuOpenId,
 
     setCenterAlert,
@@ -99,7 +101,21 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       originalEnd,
     })
     setDragPreview({ start: originalStart, end: originalEnd })
+    setDragPreview({ start: originalStart, end: originalEnd })
   }
+
+  // Auto-collapse state
+  const [autoCollapsePending, setAutoCollapsePending] = useState(false)
+  useEffect(() => {
+    if (autoCollapsePending && autoCollapseEmptyHours) {
+      // Use setTimeout to ensure we're out of the current render cycle and have fresh data
+      const t = setTimeout(() => {
+        autoCollapseEmptyHours()
+        setAutoCollapsePending(false)
+      }, 50)
+      return () => clearTimeout(t)
+    }
+  }, [autoCollapsePending, filteredBlocks, autoCollapseEmptyHours])
 
   // Check for conflicts with other blocks
   const checkConflicts = (blockId: string, start: Date, end: Date): string[] => {
@@ -124,6 +140,23 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   const handleDragMove = (e: React.MouseEvent) => {
     if (!dragging || !pxPerMin) return
     const deltaY = e.clientY - dragging.startY
+
+    // Check if we need to auto-expand (only if dragging significantly)
+    if (Math.abs(deltaY) > 5) {
+      // Check if any hours are collapsed
+      const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c) => c === true)
+      if (hasCollapsed && expandAllHours) {
+        expandAllHours()
+        // Note: Expanding changes layout height, which might cause a visual jump
+        // relative to mouse position. This is expected behavior for "auto-expand".
+        if (setCenterAlert) setCenterAlert({ title: '提示', detail: '拖动修改任务时间，需展开时间轴' })
+        // Cancel drag to prevent unintended move when interrupted by alert
+        setDragging(null)
+        setDragPreview(null)
+        return
+      }
+    }
+
     const deltaMinutes = deltaY / pxPerMin
     const snappedDelta = Math.round(deltaMinutes / SNAP_MINUTES) * SNAP_MINUTES
 
@@ -164,10 +197,12 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
     // If there are conflicts, show alert and don't save
     if (dragConflicts.length > 0) {
-      setCenterAlert && setCenterAlert('时间冲突！无法移动到该时间段')
+      setCenterAlert && setCenterAlert({ title: '提示', detail: '时间冲突！无法移动到该时间段' })
       setDragging(null)
       setDragPreview(null)
       setDragConflicts([])
+      // Auto-collapse even on conflict
+      setAutoCollapsePending(true)
       return
     }
 
@@ -182,6 +217,9 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       })
     }
 
+    // Always trigger auto-collapse on drag end to clean up view
+    setAutoCollapsePending(true)
+
     setDragging(null)
     setDragPreview(null)
     setDragConflicts([])
@@ -190,6 +228,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   // External drag from task pool
   const [dropHoverHour, setDropHoverHour] = useState<number | null>(null)
   const [dropHoverMinute, setDropHoverMinute] = useState<number>(0)
+  const [dropEstimateMin, setDropEstimateMin] = useState<number>(30) // Duration for preview box
+  const [dropConflicts, setDropConflicts] = useState<string[]>([]) // Conflict detection for pool drops
 
   const handleExternalDragOver = (e: React.DragEvent, hour: number, containerRect: DOMRect) => {
     e.preventDefault()
@@ -199,15 +239,46 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     const relativeY = e.clientY - containerRect.top
     const minute = Math.round((relativeY / HOUR_PX) * 60 / SNAP_MINUTES) * SNAP_MINUTES
     setDropHoverMinute(Math.min(55, Math.max(0, minute)))
+
+    // Read estimateMin from global drag context (set by PlannerListView on dragStart)
+    const dragData = (window as any).__dragPoolTask
+    const currentEstimate = dragData?.estimateMin || 30
+    if (currentEstimate !== dropEstimateMin) {
+      setDropEstimateMin(currentEstimate)
+    }
+
+    // Check for conflicts with drop position
+    const dropStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, Math.min(55, Math.max(0, minute)), 0, 0)
+    const dropEnd = new Date(dropStart.getTime() + currentEstimate * 60000)
+    const conflicts = checkConflicts('', dropStart, dropEnd) // '' as blockId since it's a new block
+    setDropConflicts(conflicts)
+  }
+
+  const handleExternalDragEnter = (_e: React.DragEvent) => {
+    // Auto-expand all hours to avoid positioning errors
+    // distinct from handleDragMove, Check if any hours are collapsed first
+    const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c) => c === true)
+    if (hasCollapsed && expandAllHours) {
+      expandAllHours()
+      if (setCenterAlert) setCenterAlert({ title: '提示', detail: '拖动修改任务时间，需展开时间轴' })
+    }
+
+    // Read estimateMin from global drag context
+    const dragData = (window as any).__dragPoolTask
+    if (dragData?.estimateMin) {
+      setDropEstimateMin(dragData.estimateMin)
+    }
   }
 
   const handleExternalDragLeave = () => {
     setDropHoverHour(null)
+    setDropConflicts([])
   }
 
   const handleExternalDrop = async (e: React.DragEvent, hour: number, containerRect: DOMRect) => {
     e.preventDefault()
     setDropHoverHour(null)
+    setDropConflicts([])
 
     try {
       const data = JSON.parse(e.dataTransfer.getData('application/json'))
@@ -225,21 +296,40 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       const estimateMin = data.estimateMin || 30
       const endTime = new Date(startTime.getTime() + estimateMin * 60000)
 
+      // Check for conflicts before proceeding
+      const conflicts = checkConflicts('', startTime, endTime)
+      if (conflicts.length > 0) {
+        setCenterAlert && setCenterAlert({ title: '提示', detail: '时间冲突！无法放置到该时间段' })
+        setAutoCollapsePending(true)
+        return
+      }
+
       // Update the task with scheduled time
       // Server expects due_at (end time) and estimate_min to create time_block
       if (updateTaskAdvanced) {
         const isPinned = data.recurrenceRule?.includes('PINNED')
-
-        if (isPinned) {
-          // For pinned pool tasks: just create a time block without changing the task
-          // Use addBlock to create the time block directly
-          if (addBlock) {
-            const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
-            const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
-            const dateStr = now.toISOString().split('T')[0] // Get YYYY-MM-DD from now
-            await addBlock(startStr, endStr, data.taskId, dateStr)
-          }
+        // For pinned pool tasks: create a NEW task (copy) and schedule it.
+        // This ensures deletion of the scheduled task doesn't affect the pool task.
+        if (isPinned && createTaskAdvanced) {
+          await createTaskAdvanced({
+            title: data.taskTitle,
+            estimate_min: estimateMin,
+            due_at: endTime.toISOString(),
+            priority: data.priority,
+            tags: data.tags,
+            type: data.taskType,
+            content: data.content,
+            recurrence_rule: '', // Clear POOL/PINNED flags
+            color: data.color
+          })
+        } else if (addBlock && isPinned) {
+          // Fallback if createTaskAdvanced is missing (should not happen)
+          const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
+          const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
+          const dateStr = now.toISOString().split('T')[0]
+          await addBlock(startStr, endStr, data.taskId, dateStr)
         } else {
+
           // For non-pinned pool tasks: update task to remove from pool and schedule it
           await updateTaskAdvanced(data.taskId, {
             title: data.taskTitle, // Required field
@@ -251,6 +341,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
         // Refresh data
         fetchUnscheduled && fetchUnscheduled()
+        // Trigger auto-collapse after drop
+        setAutoCollapsePending(true)
       }
     } catch (err) {
       console.error('Drop error:', err)
@@ -598,24 +690,23 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                     <span>仅显示未来</span>
                   </label>
                   <div className="flex items-center gap-2">
-                    <button
-                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                      onClick={() => {
-                        if (!actions.expandAllHours) return
-                        actions.expandAllHours()
-                      }}
-                    >
-                      展开
-                    </button>
-                    <button
-                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs"
-                      onClick={() => {
-                        if (!actions.collapseAllHours) return
-                        actions.collapseAllHours()
-                      }}
-                    >
-                      折叠
-                    </button>
+                    {(() => {
+                      const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
+                      return (
+                        <button
+                          className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs w-10 text-center"
+                          onClick={() => {
+                            if (hasCollapsed) {
+                              actions.expandAllHours?.()
+                            } else {
+                              actions.collapseAllHours?.()
+                            }
+                          }}
+                        >
+                          {hasCollapsed ? '展开' : '折叠'}
+                        </button>
+                      )
+                    })()}
                   </div>
                 </div>
               </div>
@@ -740,6 +831,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                             const rect = e.currentTarget.getBoundingClientRect()
                             handleExternalDragOver(e, h, rect)
                           }}
+                          onDragEnter={handleExternalDragEnter}
                           onDragLeave={handleExternalDragLeave}
                           onDrop={(e) => {
                             const rect = e.currentTarget.getBoundingClientRect()
@@ -751,26 +843,57 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                             <div className="border-b border-white/10" />
                           </div>
                           {isCurrentHour && (
-                            <div
-                              className="absolute z-30 pointer-events-none"
-                              style={{ top: now.getMinutes() * effectivePxPerMin, left: 7, transform: 'translateY(-50%)' }}
-                            >
+                            <>
+                              {/* Triangle indicator */}
                               <div
-                                className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-yellow-500"
+                                className="absolute z-30 pointer-events-none"
+                                style={{ top: now.getMinutes() * effectivePxPerMin, left: 7, transform: 'translateY(-50%)' }}
+                              >
+                                <div
+                                  className="w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-yellow-500"
+                                />
+                              </div>
+                              {/* Dashed line across grid */}
+                              <div
+                                className="absolute left-0 right-0 z-20 pointer-events-none border-t border-dashed border-yellow-500/50"
+                                style={{ top: now.getMinutes() * effectivePxPerMin }}
                               />
-                            </div>
+                            </>
                           )}
-                          {/* Drop indicator */}
-                          {dropHoverHour === h && (
-                            <div
-                              className="absolute left-0 right-0 h-0.5 bg-blue-400 z-40 pointer-events-none"
-                              style={{ top: dropHoverMinute * pxPerMin }}
-                            >
-                              <span className="absolute -left-1 -top-3 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded font-mono">
-                                {String(h).padStart(2, '0')}:{String(dropHoverMinute).padStart(2, '0')}
-                              </span>
-                            </div>
-                          )}
+                          {/* Drop indicator with duration-matched height */}
+                          {dropHoverHour === h && (() => {
+                            // Calculate end time for display
+                            const dropStartMin = h * 60 + dropHoverMinute
+                            const dropEndMin = dropStartMin + dropEstimateMin
+                            const endHour = Math.floor(dropEndMin / 60)
+                            const endMinute = dropEndMin % 60
+                            return (
+                              <div
+                                className={`absolute left-2 right-2 border-2 border-dashed rounded z-40 pointer-events-none flex flex-col items-center justify-center ${dropConflicts.length > 0
+                                  ? 'border-red-400 bg-red-400/30'
+                                  : 'border-blue-400 bg-blue-400/20'
+                                  }`}
+                                style={{
+                                  top: dropHoverMinute * pxPerMin,
+                                  height: Math.max(24, (dropEstimateMin / 60) * HOUR_PX)
+                                }}
+                              >
+                                <span className={`text-[10px] font-medium ${dropConflicts.length > 0 ? 'text-red-100' : 'text-blue-100'
+                                  }`}>
+                                  {String(h).padStart(2, '0')}:{String(dropHoverMinute).padStart(2, '0')} - {String(endHour).padStart(2, '0')}:{String(endMinute).padStart(2, '0')}
+                                </span>
+                                <span className={`text-[10px] ${dropConflicts.length > 0 ? 'text-red-200' : 'text-blue-200'
+                                  }`}>
+                                  {dropEstimateMin} min
+                                </span>
+                                {dropConflicts.length > 0 && (
+                                  <span className="absolute top-0 right-1 text-[10px] text-red-300 font-bold">
+                                    !
+                                  </span>
+                                )}
+                              </div>
+                            )
+                          })()}
                           <div className="relative px-2 py-1 space-y-1">
                             {(() => {
                               // Sort blocks by start time to ensure correct order
@@ -793,8 +916,12 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 // Calculate natural height based on duration
                                 const naturalHeight = Math.max(minBlockHeight, (duration / 60) * hourHeight)
 
-                                blockPositions.set(String(b.id), { top: cumulativeTop, height: naturalHeight })
-                                cumulativeTop += naturalHeight + 4 // 4px gap between blocks
+                                // Position based on time (minute offset)
+                                // This ensures tasks at 10:30 appear at the 30min mark, not the top
+                                const top = s.getMinutes() * pxPerMin
+
+                                blockPositions.set(String(b.id), { top, height: naturalHeight })
+                                // cumulativeTop logic removed as we want strict time positioning
                               })
 
                               return sortedBlocks.map((b: any) => {
@@ -961,6 +1088,12 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                               {status === 'done' && (
                                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20" title="已完成">
                                                   <span className="material-symbols-outlined text-emerald-400 text-sm">check</span>
+                                                </span>
+                                              )}
+                                              {/* Overdue Indicator */}
+                                              {status !== 'done' && new Date(b.end_at).getTime() < now.getTime() && (
+                                                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20" title="逾期">
+                                                  <span className="material-symbols-outlined text-red-500 text-sm">close</span>
                                                 </span>
                                               )}
                                               {editingCell?.id === blockId && editingCell.field === 'title' ? (
@@ -1142,31 +1275,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                 <span>专注</span>
                                               </button>
                                             )}
-                                            {isOverdue && (
-                                              <span className="inline-flex items-center justify-center w-6 h-6" title="逾期">
-                                                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
-                                                  {/* Outer red ring */}
-                                                  <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" fill="none" strokeDasharray="50 10" />
-                                                  {/* Inner clock circle */}
-                                                  <circle cx="12" cy="12" r="7" stroke="#374151" strokeWidth="1.5" fill="none" />
-                                                  {/* Clock tick marks */}
-                                                  {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => (
-                                                    <line
-                                                      key={angle}
-                                                      x1={12 + 5.5 * Math.cos((angle - 90) * Math.PI / 180)}
-                                                      y1={12 + 5.5 * Math.sin((angle - 90) * Math.PI / 180)}
-                                                      x2={12 + 6.5 * Math.cos((angle - 90) * Math.PI / 180)}
-                                                      y2={12 + 6.5 * Math.sin((angle - 90) * Math.PI / 180)}
-                                                      stroke="#374151"
-                                                      strokeWidth="1"
-                                                    />
-                                                  ))}
-                                                  {/* Exclamation mark */}
-                                                  <rect x="11" y="7" width="2" height="6" rx="1" fill="#ef4444" />
-                                                  <circle cx="12" cy="15.5" r="1" fill="#ef4444" />
-                                                </svg>
-                                              </span>
-                                            )}
+
                                             {editingCell?.id === blockId && editingCell.field === 'time' ? (
                                               <div
                                                 className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"

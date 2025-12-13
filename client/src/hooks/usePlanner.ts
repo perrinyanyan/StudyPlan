@@ -181,6 +181,39 @@ export function usePlanner(props: UsePlannerProps) {
     })
   }
 
+  function autoCollapseEmptyHours() {
+    const busyHours = new Set<number>()
+    blocks.forEach((b) => {
+      const s = new Date(b.start_at)
+      const e = new Date(b.end_at)
+
+      // Calculate which hours this block touches
+      // Simple approach: check overlap with each hour 0-23
+      const startMs = s.getTime()
+      const endMs = e.getTime()
+
+      for (let h = 0; h < 24; h++) {
+        // Hour range
+        const hourStart = new Date(s)
+        hourStart.setHours(h, 0, 0, 0)
+        const hourEnd = new Date(s)
+        hourEnd.setHours(h + 1, 0, 0, 0)
+
+        // Overlap check: max(start1, start2) < min(end1, end2)
+        if (Math.max(startMs, hourStart.getTime()) < Math.min(endMs, hourEnd.getTime())) {
+          busyHours.add(h)
+        }
+      }
+    })
+
+    const newState: Record<number, boolean> = {}
+    for (let h = 0; h < 24; h++) {
+      // If busy (has tasks), expanded (false). If empty, collapsed (true).
+      newState[h] = !busyHours.has(h)
+    }
+    setHourCollapsed(newState)
+  }
+
   const tasksFlat = useMemo(
     () => [...(tasks.today || []), ...(tasks.overdue || []), ...(rangeTasks || [])],
     [tasks, rangeTasks],
@@ -714,6 +747,7 @@ export function usePlanner(props: UsePlannerProps) {
     collapseAllHours,
     toggleHourCollapsed,
     expandHours,
+    autoCollapseEmptyHours,
     tasksFlat,
     taskTitleMap,
     taskStatusMap,

@@ -466,6 +466,12 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                       <span className="material-symbols-outlined text-emerald-400 text-sm">check</span>
                                     </span>
                                   )}
+                                  {/* Overdue Icon */}
+                                  {isOverdue && (
+                                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20" title="逾期">
+                                      <span className="material-symbols-outlined text-red-500 text-sm">close</span>
+                                    </span>
+                                  )}
                                   {editingCell?.id === blockId && editingCell.field === 'title' ? (
                                     <input
                                       autoFocus
@@ -481,7 +487,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                     />
                                   ) : (
                                     <p
-                                      className={`font-medium cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done' ? 'line-through opacity-60' : ''
+                                      className={`font-medium cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done' ? 'opacity-60' : ''
                                         }`}
                                       onDoubleClick={(e) => {
                                         e.stopPropagation()
@@ -697,27 +703,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                     <span>专注</span>
                                   </button>
                                 )}
-                                {isOverdue && (
-                                  <span className="inline-flex items-center justify-center w-6 h-6" title="逾期">
-                                    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none">
-                                      <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="2" fill="none" strokeDasharray="50 10" />
-                                      <circle cx="12" cy="12" r="7" stroke="#374151" strokeWidth="1.5" fill="none" />
-                                      {[0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330].map((angle) => (
-                                        <line
-                                          key={angle}
-                                          x1={12 + 5.5 * Math.cos((angle - 90) * Math.PI / 180)}
-                                          y1={12 + 5.5 * Math.sin((angle - 90) * Math.PI / 180)}
-                                          x2={12 + 6.5 * Math.cos((angle - 90) * Math.PI / 180)}
-                                          y2={12 + 6.5 * Math.sin((angle - 90) * Math.PI / 180)}
-                                          stroke="#374151"
-                                          strokeWidth="1"
-                                        />
-                                      ))}
-                                      <rect x="11" y="7" width="2" height="6" rx="1" fill="#ef4444" />
-                                      <circle cx="12" cy="15.5" r="1" fill="#ef4444" />
-                                    </svg>
-                                  </span>
-                                )}
+
 
                                 {editingCell?.id === blockId && editingCell.field === 'time' ? (
                                   <div

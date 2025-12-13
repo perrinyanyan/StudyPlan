@@ -81,15 +81,26 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                     className="flex items-center justify-center w-3 h-8 cursor-grab active:cursor-grabbing hover:bg-white/10 rounded transition-colors -ml-2.5"
                     draggable
                     onDragStart={(e) => {
-                      e.dataTransfer.setData('application/json', JSON.stringify({
+                      const dragData = {
                         type: 'pool-task',
                         taskId: String(t.id),
                         taskTitle: t.title,
                         estimateMin: t.estimate_min || 30,
                         color: t.color,
                         recurrenceRule: t.recurrence_rule || '',
-                      }))
+                        priority: t.priority,
+                        tags: t.tags,
+                        content: t.content,
+                        taskType: t.type,
+                      };
+                      // Set global drag context for cross-component access during dragOver
+                      (window as any).__dragPoolTask = dragData;
+                      e.dataTransfer.setData('application/json', JSON.stringify(dragData))
                       e.dataTransfer.effectAllowed = 'move'
+                    }}
+                    onDragEnd={() => {
+                      // Clear global drag context when drag ends
+                      delete (window as any).__dragPoolTask;
                     }}
                   >
                     {/* Grip Dots 2x3 */}
@@ -395,9 +406,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                   {/* TODAY_MUST and PINNED icons */}
                   <div className="flex flex-col items-center justify-center w-4 gap-1">
                     {t.recurrence_rule?.includes('TODAY_MUST') && (
-                      <div className="w-4 h-4 rounded bg-red-500 flex items-center justify-center shadow-sm">
-                        <span className="text-[10px] text-white leading-none font-bold scale-90">今</span>
-                      </div>
+                      <span className="text-[12px] font-black text-amber-400 leading-none italic tracking-tighter" style={{ fontFamily: 'sans-serif' }}>do</span>
                     )}
                     {t.recurrence_rule?.includes('PINNED') && (
                       <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>

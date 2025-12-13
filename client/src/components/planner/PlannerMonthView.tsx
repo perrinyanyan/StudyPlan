@@ -310,11 +310,11 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                 return (
                                                     <div
                                                         key={b.id}
-                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
-                                                            } ${status === 'done' ? 'line-through opacity-70' : ''}`}
+                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center border ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
+                                                            } ${status === 'done' ? 'opacity-70' : ''}`}
                                                         style={{
                                                             backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
-                                                            borderLeft: `2px solid ${isCurrent ? '#F59E0B' : baseColor}`,
+                                                            borderColor: isCurrent ? '#F59E0B' : baseColor,
                                                             color: 'white'
                                                         }}
                                                         onMouseEnter={(e) => {
@@ -337,20 +337,20 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                             }, 300)
                                                         }}
                                                     >
+                                                        {status === 'done' && (
+                                                            <span className="mr-0.5 flex-shrink-0 inline-flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500/20" title="已完成">
+                                                                <span className="material-symbols-outlined text-emerald-400 text-[10px]">check</span>
+                                                            </span>
+                                                        )}
                                                         {isOverdue && (
-                                                            <span className="mr-0.5 flex-shrink-0 w-3 h-3" title="逾期">
-                                                                <svg viewBox="0 0 24 24" className="w-full h-full" fill="none">
-                                                                    <circle cx="12" cy="12" r="10" stroke="#ef4444" strokeWidth="3" fill="none" strokeDasharray="50 10" />
-                                                                    <circle cx="12" cy="12" r="6" stroke="#4B5563" strokeWidth="2" fill="none" />
-                                                                    <rect x="10" y="7" width="4" height="6" rx="2" fill="#ef4444" />
-                                                                    <circle cx="12" cy="16" r="2" fill="#ef4444" />
-                                                                </svg>
+                                                            <span className="mr-0.5 flex-shrink-0 inline-flex items-center justify-center w-3 h-3 rounded-full bg-red-500/20" title="逾期">
+                                                                <span className="material-symbols-outlined text-red-500 text-[10px]">close</span>
                                                             </span>
                                                         )}
                                                         {typeof meta?.priority === 'number' && (
-                                                            <span className={`mr-1 flex-shrink-0 text-[8px] px-0.5 rounded ${meta.priority === 2 ? 'bg-red-500/80 text-white' :
-                                                                meta.priority === 1 ? 'bg-yellow-500/80 text-white' :
-                                                                    'bg-green-500/80 text-white'
+                                                            <span className={`mr-1 flex-shrink-0 text-[8px] px-0.5 rounded ${meta.priority === 2 ? 'bg-red-500/20 text-red-300' :
+                                                                meta.priority === 1 ? 'bg-yellow-500/20 text-yellow-300' :
+                                                                    'bg-green-500/20 text-green-300'
                                                                 }`}>
                                                                 {meta.priority === 2 ? 'H' : meta.priority === 1 ? 'M' : 'L'}
                                                             </span>
