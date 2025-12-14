@@ -179,10 +179,10 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                     </button>
                 </div>
 
-                <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50 overflow-hidden">
+                <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50">
                     {/* Filters Toolbar */}
                     {state.showFilters && (
-                        <div className="bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+                        <div className="relative z-50 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
                             <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm">
 
                                 <div className="flex items-center gap-2">

@@ -9,6 +9,7 @@ import { getConflictIds } from '../../utils/conflicts'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import { fmtRange, todayStr } from '../../utils/datetime'
 
 export interface PlannerListModeProps {
   state: any
@@ -260,9 +261,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           </button>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-slate-800/50 overflow-hidden">
+        <div className="rounded-xl border border-white/10 bg-slate-800/50">
           {state.showFilters && (
-            <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+            <div className="sticky top-0 z-50 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
               <div className="flex flex-wrap gap-3 text-white/90 text-sm items-center">
                 <div className="flex items-center gap-2 px-2 py-1 rounded-md bg-white/5">
                   <input
@@ -769,7 +770,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
                                         })
                                       }}
                                     >
-                                      {fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}
+                                      {fmtRange(s, e)}
                                     </p>
                                     {editingCell?.id === blockId && editingCell.field === 'duration' ? (
                                       <div className="flex items-center justify-center">

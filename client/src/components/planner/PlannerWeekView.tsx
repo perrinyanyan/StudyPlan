@@ -3,7 +3,7 @@ import { getConflictIds } from '../../utils/conflicts'
 import { PlannerListView } from './PlannerListView'
 import { TaskHoverCard } from './TaskHoverCard'
 import type { Task } from '../../types'
-import { toIso, todayStr } from '../../utils/datetime'
+import { toIso, todayStr, fmtRange } from '../../utils/datetime'
 import { MultiSelect } from '../ui/MultiSelect'
 
 export interface PlannerWeekViewProps {
@@ -144,15 +144,48 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         return true
     })
 
-    const hourHeight = 40 // Fixed height for week view to save space
-    const startHour = 6 // Start from 6 AM
-    const endHour = 23 // End at 11 PM
-    const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i)
+
 
     const [hoveredTask, setHoveredTask] = useState<any | null>(null)
     const [hoverPos, setHoverPos] = useState<{ x: number, y: number } | null>(null)
     const hoverTimeoutRef = useRef<any>(null)
     const [cardMenuOpen, setCardMenuOpen] = useState(false)
+
+    // Dynamic Week Timeline Logic
+    const [isWeekCollapsed, setIsWeekCollapsed] = useState(true)
+
+    const activeHours = useMemo(() => {
+        const hours = new Set<number>()
+        timelineBlocks.forEach((b: any) => {
+            const s = new Date(b.start_at)
+            const e = new Date(b.end_at)
+            hours.add(s.getHours())
+            // Add end hour if it extends into it (and isn't exactly on the hour, unless single hour block)
+            if (e.getMinutes() > 0 || e.getTime() === s.getTime()) {
+                hours.add(e.getHours())
+            } else if (e.getHours() > 0) {
+                // For exact hour end (e.g., 10:00), the task is in 9:00-10:00, so we don't strictly need 10 to be visible unless it spans.
+                // However, simpler to just add start hour.
+                // Let's ensure if a task is 23:30-00:30, 0 is added.
+            }
+        })
+        return hours
+    }, [timelineBlocks])
+
+    const visibleHours = useMemo(() => {
+        const coreHours = Array.from({ length: 18 }, (_, i) => 6 + i) // 6 to 23
+        if (!isWeekCollapsed) {
+            return Array.from({ length: 24 }, (_, i) => i) // 0 to 23
+        }
+        // Collapsed mode: Core + Active Outliers
+        const hours = new Set(coreHours)
+        activeHours.forEach(h => hours.add(h))
+        return Array.from(hours).sort((a, b) => a - b).filter(h => h >= 0 && h <= 23)
+    }, [isWeekCollapsed, activeHours])
+
+    const startHour = visibleHours.length > 0 ? visibleHours[0] : 6
+    const endHour = visibleHours.length > 0 ? visibleHours[visibleHours.length - 1] : 23
+    const hours = visibleHours // Override the static hours array
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
@@ -170,10 +203,10 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                     </button>
                 </div>
 
-                <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50 overflow-hidden">
+                <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50">
                     {/* Filters Toolbar */}
                     {state.showFilters && (
-                        <div className="bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+                        <div className="relative z-50 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap items-center gap-3 text-white/90 text-sm">
 
                                 <div className="flex items-center gap-2">
@@ -246,7 +279,28 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                     </select>
                                 </div>
                             </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    className="p-1 rounded hover:bg-slate-600 transition-colors"
+                                    onClick={() => setIsWeekCollapsed(!isWeekCollapsed)}
+                                >
+                                    {isWeekCollapsed ? (
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
+                                            <circle cx="12" cy="12" r="9" />
+                                            <path d="M8 9 L12 13 L16 9" strokeLinecap="round" strokeLinejoin="round" />
+                                            <path d="M8 13 L12 17 L16 13" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                    ) : (
+                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
+                                            <circle cx="12" cy="12" r="9" />
+                                            <path d="M8 15 L12 11 L16 15" strokeLinecap="round" strokeLinejoin="round" />
+                                            <path d="M8 11 L12 7 L16 11" strokeLinecap="round" strokeLinejoin="round" />
+                                        </svg>
+                                    )}
+                                </button>
+                            </div>
                         </div>
+
                     )}
 
                     {/* Week Grid */}
@@ -316,7 +370,11 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
 
                                                 // Calculate position relative to startHour
                                                 const startMin = (s.getHours() - startHour) * 60 + s.getMinutes()
-                                                const endMin = (e.getHours() - startHour) * 60 + e.getMinutes()
+                                                let endMin = (e.getHours() - startHour) * 60 + e.getMinutes()
+                                                // Handle 24:00 case: if end is midnight (00:00) and it's the next day
+                                                if (e.getHours() === 0 && e.getMinutes() === 0 && e.getDate() !== s.getDate()) {
+                                                    endMin = (24 - startHour) * 60
+                                                }
                                                 const duration = endMin - startMin
 
                                                 if (endMin <= 0 || startMin >= (endHour - startHour + 1) * 60) return null
@@ -417,7 +475,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                         </div>
                     </div>
                 </section>
-            </div>
+            </div >
 
             <div className="lg:col-span-2 h-full overflow-y-auto">
                 <PlannerListView
@@ -438,46 +496,48 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
             </div>
 
             {/* Hover Detail Card */}
-            {hoveredTask && hoverPos && (
-                <TaskHoverCard
-                    task={hoveredTask}
-                    position={hoverPos}
-                    onClose={() => {
-                        setHoveredTask(null)
-                        setHoverPos(null)
-                        setCardMenuOpen(false)
-                    }}
-                    onMouseEnter={() => {
-                        if (hoverTimeoutRef.current) {
-                            clearTimeout(hoverTimeoutRef.current)
-                            hoverTimeoutRef.current = null
-                        }
-                    }}
-                    onMouseLeave={() => {
-                        hoverTimeoutRef.current = setTimeout(() => {
+            {
+                hoveredTask && hoverPos && (
+                    <TaskHoverCard
+                        task={hoveredTask}
+                        position={hoverPos}
+                        onClose={() => {
                             setHoveredTask(null)
                             setHoverPos(null)
                             setCardMenuOpen(false)
-                        }, 300)
-                    }}
-                    actions={{
-                        updateTaskMeta,
-                        updateTaskAdvanced,
-                        updateBlock,
-                        deleteTask,
-                        completeTask,
-                        deleteBlock,
-                        setEditTask,
-                        headers: actions.headers,
-                        createTaskAdvanced,
-                        setCenterAlert,
-                    }}
-                    options={{
-                        listTypeOptions,
-                        listTagOptions,
-                    }}
-                />
-            )}
-        </div>
+                        }}
+                        onMouseEnter={() => {
+                            if (hoverTimeoutRef.current) {
+                                clearTimeout(hoverTimeoutRef.current)
+                                hoverTimeoutRef.current = null
+                            }
+                        }}
+                        onMouseLeave={() => {
+                            hoverTimeoutRef.current = setTimeout(() => {
+                                setHoveredTask(null)
+                                setHoverPos(null)
+                                setCardMenuOpen(false)
+                            }, 300)
+                        }}
+                        actions={{
+                            updateTaskMeta,
+                            updateTaskAdvanced,
+                            updateBlock,
+                            deleteTask,
+                            completeTask,
+                            deleteBlock,
+                            setEditTask,
+                            headers: actions.headers,
+                            createTaskAdvanced,
+                            setCenterAlert,
+                        }}
+                        options={{
+                            listTypeOptions,
+                            listTagOptions,
+                        }}
+                    />
+                )
+            }
+        </div >
     )
 }

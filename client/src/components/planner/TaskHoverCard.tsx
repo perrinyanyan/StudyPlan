@@ -4,6 +4,7 @@ import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
 import type { Task } from '../../types'
+import { fmtRange } from '../../utils/datetime'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -290,7 +291,7 @@ export function TaskHoverCard({
                                         }
                                     })}
                                 >
-                                    {fmt(optimisticTask.blockStart)} - {fmt(optimisticTask.blockEnd)}
+                                    {fmtRange(new Date(optimisticTask.blockStart), new Date(optimisticTask.blockEnd))}
                                 </p>
                             )
                         )}

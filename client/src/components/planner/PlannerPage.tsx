@@ -114,7 +114,7 @@ export function PlannerPage(props: PlannerPageProps) {
             </div>
           )}
           {plannerView === 'list' && listRangePickerOpen && (
-            <div className="absolute top-full left-6 mt-2 z-30 w-72 rounded-lg border border-white/10 bg-slate-900 shadow-xl p-3">
+            <div className="absolute top-full left-6 mt-2 z-[999] w-72 rounded-lg border border-white/10 bg-slate-900 shadow-xl p-3">
               <div className="flex flex-col gap-2 text-xs text-slate-200">
                 <label className="flex items-center gap-2">
                   <span className="w-10 text-right">开始</span>

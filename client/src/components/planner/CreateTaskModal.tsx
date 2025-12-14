@@ -52,7 +52,15 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     return 'end'
   })
   const [startAt, setStartAt] = useState<string>(() => {
-    if (!initialTask || !initialTask.due_at) return `${defaultDate}T20:00`
+    if (!initialTask) return `${defaultDate}T20:00`
+
+    // If blockStart is provided (from Day View edit after drag), use it
+    if ((initialTask as any).blockStart) {
+      const start = new Date((initialTask as any).blockStart)
+      return toInputLocal(start)
+    }
+
+    if (!initialTask.due_at) return `${defaultDate}T20:00`
 
     const isPool = initialTask.scheduling_status === 'unscheduled' || initialTask.recurrence_rule?.startsWith('POOL')
 
@@ -71,14 +79,26 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
     return toInputLocal(start)
   })
   const [duration, setDuration] = useState<string>(() => {
+    // If blockStart and blockEnd are provided, calculate duration from them
+    if ((initialTask as any)?.blockStart && (initialTask as any)?.blockEnd) {
+      const start = new Date((initialTask as any).blockStart)
+      const end = new Date((initialTask as any).blockEnd)
+      const mins = Math.round((end.getTime() - start.getTime()) / 60000)
+      return String(mins)
+    }
     if (!initialTask) return '30'
     if (typeof initialTask.estimate_min !== 'number') return ''
     return String(initialTask.estimate_min)
   })
   const [endAt, setEndAt] = useState<string>(() => {
+    // If blockEnd is provided, use it
+    if ((initialTask as any)?.blockEnd) {
+      const end = new Date((initialTask as any).blockEnd)
+      return fmtHHmm(end)
+    }
     if (!initialTask || !initialTask.due_at) return ''
     const end = new Date(initialTask.due_at)
-    return toInputLocal(end)
+    return fmtHHmm(end)
   })
   const [priority, setPriority] = useState<'high' | 'medium' | 'low'>(() => {
     if (!initialTask || initialTask.priority == null) return 'medium'
@@ -169,8 +189,16 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
   useEffect(() => {
     if (timeMode !== 'end') return
     if (!startAt) return
-    setEndAt((prev) => (prev ? prev : startAt))
-  }, [timeMode, startAt])
+    // Default end time to start time + 1 hour if not set, or just keep as is?
+    // Original logic was "setEndAt((prev) => (prev ? prev : startAt))" which synced date too.
+    // Now endAt is just HH:mm.
+    // If we switch to 'end' mode, we might want to default to start time + duration if possible, or just start time.
+    // Let's default to start time's HH:mm
+    if (!endAt) {
+      const d = new Date(startAt)
+      setEndAt(fmtHHmm(d))
+    }
+  }, [timeMode, startAt, endAt])
 
 
 
@@ -239,6 +267,17 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
       }
       const start = new Date(startAt)
       const end = new Date(start.getTime() + est * 60000)
+
+      // Validate: end time must not exceed 24:00 of start day
+      const startOfDay = new Date(start)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+
+      if (end.getTime() > endOfDay.getTime()) {
+        alert('开始时间 + 预估时长不能超过当天 24:00')
+        return
+      }
+
       dueISO = end.toISOString()
       estimateMin = est
     } else if (finalTimeMode === 'end') {
@@ -247,13 +286,67 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
         return
       }
       const s = new Date(startAt)
-      const e = new Date(endAt)
+      // Construct end date using start date's YMD and endAt's HH:mm
+      const [endH, endM] = endAt.split(':').map(Number)
+      const e = new Date(s)
+      e.setHours(endH)
+      e.setMinutes(endM)
+      e.setSeconds(0)
+      e.setMilliseconds(0)
+
       if (e <= s) {
-        alert('结束时间必须晚于开始时间')
-        return
+        // If user selected 00:00 and it's less than start, they likely mean 24:00 (next day midnight)
+        if (endH === 0 && endM === 0) {
+          e.setDate(e.getDate() + 1)
+        } else {
+          alert('结束时间必须晚于开始时间')
+          return
+        }
       }
+      // Validate it's the same day (implicit by construction, but ensure we didn't cross boundaries unexpectedly)
+      // Actually strictly speaking, if we use setHours on 's', it IS the same day.
+      // But we need to ensure it doesn't wrap if someone inputs 24:00 (which isn't possible in type=time usually).
+
       dueISO = e.toISOString()
       estimateMin = Math.round((e.getTime() - s.getTime()) / 60000)
+    }
+
+    // Global validation for midnight crossing
+    // Calculate expected end time
+    let effectiveEnd: Date
+    if (finalTimeMode === 'duration') {
+      const est = parseDurationMin(duration || '') || 0
+      effectiveEnd = new Date(new Date(startAt).getTime() + est * 60000)
+    } else {
+      // Recalculated above for 'end' mode, but let's just use the logic consistent with above
+      const s = new Date(startAt)
+      // If end mode, we already validated e > s. 
+      // Logic for 'end' mode ensures strict same-day because we force apply Start Date.
+      // So we only need to check if duration mode crosses midnight.
+      // HOWEVER, requirements say "not later than 24:00". 
+      // If start is 23:00 and duration is 90min, it goes to 00:30 next day. This should be blocked.
+      if (finalTimeMode === 'duration') {
+        const startDetails = new Date(startAt)
+        const endDetails = new Date(effectiveEnd!)
+
+        // Check if date changed
+        const isNextDay = startDetails.getDate() !== endDetails.getDate()
+
+        if (isNextDay) {
+          // Check if it is EXACTLY midnight (00:00) of the next day
+          // And exactly 1 day difference (though redundant due to previous constraints usually)
+          const isMidnight = endDetails.getHours() === 0 && endDetails.getMinutes() === 0
+
+          if (!isMidnight) {
+            alert('任务不能跨越 0 点 (必须在当天结束，最晚为 24:00)')
+            return
+          }
+        }
+      }
+      // For 'end' mode, since we force the date to be the Start Date, we just need to ensure e > s.
+      // If e <= s, we alert.
+      // Wait, if start is 23:00 and user enters 01:00 as end time.
+      // e will be Today 01:00. s is Today 23:00. e < s. Verified.
     }
     const prio = priority === 'high' ? 2 : priority === 'medium' ? 1 : 0
     const recur =
@@ -480,7 +573,7 @@ export function CreateTaskModal({ defaultDate, onClose, onSuccess, onSchedule, a
                     <p className="text-xs text-slate-300 pb-1.5">结束时间</p>
                     <input
                       className="form-input h-11 rounded-lg border border-slate-600 bg-slate-900/80 text-sm text-white px-3 focus:outline-none focus:ring-2 focus:ring-[#137fec]/60"
-                      type="datetime-local"
+                      type="time"
                       value={endAt}
                       onChange={(e) => setEndAt(e.target.value)}
                     />

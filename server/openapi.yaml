@@ -45,6 +45,8 @@ components:
         status: { type: string, enum: [open, done] }
         scheduling_status: { type: string, enum: [scheduled, unscheduled] }
         created_at: { type: string, format: date-time }
+        content: { type: ["string", "null"] }
+
     TimeBlock:
       type: object
       properties:
@@ -77,6 +79,8 @@ components:
         instructor: { type: string }
         attendance_policy: { type: string }
         created_at: { type: string, format: date-time }
+        content: { type: ["string", "null"] }
+
     FocusStats:
       type: object
       properties:

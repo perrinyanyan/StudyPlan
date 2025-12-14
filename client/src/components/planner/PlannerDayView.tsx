@@ -7,6 +7,7 @@ import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
 import { TaskHoverCard } from './TaskHoverCard'
 import { MultiSelect } from '../ui/MultiSelect'
+import { fmtRange } from '../../utils/datetime'
 
 export interface PlannerDayViewProps {
   state: any
@@ -17,7 +18,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   const {
     tasks,
     unscheduled,
-    showFutureOnly,
+
     tasksFlat,
     isToday,
     currentBlock,
@@ -54,7 +55,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     listEdit,
     setListEdit,
     setShowCreateTask,
-    setShowFutureOnly,
+
     addBlock,
     updateBlock,
     deleteBlock,
@@ -163,14 +164,25 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     let newStart = new Date(dragging.originalStart)
     let newEnd = new Date(dragging.originalEnd)
 
+    // Calculate day boundaries
+    const startOfDay = new Date(dragging.originalStart)
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+
     if (dragging.edge === 'top') {
       newStart = new Date(dragging.originalStart.getTime() + snappedDelta * 60000)
+      // Clamp to start of day
+      if (newStart < startOfDay) newStart = new Date(startOfDay)
+
       // Prevent start from going past end - minimum 5 min block
       if (newStart.getTime() >= newEnd.getTime() - 5 * 60000) {
         newStart = new Date(newEnd.getTime() - 5 * 60000)
       }
     } else if (dragging.edge === 'bottom') {
       newEnd = new Date(dragging.originalEnd.getTime() + snappedDelta * 60000)
+      // Clamp to end of day
+      if (newEnd > endOfDay) newEnd = new Date(endOfDay)
+
       // Prevent end from going before start - minimum 5 min block
       if (newEnd.getTime() <= newStart.getTime() + 5 * 60000) {
         newEnd = new Date(newStart.getTime() + 5 * 60000)
@@ -179,6 +191,18 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       // Move entire block - keep duration constant
       newStart = new Date(dragging.originalStart.getTime() + snappedDelta * 60000)
       newEnd = new Date(dragging.originalEnd.getTime() + snappedDelta * 60000)
+
+      // Clamp move to within the day
+      if (newStart < startOfDay) {
+        const diff = startOfDay.getTime() - newStart.getTime()
+        newStart = new Date(startOfDay)
+        newEnd = new Date(newEnd.getTime() + diff)
+      }
+      if (newEnd > endOfDay) {
+        const diff = newEnd.getTime() - endOfDay.getTime()
+        newEnd = new Date(endOfDay)
+        newStart = new Date(newStart.getTime() - diff)
+      }
     }
 
     setDragPreview({ start: newStart, end: newEnd })
@@ -295,6 +319,16 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
       const estimateMin = data.estimateMin || 30
       const endTime = new Date(startTime.getTime() + estimateMin * 60000)
+
+      // Validate single day constraint
+      const startOfDay = new Date(now)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
+
+      if (endTime > endOfDay) {
+        if (setCenterAlert) setCenterAlert({ title: '无法安排', detail: '任务结束时间不能超过当天 24:00' })
+        return
+      }
 
       // Check for conflicts before proceeding
       const conflicts = checkConflicts('', startTime, endTime)
@@ -510,18 +544,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       const s = new Date(b.start_at)
       const e = new Date(b.end_at)
       const startMin = s.getHours() * 60 + s.getMinutes()
-      const endMin = e.getHours() * 60 + e.getMinutes()
+      let endMin = e.getHours() * 60 + e.getMinutes()
+      // Handle 24:00 case: if end is midnight (00:00) and it's the next day, treat as 1440
+      if (endMin === 0 && e.getDate() !== s.getDate()) {
+        endMin = 1440 // 24 * 60
+      }
       return endMin > hourStart && startMin < hourEnd
     })
-    const shortCount = hourBlocks.filter((b: any) => {
-      const s = new Date(b.start_at)
-      const e = new Date(b.end_at)
-      const startMin = s.getHours() * 60 + s.getMinutes()
-      const endMin = e.getHours() * 60 + e.getMinutes()
-      const duration = endMin - startMin
-      const fullyWithinHour = startMin >= hourStart && endMin <= hourEnd
-      return fullyWithinHour && duration > 0 && duration <= 60
-    }).length
+    // shortCount logic removed for fixed height
     const hasAny = hourBlocks.length > 0
     const isCurrentHour = isToday && h === now.getHours()
     let collapsedFlag = (hourCollapsed as any)?.[h] as boolean | undefined
@@ -536,7 +566,6 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       hourStart,
       hourEnd,
       hourBlocks,
-      shortCount,
       hasAny,
       collapsed: !!collapsedFlag,
       isCurrentHour,
@@ -582,7 +611,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
         <section className="rounded-xl border border-white/10 bg-slate-800/50">
           {state.showFilters && (
-            <div className="sticky top-0 z-10 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
+            <div className="sticky top-0 z-50 bg-black/20 backdrop-blur-sm p-3 border-b border-white/10">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex flex-wrap gap-3 text-white/90 text-sm">
 
@@ -680,21 +709,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                     </select>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 w-full justify-end">
-                  <label className="flex items-center gap-2 text-xs text-slate-200" >
-                    <input
-                      type="checkbox"
-                      checked={!!showFutureOnly}
-                      onChange={(e) => setShowFutureOnly && setShowFutureOnly(e.target.checked)}
-                    />
-                    <span>仅显示未来</span>
-                  </label>
+                <div className="flex items-center gap-3 justify-end">
+
                   <div className="flex items-center gap-2">
                     {(() => {
                       const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
                       return (
                         <button
-                          className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-xs w-10 text-center"
+                          className="p-1 rounded hover:bg-slate-600 transition-colors"
                           onClick={() => {
                             if (hasCollapsed) {
                               actions.expandAllHours?.()
@@ -703,7 +725,19 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                             }
                           }}
                         >
-                          {hasCollapsed ? '展开' : '折叠'}
+                          {hasCollapsed ? (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
+                              <circle cx="12" cy="12" r="9" />
+                              <path d="M8 9 L12 13 L16 9" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M8 13 L12 17 L16 13" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          ) : (
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
+                              <circle cx="12" cy="12" r="9" />
+                              <path d="M8 15 L12 11 L16 15" strokeLinecap="round" strokeLinejoin="round" />
+                              <path d="M8 11 L12 7 L16 11" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
                         </button>
                       )
                     })()}
@@ -745,9 +779,9 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                         )
                       }
 
-                      const { h, hourStart, hourEnd, hourBlocks, shortCount } = row.info as any
-                      const rowFactor = Math.max(1, shortCount || 0)
-                      const localRowHeight = hourHeight * rowFactor
+                      const { h, hourStart, hourEnd, hourBlocks } = row.info as any
+                      // rowFactor removed, use fixed hourHeight
+                      const localRowHeight = hourHeight
 
                       // Check if drag border aligns with this hour line
                       const dragAlignedWithThisHour = dragging && dragPreview && (
@@ -810,11 +844,10 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                         )
                       }
 
-                      const { h, hourStart, hourEnd, hourBlocks, shortCount, isCurrentHour } =
+                      const { h, hourStart, hourEnd, hourBlocks, isCurrentHour } =
                         row.info as any
 
-                      const rowFactor = Math.max(1, shortCount || 0)
-                      const localRowHeight = hourHeight * rowFactor
+                      const localRowHeight = hourHeight
 
                       // Check if drag border aligns with this hour line
                       const dragAlignedWithThisHour = dragging && dragPreview && (
@@ -910,7 +943,11 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const s = new Date(b.start_at)
                                 const e = new Date(b.end_at)
                                 const startMin = s.getHours() * 60 + s.getMinutes()
-                                const endMin = e.getHours() * 60 + e.getMinutes()
+                                let endMin = e.getHours() * 60 + e.getMinutes()
+                                // Handle 24:00 case
+                                if (endMin === 0 && e.getDate() !== s.getDate()) {
+                                  endMin = 1440
+                                }
                                 const duration = Math.max(1, endMin - startMin)
 
                                 // Calculate natural height based on duration
@@ -924,38 +961,46 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 // cumulativeTop logic removed as we want strict time positioning
                               })
 
+
                               return sortedBlocks.map((b: any) => {
                                 const s = new Date(b.start_at)
                                 const e = new Date(b.end_at)
                                 const startMin = s.getHours() * 60 + s.getMinutes()
-                                const endMin = e.getHours() * 60 + e.getMinutes()
+                                let endMin = e.getHours() * 60 + e.getMinutes()
+                                // Handle 24:00 case
+                                if (endMin === 0 && e.getDate() !== s.getDate()) {
+                                  endMin = 1440
+                                }
 
                                 const clampedStart = Math.max(0, startMin)
                                 const clampedEnd = Math.min(24 * 60, endMin)
                                 if (clampedEnd <= clampedStart) return null
 
                                 // Check if this block starts in this hour
+                                // NOTE: With absolute positioning, we might render across hour boundaries if not careful.
+                                // But keeping the hour-based rendering loop requires us to only render if it belongs here visually?
+                                // Actually, absolute positioning implies we might want to render tasks in a single container, NOT per hour.
+                                // BUT the current architecture renders per-hour div.
+                                // To support "task starts at 10:30 and ends at 11:30", it spans two hour divs.
+                                // If we keep per-hour rendering, we must use absolute positioning relative to the hour?
+                                // NO, the user request says: "Tasks are placed based on start/end time".
+                                // If we render inside the 10:00 div, a task 10:30-11:30 will overflow the 10:00 div.
+                                // If overflow is visible, that works. `overflow-visible` was set on the container?
+                                // Let's check container. Line 719: overflow-x-hidden. Line 769: relative pb-12.
+                                // If we render in the hour 10 div, and `height` is large, it spills over to 11.
+                                // So we only render if `startBlock === h`.
+
                                 const startBlock = Math.floor(clampedStart / 60)
                                 if (h !== startBlock) return null
 
-                                const position = blockPositions.get(String(b.id))!
-                                let top = position.top
-                                let height = position.height
+                                // Strict time-based positioning
+                                const top = s.getMinutes() * pxPerMin
+                                const height = (endMin - startMin) * pxPerMin
 
-                                const duration = clampedEnd - clampedStart
-                                const isLong = duration > 60 || endMin > hourEnd
-                                let cardStartMin = startMin
-
-                                // Calculate bar height proportionally
-                                // Bar should represent (duration / 60) of the reference hourHeight
-                                const durationMinutes = Math.max(1, endMin - startMin)
-                                const referenceHeight = hourHeight // 1-hour reference
-                                const barHeightPx = (durationMinutes / 60) * referenceHeight
-                                const cardHeightPx = height - 4 // Subtracting gaps
-                                // The bar fills from top, percentage from bottom = (cardHeight - barHeight) / cardHeight * 100
-                                const fillRatio = Math.min(1, barHeightPx / Math.max(1, cardHeightPx))
-                                const topPercent = 0 // Bar starts at top
-                                const bottomPercent = Math.max(0, (1 - fillRatio) * 100)
+                                // Adaptive Visibility Logic
+                                const isSmall = height < 50
+                                const isTiny = height < 25
+                                const isLong = height > 60 // Keeps existing logic for vertical centering in some cases, though less relevant now
 
                                 const taskIdStr = b.task_id ? String(b.task_id) : null
                                 const meta = taskIdStr ? taskMetaMap?.[taskIdStr] : undefined
@@ -994,16 +1039,19 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 return (
                                   <div
                                     key={String(b.id)}
-                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 bg-slate-800/90 shadow-sm transition-colors hover:bg-slate-800 hover:ring-1 hover:ring-blue-400/50 ${isMenuOpen ? 'z-40 ring-1 ring-[#137fec]/50' : 'z-10'} group ${isConflicting ? 'border-red-500 ring-2 ring-red-500/50 bg-red-900/30' : hasConflict ? 'border-red-500 ring-2 ring-red-500/50' : isDraggingThis ? 'border-blue-400 ring-2 ring-blue-400/50' : 'border-white/5'}`}
+                                    // Removed z-10/z-40 logic in favor of just z-10 default, z-50 for menu/drag
+                                    // Added isTiny background color logic
+                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 shadow-sm transition-colors hover:ring-1 hover:ring-blue-400/50 ${isMenuOpen ? 'z-50 ring-1 ring-[#137fec]/50' : 'z-10'} group ${isConflicting ? 'border-red-500 ring-2 ring-red-500/50 bg-red-900/30' : hasConflict ? 'border-red-500 ring-2 ring-red-500/50' : isDraggingThis ? 'border-blue-400 ring-2 ring-blue-400/50' : 'border-white/5'} ${isTiny ? '' : 'bg-slate-800/90 hover:bg-slate-800'}`}
                                     style={{
                                       top: isDraggingThis && dragPreview ?
-                                        // During drag: minute within hour plus time delta, minus container padding (4px from py-1)
-                                        // This ensures 0 min aligns with hour line at top of row
                                         (new Date(b.start_at).getMinutes() + (dragPreview.start.getTime() - new Date(b.start_at).getTime()) / 60000) * pxPerMin - 4 :
                                         top,
                                       height: isDraggingThis && dragPreview ?
                                         ((dragPreview.end.getTime() - dragPreview.start.getTime()) / 60000) * pxPerMin :
-                                        Math.max(height - 4, 32),
+                                        height,
+                                      backgroundColor: isTiny ? (meta?.color || '#60A5FA') : undefined,
+                                      // Ensure overlapping content from previous hours is visible
+                                      marginBottom: 0
                                     }}
                                     onMouseEnter={(e) => handleBlockMouseEnter(e, b, meta, name)}
                                     onMouseLeave={handleBlockMouseLeave}
@@ -1072,329 +1120,338 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                         />
                                       )}
                                       <div className="flex h-full items-center gap-3 relative z-10">
-                                        <div className="w-1.5 h-full relative rounded-full overflow-hidden opacity-80">
-                                          <div
-                                            className="absolute left-0 right-0"
-                                            style={{
-                                              top: `${topPercent}%`,
-                                              bottom: `${bottomPercent}%`,
-                                              backgroundColor: barColor,
-                                            }}
-                                          ></div>
-                                        </div>
+                                        {!isTiny && (
+                                          <div className="w-1.5 h-full relative rounded-full overflow-hidden opacity-80">
+                                            <div
+                                              className="absolute inset-0 bg-current"
+                                              style={{
+                                                backgroundColor: barColor,
+                                              }}
+                                            ></div>
+                                          </div>
+                                        )}
                                         <div className="flex items-center justify-between w-full text-sm">
                                           <div className="flex flex-col flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5">
-                                              {status === 'done' && (
+                                              {status === 'done' && !isTiny && (
                                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500/20" title="已完成">
                                                   <span className="material-symbols-outlined text-emerald-400 text-sm">check</span>
                                                 </span>
                                               )}
                                               {/* Overdue Indicator */}
-                                              {status !== 'done' && new Date(b.end_at).getTime() < now.getTime() && (
+                                              {status !== 'done' && new Date(b.end_at).getTime() < now.getTime() && !isTiny && (
                                                 <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20" title="逾期">
                                                   <span className="material-symbols-outlined text-red-500 text-sm">close</span>
                                                 </span>
                                               )}
-                                              {editingCell?.id === blockId && editingCell.field === 'title' ? (
-                                                <input
-                                                  autoFocus
-                                                  className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full"
-                                                  value={editingCell.value}
-                                                  onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
-                                                  onBlur={() => handleSave(blockId, 'title', editingCell.value)}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') handleSave(blockId, 'title', editingCell.value)
-                                                    if (e.key === 'Escape') setEditingCell(null)
-                                                  }}
-                                                  onClick={e => e.stopPropagation()}
-                                                />
-                                              ) : (
-                                                <p
-                                                  className={`font-medium truncate cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done'
-                                                    ? 'line-through opacity-60'
-                                                    : ''
-                                                    }`}
-                                                  onDoubleClick={(e) => {
-                                                    e.stopPropagation()
-                                                    setEditingCell({ id: blockId, field: 'title', value: name || '' })
-                                                  }}
-                                                >
-                                                  {name || '时间块'}
-                                                </p>
-                                              )}
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
-                                              {/* Priority Label */}
-                                              {editingCell?.id === blockId && editingCell.field === 'priority' ? (
-                                                <div className="relative">
-                                                  <span
-                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                              {/* Title - Hide if tiny */}
+                                              {!isTiny && (
+                                                editingCell?.id === blockId && editingCell.field === 'title' ? (
+                                                  <input
+                                                    autoFocus
+                                                    className="bg-slate-700 text-white text-sm px-1 py-0.5 rounded w-full"
+                                                    value={editingCell.value}
+                                                    onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                                    onBlur={() => handleSave(blockId, 'title', editingCell.value)}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') handleSave(blockId, 'title', editingCell.value)
+                                                      if (e.key === 'Escape') setEditingCell(null)
+                                                    }}
                                                     onClick={e => e.stopPropagation()}
-                                                  >
-                                                    {prioLabel || '无'}
-                                                  </span>
-                                                  <TaskPrioritySelector
-                                                    currentPriority={editingCell.value}
-                                                    onSelect={(val) => {
-                                                      handleSave(blockId, 'priority', val)
-                                                      setEditingCell(null)
-                                                    }}
-                                                    onClose={() => setEditingCell(null)}
                                                   />
-                                                </div>
-                                              ) : (
-                                                prioLabel && (
-                                                  <span
-                                                    className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
-                                                    onDoubleClick={(e) => {
-                                                      e.stopPropagation()
-                                                      setEditingCell({ id: blockId, field: 'priority', value: prio })
-                                                    }}
-                                                  >
-                                                    {prioLabel}
-                                                  </span>
-                                                )
-                                              )}
-                                              {/* Type */}
-                                              {editingCell?.id === blockId && editingCell.field === 'type' ? (
-                                                <div className="relative">
-                                                  <span
-                                                    className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
-                                                    onClick={e => e.stopPropagation()}
-                                                  >
-                                                    <span
-                                                      className="w-2 h-2 rounded-full"
-                                                      style={{ backgroundColor: typeDotColor }}
-                                                    ></span>
-                                                    <span>{editingCell.value || '无类型'}</span>
-                                                  </span>
-                                                  <TaskTypeSelector
-                                                    currentType={editingCell.value}
-                                                    authHeaders={actions.headers()}
-                                                    onSelect={(t) => {
-                                                      handleSave(blockId, 'type', t.name, { color: t.color })
-                                                      setEditingCell(null)
-                                                    }}
-                                                    onClose={() => setEditingCell(null)}
-                                                  />
-                                                  {/* Overlay to close on click outside */}
-                                                  <div
-                                                    className="fixed inset-0 z-40"
-                                                    onClick={(e) => {
-                                                      e.stopPropagation()
-                                                      setEditingCell(null)
-                                                    }}
-                                                  />
-                                                </div>
-                                              ) : (
-                                                type && (
-                                                  <span
-                                                    className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
-                                                    onDoubleClick={(e) => {
-                                                      e.stopPropagation()
-                                                      setEditingCell({ id: blockId, field: 'type', value: type })
-                                                    }}
-                                                  >
-                                                    <span
-                                                      className="w-2 h-2 rounded-full"
-                                                      style={{ backgroundColor: typeDotColor }}
-                                                    ></span>
-                                                    <span>{type}</span>
-                                                  </span>
-                                                )
-                                              )}
-
-                                              {editingCell?.id === blockId && editingCell.field === 'tags' ? (
-                                                <div className="relative">
-                                                  <div className="flex flex-wrap gap-1">
-                                                    {(editingCell.value as string[]).map((g: string) => (
-                                                      <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
-                                                        #{g}
-                                                      </span>
-                                                    ))}
-                                                    {(editingCell.value as string[]).length === 0 && (
-                                                      <span className="text-gray-500 text-[10px]">#</span>
-                                                    )}
-                                                  </div>
-                                                  <TaskTagSelector
-                                                    currentTags={editingCell.value as string[]}
-                                                    availableTags={listTagOptions || []}
-                                                    onSelect={(tags) => {
-                                                      setEditingCell({ ...editingCell, value: tags })
-                                                      handleSave(blockId, 'tags', tags)
-                                                    }}
-                                                    onClose={() => setEditingCell(null)}
-                                                    authHeaders={actions.headers ? actions.headers() : {}}
-                                                  />
-                                                </div>
-                                              ) : (
-                                                (tags && tags.length > 0) ? (
-                                                  tags.map((g: string) => (
-                                                    <span
-                                                      key={g}
-                                                      className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
-                                                      onDoubleClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setEditingCell({ id: blockId, field: 'tags', value: tags })
-                                                      }}
-                                                    >
-                                                      #{g}
-                                                    </span>
-                                                  ))
-                                                ) : (
-                                                  <span
-                                                    className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
-                                                    onDoubleClick={(e) => {
-                                                      e.stopPropagation()
-                                                      setEditingCell({ id: blockId, field: 'tags', value: [] })
-                                                    }}
-                                                  >
-                                                    #
-                                                  </span>
-                                                )
-                                              )}
-                                            </div>
-                                          </div>
-                                          <div
-                                            className={`flex items-center text-white/80 gap-2 text-xs ml-3 ${status === 'done' ? 'opacity-60' : ''
-                                              }`}
-                                          >
-                                            {isCur && (
-                                              <button
-                                                className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-black hover:bg-amber-400"
-                                                onClick={(e) => {
-                                                  e.stopPropagation()
-                                                  if (!taskIdStr) return
-                                                  window.location.hash = `#/focus?taskId=${taskIdStr}`
-                                                }}
-                                              >
-                                                <span className="material-symbols-outlined text-sm">
-                                                  center_focus_strong
-                                                </span>
-                                                <span>专注</span>
-                                              </button>
-                                            )}
-
-                                            {editingCell?.id === blockId && editingCell.field === 'time' ? (
-                                              <div
-                                                className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"
-                                                onClick={e => e.stopPropagation()}
-                                                onBlur={(e) => {
-                                                  const target = e.relatedTarget as HTMLElement | null
-                                                  if (target && target.closest('.time-edit-container')) return
-                                                  handleSave(blockId, 'time', editingCell.value)
-                                                }}
-                                              >
-                                                <input
-                                                  type="time"
-                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
-                                                  value={editingCell.value.startStr}
-                                                  onChange={e => setEditingCell({
-                                                    ...editingCell,
-                                                    value: { ...editingCell.value, startStr: e.target.value }
-                                                  })}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
-                                                    if (e.key === 'Escape') setEditingCell(null)
-                                                  }}
-                                                />
-                                                <span className="text-[10px]">-</span>
-                                                <input
-                                                  type="time"
-                                                  className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
-                                                  value={editingCell.value.endStr}
-                                                  onChange={e => setEditingCell({
-                                                    ...editingCell,
-                                                    value: { ...editingCell.value, endStr: e.target.value }
-                                                  })}
-                                                  onKeyDown={e => {
-                                                    if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
-                                                    if (e.key === 'Escape') setEditingCell(null)
-                                                  }}
-                                                />
-                                              </div>
-                                            ) : (
-                                              <div className="flex flex-col items-center gap-1">
-                                                <p
-                                                  className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
-                                                  onDoubleClick={(ev) => {
-                                                    ev.stopPropagation()
-                                                    const fmt = (d: Date) => {
-                                                      return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-                                                    }
-                                                    setEditingCell({
-                                                      id: blockId,
-                                                      field: 'time',
-                                                      value: {
-                                                        startStr: fmt(s),
-                                                        endStr: fmt(e),
-                                                        originalStart: s,
-                                                        originalEnd: e
-                                                      }
-                                                    })
-                                                  }}
-                                                >
-                                                  {isDraggingThis && dragPreview ? (
-                                                    <>
-                                                      {String(dragPreview.start.getHours()).padStart(2, '0')}:{String(dragPreview.start.getMinutes()).padStart(2, '0')}
-                                                      {' - '}
-                                                      {String(dragPreview.end.getHours()).padStart(2, '0')}:{String(dragPreview.end.getMinutes()).padStart(2, '0')}
-                                                    </>
-                                                  ) : (
-                                                    <>{fmtHHmm ? fmtHHmm(s) : ''} - {fmtHHmm ? fmtHHmm(e) : ''}</>
-                                                  )}
-                                                </p>
-                                                {editingCell?.id === blockId && editingCell.field === 'duration' ? (
-                                                  <div className="flex items-center justify-center">
-                                                    <input
-                                                      autoFocus
-                                                      type="number"
-                                                      className="bg-slate-700 text-white text-[10px] px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
-                                                      value={editingCell.value.newDurationMin}
-                                                      onClick={e => e.stopPropagation()}
-                                                      onChange={e => {
-                                                        const val = parseInt(e.target.value) || 0
-                                                        setEditingCell({
-                                                          ...editingCell,
-                                                          value: { ...editingCell.value, newDurationMin: val }
-                                                        })
-                                                      }}
-                                                      onBlur={() => handleSave(blockId, 'duration', editingCell.value)}
-                                                      onKeyDown={e => {
-                                                        if (e.key === 'Enter') handleSave(blockId, 'duration', editingCell.value)
-                                                        if (e.key === 'Escape') setEditingCell(null)
-                                                      }}
-                                                    />
-                                                    <span className="text-[10px] text-slate-400 ml-0.5">min</span>
-                                                  </div>
                                                 ) : (
                                                   <p
-                                                    className="text-slate-400 cursor-pointer hover:text-slate-300 hover:underline decoration-dashed decoration-slate-500"
-                                                    onDoubleClick={(ev) => {
-                                                      ev.stopPropagation()
-                                                      const durationMin = Math.round((e.getTime() - s.getTime()) / 60000)
-                                                      setEditingCell({
-                                                        id: blockId,
-                                                        field: 'duration',
-                                                        value: {
-                                                          start: s,
-                                                          currentDurationMin: durationMin,
-                                                          newDurationMin: durationMin
-                                                        }
-                                                      })
+                                                    className={`font-medium truncate cursor-pointer hover:underline decoration-dashed decoration-slate-500 ${status === 'done'
+                                                      ? 'line-through opacity-60'
+                                                      : ''
+                                                      } ${isSmall ? 'text-[10px]' : ''}`}
+                                                    onDoubleClick={(e) => {
+                                                      e.stopPropagation()
+                                                      setEditingCell({ id: blockId, field: 'title', value: name || '' })
                                                     }}
                                                   >
-                                                    {isDraggingThis && dragPreview
-                                                      ? Math.round((dragPreview.end.getTime() - dragPreview.start.getTime()) / 60000)
-                                                      : Math.round((e.getTime() - s.getTime()) / 60000)} min
+                                                    {name || '时间块'}
                                                   </p>
+                                                )
+                                              )}
+                                            </div>
+
+                                            {/* Hide Details if Small */}
+                                            {!isSmall && (
+                                              <div className="flex flex-wrap items-center gap-1 mt-0.5 text-[11px] text-white/80">
+                                                {/* Priority Label */}
+                                                {editingCell?.id === blockId && editingCell.field === 'priority' ? (
+                                                  <div className="relative">
+                                                    <span
+                                                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                      onClick={e => e.stopPropagation()}
+                                                    >
+                                                      {prioLabel || '无'}
+                                                    </span>
+                                                    <TaskPrioritySelector
+                                                      currentPriority={editingCell.value}
+                                                      onSelect={(val) => {
+                                                        handleSave(blockId, 'priority', val)
+                                                        setEditingCell(null)
+                                                      }}
+                                                      onClose={() => setEditingCell(null)}
+                                                    />
+                                                  </div>
+                                                ) : (
+                                                  prioLabel && (
+                                                    <span
+                                                      className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[0.65rem] font-medium cursor-pointer hover:opacity-80 ${prioClass}`}
+                                                      onDoubleClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell({ id: blockId, field: 'priority', value: prio })
+                                                      }}
+                                                    >
+                                                      {prioLabel}
+                                                    </span>
+                                                  )
+                                                )}
+                                                {/* Type */}
+                                                {editingCell?.id === blockId && editingCell.field === 'type' ? (
+                                                  <div className="relative">
+                                                    <span
+                                                      className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                                      onClick={e => e.stopPropagation()}
+                                                    >
+                                                      <span
+                                                        className="w-2 h-2 rounded-full"
+                                                        style={{ backgroundColor: typeDotColor }}
+                                                      ></span>
+                                                      <span>{editingCell.value || '无类型'}</span>
+                                                    </span>
+                                                    <TaskTypeSelector
+                                                      currentType={editingCell.value}
+                                                      authHeaders={actions.headers()}
+                                                      onSelect={(t) => {
+                                                        handleSave(blockId, 'type', t.name, { color: t.color })
+                                                        setEditingCell(null)
+                                                      }}
+                                                      onClose={() => setEditingCell(null)}
+                                                    />
+                                                    {/* Overlay to close on click outside */}
+                                                    <div
+                                                      className="fixed inset-0 z-40"
+                                                      onClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell(null)
+                                                      }}
+                                                    />
+                                                  </div>
+                                                ) : (
+                                                  type && (
+                                                    <span
+                                                      className="px-1.5 py-0.5 rounded-full bg-slate-700/60 text-slate-100 flex items-center gap-1 cursor-pointer hover:bg-slate-600"
+                                                      onDoubleClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell({ id: blockId, field: 'type', value: type })
+                                                      }}
+                                                    >
+                                                      <span
+                                                        className="w-2 h-2 rounded-full"
+                                                        style={{ backgroundColor: typeDotColor }}
+                                                      ></span>
+                                                      <span>{type}</span>
+                                                    </span>
+                                                  )
+                                                )}
+
+                                                {editingCell?.id === blockId && editingCell.field === 'tags' ? (
+                                                  <div className="relative">
+                                                    <div className="flex flex-wrap gap-1">
+                                                      {(editingCell.value as string[]).map((g: string) => (
+                                                        <span key={g} className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300">
+                                                          #{g}
+                                                        </span>
+                                                      ))}
+                                                      {(editingCell.value as string[]).length === 0 && (
+                                                        <span className="text-gray-500 text-[10px]">#</span>
+                                                      )}
+                                                    </div>
+                                                    <TaskTagSelector
+                                                      currentTags={editingCell.value as string[]}
+                                                      availableTags={listTagOptions || []}
+                                                      onSelect={(tags) => {
+                                                        setEditingCell({ ...editingCell, value: tags })
+                                                        handleSave(blockId, 'tags', tags)
+                                                      }}
+                                                      onClose={() => setEditingCell(null)}
+                                                      authHeaders={actions.headers ? actions.headers() : {}}
+                                                    />
+                                                  </div>
+                                                ) : (
+                                                  (tags && tags.length > 0) ? (
+                                                    tags.map((g: string) => (
+                                                      <span
+                                                        key={g}
+                                                        className="px-1.5 py-0.5 rounded-full bg-gray-500/20 text-gray-300 cursor-pointer hover:bg-gray-500/30"
+                                                        onDoubleClick={(e) => {
+                                                          e.stopPropagation()
+                                                          setEditingCell({ id: blockId, field: 'tags', value: tags })
+                                                        }}
+                                                      >
+                                                        #{g}
+                                                      </span>
+                                                    ))
+                                                  ) : (
+                                                    <span
+                                                      className="text-gray-500 text-[10px] cursor-pointer hover:underline decoration-dashed decoration-slate-600"
+                                                      onDoubleClick={(e) => {
+                                                        e.stopPropagation()
+                                                        setEditingCell({ id: blockId, field: 'tags', value: [] })
+                                                      }}
+                                                    >
+                                                      #
+                                                    </span>
+                                                  )
                                                 )}
                                               </div>
                                             )}
                                           </div>
-                                          <div className="flex items-center gap-2 pl-3">
-                                            {taskIdStr && (
+                                          {/* Time & Duration Container - Hide if tiny */}
+                                          {!isTiny && (
+                                            <div
+                                              className={`flex items-center text-white/80 gap-2 text-xs ml-3 ${status === 'done' ? 'opacity-60' : ''
+                                                }`}
+                                            >
+                                              {isCur && (
+                                                <button
+                                                  className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1 text-xs font-semibold text-black hover:bg-amber-400"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    if (!taskIdStr) return
+                                                    window.location.hash = `#/focus?taskId=${taskIdStr}`
+                                                  }}
+                                                >
+                                                  <span className="material-symbols-outlined text-sm">
+                                                    center_focus_strong
+                                                  </span>
+                                                  <span>专注</span>
+                                                </button>
+                                              )}
+
+                                              {editingCell?.id === blockId && editingCell.field === 'time' ? (
+                                                <div
+                                                  className="flex items-center gap-0.5 bg-slate-800 rounded px-0.5 time-edit-container"
+                                                  onClick={e => e.stopPropagation()}
+                                                  onBlur={(e) => {
+                                                    const target = e.relatedTarget as HTMLElement | null
+                                                    if (target && target.closest('.time-edit-container')) return
+                                                    handleSave(blockId, 'time', editingCell.value)
+                                                  }}
+                                                >
+                                                  <input
+                                                    type="time"
+                                                    className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                                    value={editingCell.value.startStr}
+                                                    onChange={e => setEditingCell({
+                                                      ...editingCell,
+                                                      value: { ...editingCell.value, startStr: e.target.value }
+                                                    })}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
+                                                      if (e.key === 'Escape') setEditingCell(null)
+                                                    }}
+                                                  />
+                                                  <span className="text-[10px]">-</span>
+                                                  <input
+                                                    type="time"
+                                                    className="bg-transparent text-white text-[10px] p-0 border-none focus:ring-0 w-[32px] h-4 leading-none [&::-webkit-calendar-picker-indicator]:hidden text-center"
+                                                    value={editingCell.value.endStr}
+                                                    onChange={e => setEditingCell({
+                                                      ...editingCell,
+                                                      value: { ...editingCell.value, endStr: e.target.value }
+                                                    })}
+                                                    onKeyDown={e => {
+                                                      if (e.key === 'Enter') handleSave(blockId, 'time', editingCell.value)
+                                                      if (e.key === 'Escape') setEditingCell(null)
+                                                    }}
+                                                  />
+                                                </div>
+                                              ) : (
+                                                <div className="flex flex-col items-center gap-1">
+                                                  <p
+                                                    className="whitespace-nowrap cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                                                    onDoubleClick={(ev) => {
+                                                      ev.stopPropagation()
+                                                      const fmt = (d: Date) => {
+                                                        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+                                                      }
+                                                      setEditingCell({
+                                                        id: blockId,
+                                                        field: 'time',
+                                                        value: {
+                                                          startStr: fmt(s),
+                                                          endStr: fmt(e),
+                                                          originalStart: s,
+                                                          originalEnd: e
+                                                        }
+                                                      })
+                                                    }}
+                                                  >
+                                                    {isDraggingThis && dragPreview ? (
+                                                      <>{fmtRange(dragPreview.start, dragPreview.end)}</>
+                                                    ) : (
+                                                      <>{fmtRange(s, e)}</>
+                                                    )}
+                                                  </p>
+                                                  {/* Duration - Hide if small */}
+                                                  {!isSmall && (
+                                                    editingCell?.id === blockId && editingCell.field === 'duration' ? (
+                                                      <div className="flex items-center justify-center">
+                                                        <input
+                                                          autoFocus
+                                                          type="number"
+                                                          className="bg-slate-700 text-white text-[10px] px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
+                                                          value={editingCell.value.newDurationMin}
+                                                          onClick={e => e.stopPropagation()}
+                                                          onChange={e => {
+                                                            const val = parseInt(e.target.value) || 0
+                                                            setEditingCell({
+                                                              ...editingCell,
+                                                              value: { ...editingCell.value, newDurationMin: val }
+                                                            })
+                                                          }}
+                                                          onBlur={() => handleSave(blockId, 'duration', editingCell.value)}
+                                                          onKeyDown={e => {
+                                                            if (e.key === 'Enter') handleSave(blockId, 'duration', editingCell.value)
+                                                            if (e.key === 'Escape') setEditingCell(null)
+                                                          }}
+                                                        />
+                                                        <span className="text-[10px] text-slate-400 ml-0.5">min</span>
+                                                      </div>
+                                                    ) : (
+                                                      <p
+                                                        className="text-slate-400 cursor-pointer hover:text-slate-300 hover:underline decoration-dashed decoration-slate-500"
+                                                        onDoubleClick={(ev) => {
+                                                          ev.stopPropagation()
+                                                          const durationMin = Math.round((e.getTime() - s.getTime()) / 60000)
+                                                          setEditingCell({
+                                                            id: blockId,
+                                                            field: 'duration',
+                                                            value: {
+                                                              start: s,
+                                                              currentDurationMin: durationMin,
+                                                              newDurationMin: durationMin
+                                                            }
+                                                          })
+                                                        }}
+                                                      >
+                                                        {isDraggingThis && dragPreview
+                                                          ? Math.round((dragPreview.end.getTime() - dragPreview.start.getTime()) / 60000)
+                                                          : Math.round((e.getTime() - s.getTime()) / 60000)} min
+                                                      </p>
+                                                    )
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                          <div className={`flex items-center gap-2 ${isTiny ? 'absolute right-1 top-1' : 'pl-3'}`}>
+                                            {taskIdStr && !isTiny && (
                                               <div className="relative">
                                                 <button
                                                   className="flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/10"
@@ -1434,7 +1491,12 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                           (x) => String(x.id) === taskIdStr,
                                                         )
                                                         if (t && setEditTask) {
-                                                          setEditTask(t)
+                                                          // Pass block times to ensure modal shows updated times after drag
+                                                          setEditTask({
+                                                            ...t,
+                                                            blockStart: b.start_at,
+                                                            blockEnd: b.end_at,
+                                                          })
                                                         }
                                                         setListMenuOpenId && setListMenuOpenId(null)
                                                       }}
