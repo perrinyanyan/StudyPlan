@@ -380,7 +380,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                 if (endMin <= 0 || startMin >= (endHour - startHour + 1) * 60) return null
 
                                                 const top = (startMin / 60) * 40
-                                                const height = (duration / 60) * 40
+                                                const height = Math.max(24, (duration / 60) * 40)
 
                                                 const taskIdStr = b.task_id ? String(b.task_id) : null
                                                 const meta = taskIdStr ? taskMetaMap?.[taskIdStr] : undefined

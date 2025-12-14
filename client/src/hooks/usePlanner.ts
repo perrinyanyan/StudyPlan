@@ -511,7 +511,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('创建任务成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
     return true
@@ -560,7 +560,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('更新任务成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
     return true
@@ -595,7 +595,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('已标记完成')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
   }
@@ -620,7 +620,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('删除成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
   }
@@ -665,7 +665,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('创建时间块成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
     return true
@@ -708,7 +708,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('更新时间块成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
     return true
@@ -729,7 +729,7 @@ export function usePlanner(props: UsePlannerProps) {
     }
     if (showToast) showToast('删除时间块成功')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
-    if (pathOnly === '/planner' && plannerView === 'list') {
+    if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
     }
   }

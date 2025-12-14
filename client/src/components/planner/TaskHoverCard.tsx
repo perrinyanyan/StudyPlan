@@ -88,6 +88,14 @@ export function TaskHoverCard({
                 newTask.blockEnd = newEnd.toISOString()
             }
         }
+        if (field === 'duration') {
+            const mins = parseInt(value)
+            if (!isNaN(mins) && mins > 0) {
+                const start = new Date(optimisticTask.blockStart)
+                const newEnd = new Date(start.getTime() + mins * 60000)
+                newTask.blockEnd = newEnd.toISOString()
+            }
+        }
         setOptimisticTask(newTask)
         setEditingCell(null)
 
@@ -119,6 +127,15 @@ export function TaskHoverCard({
                 const newEnd = getDateWithTime(baseDate, endStr)
                 if (newStart && newEnd) {
                     await actions.updateBlock(blockId, { start_at: newStart.toISOString(), end_at: newEnd.toISOString() })
+                }
+            }
+        } else if (field === 'duration') {
+            if (blockId && actions.updateBlock) {
+                const mins = parseInt(value)
+                if (!isNaN(mins) && mins > 0) {
+                    const start = new Date(optimisticTask.blockStart)
+                    const newEnd = new Date(start.getTime() + mins * 60000)
+                    await actions.updateBlock(blockId, { end_at: newEnd.toISOString() })
                 }
             }
         } else {
@@ -281,18 +298,51 @@ export function TaskHoverCard({
                                     />
                                 </div>
                             ) : (
-                                <p
-                                    className="text-xs text-white/60 font-mono cursor-pointer hover:underline decoration-dashed decoration-slate-500"
-                                    onDoubleClick={() => setEditingCell({
-                                        field: 'time',
-                                        value: {
-                                            startStr: fmt(optimisticTask.blockStart),
-                                            endStr: fmt(optimisticTask.blockEnd)
-                                        }
-                                    })}
-                                >
-                                    {fmtRange(new Date(optimisticTask.blockStart), new Date(optimisticTask.blockEnd))}
-                                </p>
+                                <div className="flex items-center gap-2 text-xs text-white/60 font-mono">
+                                    <span
+                                        className="cursor-pointer hover:underline decoration-dashed decoration-slate-500"
+                                        onDoubleClick={() => setEditingCell({
+                                            field: 'time',
+                                            value: {
+                                                startStr: fmt(optimisticTask.blockStart),
+                                                endStr: fmt(optimisticTask.blockEnd)
+                                            }
+                                        })}
+                                    >
+                                        {fmtRange(new Date(optimisticTask.blockStart), new Date(optimisticTask.blockEnd))}
+                                    </span>
+                                    {/* Duration */}
+                                    {editingCell?.field === 'duration' ? (
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                autoFocus
+                                                type="number"
+                                                className="bg-slate-800 text-white text-xs px-1 py-0.5 rounded w-12 text-center border border-slate-600 focus:ring-1 focus:ring-slate-500 appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                value={editingCell.value}
+                                                onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                                                onBlur={() => handleSave('duration', editingCell.value)}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') handleSave('duration', editingCell.value)
+                                                    if (e.key === 'Escape') setEditingCell(null)
+                                                }}
+                                                onClick={e => e.stopPropagation()}
+                                            />
+                                            <span className="text-[10px] text-slate-500">m</span>
+                                        </div>
+                                    ) : (
+                                        <span
+                                            className="cursor-pointer hover:text-white/80 hover:underline decoration-dashed decoration-slate-500"
+                                            onDoubleClick={() => {
+                                                const start = new Date(optimisticTask.blockStart).getTime()
+                                                const end = new Date(optimisticTask.blockEnd).getTime()
+                                                const dur = Math.round((end - start) / 60000)
+                                                setEditingCell({ field: 'duration', value: String(dur) })
+                                            }}
+                                        >
+                                            ({Math.round((new Date(optimisticTask.blockEnd).getTime() - new Date(optimisticTask.blockStart).getTime()) / 60000)}m)
+                                        </span>
+                                    )}
+                                </div>
                             )
                         )}
 

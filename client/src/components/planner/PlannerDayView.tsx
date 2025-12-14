@@ -9,6 +9,8 @@ import { TaskHoverCard } from './TaskHoverCard'
 import { MultiSelect } from '../ui/MultiSelect'
 import { fmtRange } from '../../utils/datetime'
 
+import { createPortal } from 'react-dom'
+
 export interface PlannerDayViewProps {
   state: any
   actions: any
@@ -76,6 +78,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
+
+  // State for menu position (portal)
+  const [menuPos, setMenuPos] = useState<{ top: number, left: number } | null>(null)
+
+  // Clear menu pos if menu is closed externally
+  useEffect(() => {
+    if (!listMenuOpenId) setMenuPos(null)
+  }, [listMenuOpenId])
 
   // Drag-to-resize state
   const SNAP_MINUTES = 5
@@ -1458,102 +1468,22 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                                   onClick={(e) => {
                                                     e.stopPropagation()
                                                     if (!setListMenuOpenId) return
-                                                    setListMenuOpenId(isMenuOpen ? null : blockId)
+
+                                                    if (isMenuOpen) {
+                                                      setListMenuOpenId(null)
+                                                      setMenuPos(null)
+                                                    } else {
+                                                      const rect = e.currentTarget.getBoundingClientRect()
+                                                      // Position to the right of the button, slightly down
+                                                      setMenuPos({ top: rect.top, left: rect.right + 4 })
+                                                      setListMenuOpenId(blockId)
+                                                    }
                                                   }}
                                                 >
                                                   <span className="material-symbols-outlined text-lg">
                                                     more_vert
                                                   </span>
                                                 </button>
-                                                {isMenuOpen && (
-                                                  <div
-                                                    className={`absolute right-0 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-[9999] pointer-events-auto ${menuPositionClass}`}
-                                                  >
-                                                    <button
-                                                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer"
-                                                      onClick={() => {
-                                                        if (!taskIdStr) return
-                                                        if (!tasks) return
-                                                        const candidates: Task[] = []
-                                                          ; (tasks.today || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (tasks.overdue || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (unscheduled || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (rangeTasks || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                        const t = candidates.find(
-                                                          (x) => String(x.id) === taskIdStr,
-                                                        )
-                                                        if (t && setEditTask) {
-                                                          // Pass block times to ensure modal shows updated times after drag
-                                                          setEditTask({
-                                                            ...t,
-                                                            blockStart: b.start_at,
-                                                            blockEnd: b.end_at,
-                                                          })
-                                                        }
-                                                        setListMenuOpenId && setListMenuOpenId(null)
-                                                      }}
-                                                    >
-                                                      修改
-                                                    </button>
-                                                    <button
-                                                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer"
-                                                      onClick={async () => {
-                                                        if (!taskIdStr || !completeTask) return
-                                                        setListMenuOpenId && setListMenuOpenId(null)
-                                                        await completeTask(taskIdStr)
-                                                      }}
-                                                    >
-                                                      完成
-                                                    </button>
-                                                    <button
-                                                      className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer"
-                                                      onClick={() => {
-                                                        if (!taskIdStr) return
-                                                        if (!tasks) return
-                                                        const candidates: Task[] = []
-                                                          ; (tasks.today || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (tasks.overdue || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (unscheduled || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                          ; (rangeTasks || []).forEach((x: Task) =>
-                                                            candidates.push(x),
-                                                          )
-                                                        const t = candidates.find(
-                                                          (x) => String(x.id) === taskIdStr,
-                                                        )
-                                                        if (t) {
-                                                          handleCopyToPool(t)
-                                                        }
-                                                        setListMenuOpenId && setListMenuOpenId(null)
-                                                      }}
-                                                    >
-                                                      到任务池
-                                                    </button>
-                                                    <button
-                                                      className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800 cursor-pointer"
-                                                      onClick={async () => {
-                                                        if (!taskIdStr || !deleteTask) return
-                                                        setListMenuOpenId && setListMenuOpenId(null)
-                                                        await deleteTask(taskIdStr)
-                                                      }}
-                                                    >
-                                                      删除
-                                                    </button>
-                                                  </div>
-                                                )}
                                               </div>
                                             )}
                                           </div>
@@ -1635,6 +1565,101 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         />
       )}
 
+
+
+      {listMenuOpenId && menuPos && createPortal(
+        (() => {
+          const b = (filteredBlocks || []).find((b: any) => String(b.id) === listMenuOpenId)
+          if (!b) return null
+          const taskIdStr = b.task_id ? String(b.task_id) : null
+
+          return (
+            <>
+              <div
+                className="fixed inset-0 z-[9998]"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setListMenuOpenId && setListMenuOpenId(null)
+                  setMenuPos(null)
+                }}
+              />
+              <div
+                className="fixed w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-[9999] pointer-events-auto"
+                style={{ top: menuPos.top, left: menuPos.left }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer text-slate-200"
+                  onClick={() => {
+                    if (!taskIdStr) return
+                    if (!tasks) return
+                    const candidates: Task[] = []
+                      ; (tasks.today || []).forEach((x: Task) => candidates.push(x))
+                      ; (tasks.overdue || []).forEach((x: Task) => candidates.push(x))
+                      ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
+                      ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
+                    const t = candidates.find((x) => String(x.id) === taskIdStr)
+                    if (t && setEditTask) {
+                      setEditTask({
+                        ...t,
+                        blockStart: b.start_at,
+                        blockEnd: b.end_at,
+                      })
+                    }
+                    setListMenuOpenId && setListMenuOpenId(null)
+                    setMenuPos(null)
+                  }}
+                >
+                  修改
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer text-slate-200"
+                  onClick={async () => {
+                    if (!taskIdStr || !completeTask) return
+                    setListMenuOpenId && setListMenuOpenId(null)
+                    setMenuPos(null)
+                    await completeTask(taskIdStr)
+                  }}
+                >
+                  完成
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer text-slate-200"
+                  onClick={() => {
+                    if (!taskIdStr) return
+                    if (!tasks) return
+                    const candidates: Task[] = []
+                      ; (tasks.today || []).forEach((x: Task) => candidates.push(x))
+                      ; (tasks.overdue || []).forEach((x: Task) => candidates.push(x))
+                      ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
+                      ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
+                    const t = candidates.find((x) => String(x.id) === taskIdStr)
+                    if (t) {
+                      handleCopyToPool(t)
+                    }
+                    setListMenuOpenId && setListMenuOpenId(null)
+                    setMenuPos(null)
+                  }}
+                >
+                  到任务池
+                </button>
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800 cursor-pointer"
+                  onClick={async () => {
+                    if (!taskIdStr || !deleteTask) return
+                    setListMenuOpenId && setListMenuOpenId(null)
+                    setMenuPos(null)
+                    await deleteTask(taskIdStr)
+                  }}
+                >
+                  删除
+                </button>
+              </div>
+            </>
+          )
+        })(),
+        document.body
+      )}
 
     </div >
   )
