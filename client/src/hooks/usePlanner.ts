@@ -99,14 +99,16 @@ export function usePlanner(props: UsePlannerProps) {
         ? blocks.filter((b) => new Date(b.end_at) >= now)
         : blocks
 
-      if (listFilterConflict === 'conflicts') {
-        const conflictIds = getConflictIds(res)
-        res = res.filter(b => conflictIds.has(String(b.id)))
-      }
       return res
     },
     [isToday, showFutureOnly, blocks, now, listFilterConflict],
   )
+
+  // Compute conflict IDs for Day View gray-out rendering
+  const dayViewConflictIds = useMemo(() => {
+    if (listFilterConflict !== 'conflicts') return new Set<string>()
+    return getConflictIds(blocks)
+  }, [blocks, listFilterConflict])
 
   const [hourCollapsed, setHourCollapsed] = useState<Record<number, boolean>>({})
 
@@ -742,6 +744,7 @@ export function usePlanner(props: UsePlannerProps) {
     HOUR_PX,
     pxPerMin,
     filteredBlocks,
+    dayViewConflictIds,
     hourCollapsed,
     expandAllHours,
     collapseAllHours,

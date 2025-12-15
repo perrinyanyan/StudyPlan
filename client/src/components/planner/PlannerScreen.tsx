@@ -351,6 +351,7 @@ export function PlannerScreen({
             now,
             date,
             filteredBlocks,
+            dayViewConflictIds: state.dayViewConflictIds,
             hourCollapsed,
             HOUR_PX,
             pxPerMin,

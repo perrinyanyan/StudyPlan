@@ -115,7 +115,6 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     }, [rangeBlocks, listFilterConflict])
 
     const timelineBlocks = (rangeBlocks || []).filter((b: any) => {
-        if (listFilterConflict === 'conflicts' && !conflictIds.has(String(b.id))) return false
 
         const s = new Date(b.start_at)
         const e = new Date(b.end_at)
@@ -719,6 +718,8 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                 const isOverdue = e.getTime() < now.getTime() && status !== 'done'
                                                 const isCurrent = currentBlock && String(currentBlock.id) === String(b.id)
 
+                                                const isGrayedOut = listFilterConflict === 'conflicts' && !conflictIds.has(String(b.id))
+
                                                 return (
                                                     <div
                                                         key={String(b.id)}
@@ -727,7 +728,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                             : `border border-white/5 ${isMenuOpen ? 'z-50' : 'z-10'}`
                                                             } ${isDraggingThis
                                                                 ? (dragConflicts.length > 0 ? 'opacity-80 ring-2 ring-red-500 z-50 cursor-not-allowed' : 'opacity-80 ring-2 ring-blue-500 z-50 cursor-grabbing')
-                                                                : ''}`}
+                                                                : ''} ${isGrayedOut ? 'opacity-40' : ''}`}
                                                         style={{
                                                             top: Math.max(0, top),
                                                             height: Math.max(20, height),

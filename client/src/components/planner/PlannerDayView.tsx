@@ -1074,12 +1074,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                                 const isDraggingThis = dragging?.blockId === blockId
                                 const hasConflict = isDraggingThis && dragConflicts.length > 0
 
+                                const isGrayedOut = state.listFilterConflict === 'conflicts' && state.dayViewConflictIds && !state.dayViewConflictIds.has(blockId)
+
                                 return (
                                   <div
                                     key={String(b.id)}
                                     // Removed z-10/z-40 logic in favor of just z-10 default, z-50 for menu/drag
                                     // Added isTiny background color logic
-                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 shadow-sm transition-colors hover:ring-1 hover:ring-blue-400/50 ${isMenuOpen ? 'z-50 ring-1 ring-[#137fec]/50' : 'z-10'} group ${isConflicting ? 'border-red-500 ring-2 ring-red-500/50 bg-red-900/30' : hasConflict ? 'border-red-500 ring-2 ring-red-500/50' : isDraggingThis ? 'border-blue-400 ring-2 ring-blue-400/50' : 'border-white/5'} ${isTiny ? '' : 'bg-slate-800/90 hover:bg-slate-800'}`}
+                                    className={`absolute left-1 right-1 rounded-xl border text-xs text-white/90 flex flex-col gap-1 shadow-sm transition-colors hover:ring-1 hover:ring-blue-400/50 ${isMenuOpen ? 'z-50 ring-1 ring-[#137fec]/50' : 'z-10'} group ${isConflicting ? 'border-red-500 ring-2 ring-red-500/50 bg-red-900/30' : hasConflict ? 'border-red-500 ring-2 ring-red-500/50' : isDraggingThis ? 'border-blue-400 ring-2 ring-blue-400/50' : 'border-white/5'} ${isTiny ? '' : 'bg-slate-800/90 hover:bg-slate-800'} ${isGrayedOut ? 'opacity-40' : ''}`}
                                     style={{
                                       top: isDraggingThis && dragPreview ?
                                         (new Date(b.start_at).getMinutes() + (dragPreview.start.getTime() - new Date(b.start_at).getTime()) / 60000) * pxPerMin - 4 :

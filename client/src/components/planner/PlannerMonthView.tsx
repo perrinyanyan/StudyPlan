@@ -328,7 +328,6 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
     }, [rangeBlocks, listFilterConflict])
 
     const filteredBlocks = (rangeBlocks || []).filter((b: any) => {
-        if (listFilterConflict === 'conflicts' && !conflictIds.has(String(b.id))) return false
 
         const s = new Date(b.start_at)
         const e = new Date(b.end_at)
@@ -535,11 +534,13 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                 const isCurrent = currentBlock && String(currentBlock.id) === String(b.id)
                                                 const isDraggingThis = dragging?.id === String(b.id)
 
+                                                const isGrayedOut = listFilterConflict === 'conflicts' && !conflictIds.has(String(b.id))
+
                                                 return (
                                                     <div
                                                         key={b.id}
                                                         className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center border ${isDraggingThis ? 'opacity-50 ring-2 ring-blue-500 z-50' : ''} ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
-                                                            } ${status === 'done' ? 'opacity-70' : ''}`}
+                                                            } ${status === 'done' ? 'opacity-70' : ''} ${isGrayedOut ? 'opacity-40' : ''}`}
                                                         style={{
                                                             backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
                                                             borderColor: isCurrent ? '#F59E0B' : baseColor,

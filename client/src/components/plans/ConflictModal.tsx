@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
 interface ConflictItem {
     sessionId: string;
@@ -177,7 +180,7 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-            <div className="w-full max-w-2xl rounded-xl border border-orange-500/30 bg-slate-900 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-full max-w-5xl rounded-xl border border-orange-500/30 bg-slate-900 shadow-2xl flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200">
 
                 {/* Header */}
                 <div className="flex items-center gap-3 px-6 py-4 border-b border-white/10 bg-orange-500/10 rounded-t-xl">
@@ -233,8 +236,14 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
                                 {/* Proposed (New) */}
                                 <div className={`flex-1 w-full bg-[#137fec]/10 border border-[#137fec]/30 rounded-md p-3 relative group ${c.isResolved ? '' : 'cursor-pointer hover:bg-[#137fec]/20'}`}>
                                     <div className="md:hidden text-[10px] uppercase font-bold text-[#137fec] mb-1">拟添加 New</div>
-                                    <div className="font-semibold text-white truncate" title={c.proposedTitle}>{c.proposedTitle}</div>
-                                    {c.proposedContent && <div className="text-xs text-slate-400 truncate mt-0.5" title={c.proposedContent}>{c.proposedContent}</div>}
+                                    <div className="font-semibold text-white break-words whitespace-pre-wrap">{c.proposedTitle}</div>
+                                    {c.proposedContent && (
+                                        <div className="text-xs text-slate-400 mt-1 max-h-40 overflow-y-auto custom-scrollbar break-words prose prose-invert prose-xs max-w-none">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                                {c.proposedContent}
+                                            </ReactMarkdown>
+                                        </div>
+                                    )}
 
 
                                     {editingId === c.sessionId ? (
@@ -276,8 +285,14 @@ export function ConflictModal({ conflicts, onCancel, onConfirm, onResolve, onRes
                                 {/* Existing (Old) */}
                                 <div className={`flex-1 w-full bg-orange-500/10 border border-orange-500/30 rounded-md p-3 relative group ${c.isResolved || !c.existingBlockId ? '' : 'cursor-pointer hover:bg-orange-500/20'}`}>
                                     <div className="md:hidden text-[10px] uppercase font-bold text-orange-400 mb-1">现有 Existing</div>
-                                    <div className="font-semibold text-white/90 truncate" title={c.existingTitle}>{c.existingTitle}</div>
-                                    {c.existingContent && <div className="text-xs text-orange-300/70 truncate mt-0.5" title={c.existingContent}>{c.existingContent}</div>}
+                                    <div className="font-semibold text-white/90 break-words whitespace-pre-wrap">{c.existingTitle}</div>
+                                    {c.existingContent && (
+                                        <div className="text-xs text-orange-300/70 mt-1 max-h-40 overflow-y-auto custom-scrollbar break-words prose prose-invert prose-xs max-w-none">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+                                                {c.existingContent}
+                                            </ReactMarkdown>
+                                        </div>
+                                    )}
 
 
                                     {editingExId === c.existingBlockId ? (
