@@ -20,7 +20,7 @@ interface TaskHoverCardProps {
         updateTaskAdvanced?: (id: string, updates: any) => Promise<any>
         updateBlock?: (id: string, updates: any) => Promise<boolean>
         deleteTask?: (id: string) => Promise<void>
-        completeTask?: (id: string) => Promise<void>
+        completeTask?: (id: string, status?: 'done' | 'open') => Promise<void>
         deleteBlock?: (id: string) => Promise<void>
         setEditTask?: (task: any) => void
         headers?: () => Record<string, string>
@@ -28,7 +28,7 @@ interface TaskHoverCardProps {
         setCenterAlert?: (alert: any) => void
     }
     options: {
-        listTypeOptions?: string[]
+        listTypeOptions?: { name: string, color: string }[]
         listTagOptions?: string[]
     }
 }
@@ -498,12 +498,13 @@ export function TaskHoverCard({
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
                                     onClick={async () => {
-                                        if (actions.completeTask && optimisticTask.id) await actions.completeTask(String(optimisticTask.id))
+                                        const isDone = optimisticTask.status === 'done'
+                                        if (actions.completeTask && optimisticTask.id) await actions.completeTask(String(optimisticTask.id), isDone ? 'open' : 'done')
                                         setCardMenuOpen(false)
                                         onClose()
                                     }}
                                 >
-                                    完成
+                                    {optimisticTask.status === 'done' ? '取消完成' : '完成'}
                                 </button>
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"

@@ -1,10 +1,11 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { getConflictIds } from '../../utils/conflicts'
 import { PlannerListView } from './PlannerListView'
 import { TaskHoverCard } from './TaskHoverCard'
 import type { Task } from '../../types'
 import { toIso, todayStr, fmtRange } from '../../utils/datetime'
 import { MultiSelect } from '../ui/MultiSelect'
+import { TypeFilterDropdown } from '../ui/TypeFilterDropdown'
 
 export interface PlannerWeekViewProps {
     state: any
@@ -15,7 +16,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     const {
         tasks,
         unscheduled,
-        rangeBlocks, // This will hold the week's blocks
+        rangeBlocks: propsRangeBlocks, // Rename destructured prop
         rangeTasks, // This will hold the week's tasks
         now,
         currentBlock,
@@ -79,7 +80,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     }
 
     // Calculate week days
-    const weekDays = []
+    const weekDays: Date[] = []
     if (date) {
         const d = new Date(date)
         const day = d.getDay() // 0 is Sunday
@@ -91,6 +92,19 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
             weekDays.push(current)
         }
     }
+
+    // Optimistic Blocks State (Declared early for use in timelineBlocks)
+    const [optimisticBlocks, setOptimisticBlocks] = useState<any[]>([])
+
+    // Merge optimistic blocks with propsRangeBlocks
+    const rangeBlocks = useMemo(() => {
+        const base = propsRangeBlocks || []
+        const optIds = new Set(optimisticBlocks.map(b => String(b.id)))
+        const filteredBase = base.filter((b: any) => !optIds.has(String(b.id)))
+        return [...filteredBase, ...optimisticBlocks]
+    }, [propsRangeBlocks, optimisticBlocks])
+
+
 
     // Filter blocks
     const conflictIds = useMemo(() => {
@@ -148,8 +162,299 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
 
     const [hoveredTask, setHoveredTask] = useState<any | null>(null)
     const [hoverPos, setHoverPos] = useState<{ x: number, y: number } | null>(null)
-    const hoverTimeoutRef = useRef<any>(null)
+    const [dragging, setDragging] = useState<{ id: string, startY: number, startX: number, originalBlock: any, edge: 'top' | 'bottom' | 'move', startDate: Date } | null>(null)
+    const [dragPreview, setDragPreview] = useState<{ start: Date, end: Date, date: Date } | null>(null)
+    const [dragConflicts, setDragConflicts] = useState<string[]>([])
+    // optimisticBlocks declared above
+    const gridRef = useRef<HTMLDivElement>(null)
+    const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+    const HOUR_HEIGHT = 40
+    const PX_PER_MIN = 40 / 60
+
+    const checkConflicts = (ignoreBlockId: string | null, start: Date, end: Date) => {
+        const conflicts: string[] = []
+        timelineBlocks.forEach((b: any) => {
+            if (ignoreBlockId && String(b.id) === ignoreBlockId) return
+            const bStart = new Date(b.start_at)
+            const bEnd = new Date(b.end_at)
+            if (start < bEnd && end > bStart) {
+                conflicts.push(String(b.id))
+            }
+        })
+        return conflicts
+    }
+
+    useEffect(() => {
+        if (dragging) {
+
+            const handleMouseMove = (e: MouseEvent) => {
+                if (!gridRef.current) return
+
+                const deltaY = e.clientY - dragging.startY
+                const deltaMins = Math.round(deltaY / PX_PER_MIN / 15) * 15 // Snap to 15m
+
+                // Calculate Day Change
+                const gridRect = gridRef.current.getBoundingClientRect()
+                const timeColWidth = 48 // w-12
+                const dayWidth = (gridRect.width - timeColWidth) / 7
+                const relativeX = e.clientX - gridRect.left - timeColWidth
+
+                // Clamp column index 0-6
+                const currentDayIndex = Math.min(6, Math.max(0, Math.floor(relativeX / dayWidth)))
+
+                // But wait, the original logic was simple delta?
+                // "Drag from any day to any day" -> Calculate target day based on cursor X
+
+                const targetDay = weekDays[currentDayIndex]
+                if (!targetDay) return // Should not happen given clamping
+
+                const originalStart = new Date(dragging.originalBlock.start_at)
+                const originalEnd = new Date(dragging.originalBlock.end_at)
+                const durationMins = (originalEnd.getTime() - originalStart.getTime()) / 60000
+
+                let newStart = new Date(originalStart)
+                let newEnd = new Date(originalEnd)
+
+                // Update Date Component
+                newStart.setFullYear(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate())
+                newEnd.setFullYear(targetDay.getFullYear(), targetDay.getMonth(), targetDay.getDate())
+
+                // Update Time Component
+                if (dragging.edge === 'move') {
+                    newStart.setMinutes(originalStart.getMinutes() + deltaMins)
+                    newEnd = new Date(newStart.getTime() + durationMins * 60000)
+                } else if (dragging.edge === 'top') {
+                    newStart.setMinutes(originalStart.getMinutes() + deltaMins)
+                } else if (dragging.edge === 'bottom') {
+                    // Logic for bottom resize if needed, but requirements imply "moving time" primarily. 
+                    // User said "Task can be modified by dragging time (0-24)" -> usually implies moving the whole block OR resizing.
+                    // "Like Day View dragging" implies resizing too. I'll implement both supported edges if I add handles.
+                    newEnd.setMinutes(originalEnd.getMinutes() + deltaMins)
+                }
+
+                // Clamp to 00:00 - 24:00
+                const startMins = newStart.getHours() * 60 + newStart.getMinutes()
+                const endMins = newEnd.getHours() * 60 + newEnd.getMinutes()
+
+                if (startMins < 0) {
+                    newStart.setHours(0, 0, 0, 0)
+                    if (dragging.edge === 'move') newEnd = new Date(newStart.getTime() + durationMins * 60000)
+                }
+
+                // Allow up to 24:00 (which is 00:00 next day, but here we treat strictly as same day constraint?)
+                // User said "0-24 point".
+                // If end crosses 24:00, clamp.
+                // 24:00 is technically 00:00 of next day.
+                // Our logic sets the date to `targetDay`. So 00:00 next day would be `targetDay + 1` 00:00.
+
+                // Simplified constraint: Start and End must be within the target day (or exactly 24:00 end)
+                // Actually easier: Working with Minutes from midnight
+
+                let sMins = originalStart.getHours() * 60 + originalStart.getMinutes() + (dragging.edge === 'move' || dragging.edge === 'top' ? deltaMins : 0)
+                let eMins = originalEnd.getHours() * 60 + originalEnd.getMinutes() + (dragging.edge === 'move' || dragging.edge === 'bottom' ? deltaMins : 0)
+
+                if (dragging.edge === 'move') {
+                    if (sMins < 0) { sMins = 0; eMins = durationMins; }
+                    if (eMins > 1440) { eMins = 1440; sMins = 1440 - durationMins; }
+                } else if (dragging.edge === 'top') {
+                    if (sMins < 0) sMins = 0;
+                    if (sMins > eMins - 15) sMins = eMins - 15; // Min duration
+                } else if (dragging.edge === 'bottom') {
+                    if (eMins > 1440) eMins = 1440
+                    if (eMins < sMins + 15) eMins = sMins + 15
+                }
+
+                newStart.setHours(Math.floor(sMins / 60), sMins % 60, 0, 0)
+                // Handle 24:00 special case for end
+                if (eMins === 1440) {
+                    newEnd = new Date(targetDay)
+                    newEnd.setDate(newEnd.getDate() + 1)
+                    newEnd.setHours(0, 0, 0, 0)
+                } else {
+                    newEnd.setHours(Math.floor(eMins / 60), eMins % 60, 0, 0)
+                }
+
+                setDragPreview({ start: newStart, end: newEnd, date: targetDay })
+
+                const conflicts = checkConflicts(dragging.id, newStart, newEnd)
+                setDragConflicts(conflicts)
+            }
+
+            const handleMouseUp = async () => {
+                if (dragPreview && dragging) {
+                    if (dragConflicts.length > 0) {
+                        if (setCenterAlert) setCenterAlert({ title: '提示', detail: '时间冲突！无法移动到该时间段' })
+                    } else {
+                        actions.updateBlock(dragging.id, {
+                            start_at: dragPreview.start.toISOString(),
+                            end_at: dragPreview.end.toISOString()
+                        })
+                    }
+                }
+                setDragging(null)
+                setDragPreview(null)
+                setDragConflicts([])
+            }
+
+            window.addEventListener('mousemove', handleMouseMove)
+            window.addEventListener('mouseup', handleMouseUp)
+            return () => {
+                window.removeEventListener('mousemove', handleMouseMove)
+                window.removeEventListener('mouseup', handleMouseUp)
+            }
+        }
+    }, [dragging, dragPreview, weekDays, actions]) // Dependencies
+
+    const handleDragStart = (e: React.MouseEvent, blockId: string, edge: 'top' | 'bottom' | 'move', block: any) => {
+        e.stopPropagation()
+        setHoveredTask(null)
+        setHoverPos(null)
+        setDragging({
+            id: blockId,
+            startY: e.clientY,
+            startX: e.clientX,
+            originalBlock: block,
+            edge,
+            startDate: new Date(block.start_at)
+        })
+        const s = new Date(block.start_at)
+        const eDate = new Date(block.end_at)
+        setDragPreview({ start: s, end: eDate, date: s })
+    }
     const [cardMenuOpen, setCardMenuOpen] = useState(false)
+
+    // External Drop Logic
+    const [dropPreview, setDropPreview] = useState<{ dayDate: Date, start: Date, end: Date, color?: string, title: string, hasConflict?: boolean } | null>(null)
+
+    const handleExternalDragOver = (e: React.DragEvent, dayDate: Date) => {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+
+        const gridRect = e.currentTarget.getBoundingClientRect()
+        const relativeY = e.clientY - gridRect.top
+
+        // Calculate minutes from top (0px = startHour)
+        const minutesFromStart = (relativeY / 40) * 60
+        // Snap to 15m
+        const snappedMinutes = Math.round(minutesFromStart / 15) * 15
+
+        const startH = startHour + Math.floor(snappedMinutes / 60)
+        const startM = snappedMinutes % 60
+
+        const start = new Date(dayDate)
+        start.setHours(startH, startM, 0, 0)
+
+        const dragData = (window as any).__dragPoolTask
+        const duration = dragData?.estimateMin || 30
+
+        const end = new Date(start.getTime() + duration * 60000)
+
+        // Check conflicts for preview
+        const conflicts = checkConflicts(null, start, end)
+        const hasConflict = conflicts.length > 0
+
+        setDropPreview({
+            dayDate,
+            start,
+            end,
+            color: dragData?.color,
+            title: dragData?.taskTitle || '新任务',
+            hasConflict
+        })
+    }
+
+    const handleExternalDragLeave = () => {
+        setDropPreview(null)
+    }
+
+    const handleExternalDrop = async (e: React.DragEvent, dayDate: Date) => {
+        e.preventDefault()
+        setDropPreview(null)
+
+        try {
+            const data = JSON.parse(e.dataTransfer.getData('application/json'))
+            if (data.type !== 'pool-task') return
+
+            const gridRect = e.currentTarget.getBoundingClientRect()
+            const relativeY = e.clientY - gridRect.top
+            const minutesFromStart = (relativeY / 40) * 60
+            const snappedMinutes = Math.round(minutesFromStart / 15) * 15
+
+            const startH = startHour + Math.floor(snappedMinutes / 60)
+            const startM = snappedMinutes % 60
+
+            const start = new Date(dayDate)
+            start.setHours(startH, startM, 0, 0)
+
+            const duration = data.estimateMin || 30
+            const end = new Date(start.getTime() + duration * 60000)
+
+            // Check 24:00 constraint
+            const endOfDay = new Date(dayDate)
+            endOfDay.setHours(23, 59, 59, 999)
+
+            // Check conflicts
+            const conflicts = checkConflicts(null, start, end)
+            if (conflicts.length > 0) {
+                if (setCenterAlert) setCenterAlert({ title: '提示', detail: '时间冲突！无法放置到该时间段' })
+                return
+            }
+
+            // Optimistic Update
+            const tempId = data.taskId || 'temp-' + Date.now()
+            const optimisticBlock = {
+                id: tempId,
+                task_id: data.taskId, // Link to task metadata
+                start_at: start.toISOString(),
+                end_at: end.toISOString(),
+            }
+
+            setOptimisticBlocks(prev => [...prev, optimisticBlock])
+
+            if (actions.updateTaskAdvanced) {
+                const isPinned = data.recurrenceRule?.includes('PINNED')
+
+                try {
+                    if (isPinned && actions.createTaskAdvanced) {
+                        await actions.createTaskAdvanced({
+                            title: data.taskTitle,
+                            estimate_min: duration,
+                            due_at: end.toISOString(),
+                            priority: data.priority,
+                            tags: data.tags,
+                            type: data.taskType,
+                            content: data.content,
+                            recurrence_rule: '',
+                            color: data.color
+                        })
+                    } else if (actions.addBlock && isPinned) {
+                        // Fallback
+                        const startStr = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`
+                        const endStr = `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`
+                        await actions.addBlock(startStr, endStr, data.taskId, todayStr(dayDate))
+                    } else {
+                        await actions.updateTaskAdvanced(data.taskId, {
+                            title: data.taskTitle,
+                            due_at: end.toISOString(),
+                            estimate_min: duration,
+                            recurrence_rule: '',
+                        })
+                    }
+                    if (actions.fetchUnscheduled) actions.fetchUnscheduled()
+                } finally {
+                    // Clear optimistic after action (success or fail)
+                    // If success, real data comes from swr/state update.
+                    setOptimisticBlocks(prev => prev.filter(b => b.id !== tempId))
+                }
+            }
+        } catch (err) {
+            console.error('Drop error', err)
+            // Cleanup in case of error outside the try block if any (though try wraps mostly all)
+            setOptimisticBlocks(prev => [])
+        }
+    }
+
 
     // Dynamic Week Timeline Logic
     const [isWeekCollapsed, setIsWeekCollapsed] = useState(true)
@@ -191,7 +496,23 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
             <div className="lg:col-span-6 h-full flex flex-col relative">
                 {/* Filter Toggle Button */}
-                <div className="absolute -top-[3.25rem] right-0 z-10">
+                <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
+                    <button
+                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                        title={isWeekCollapsed ? "展开全部" : "折叠全部"}
+                        onClick={() => setIsWeekCollapsed(!isWeekCollapsed)}
+                    >
+                        <span className="material-symbols-outlined text-sm">
+                            {isWeekCollapsed ? 'unfold_more' : 'unfold_less'}
+                        </span>
+                    </button>
+                    <button
+                        onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                        title="新建任务"
+                    >
+                        <span className="material-symbols-outlined text-sm">add</span>
+                    </button>
                     <button
                         onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
                         className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
@@ -211,16 +532,11 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
 
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-white/70">类型</span>
-                                    <select
-                                        className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
+                                    <TypeFilterDropdown
                                         value={listFilterType}
-                                        onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                                    >
-                                        <option value="all" className="bg-slate-800 text-white">所有</option>
-                                        {(listTypeOptions || []).map((name: string) => (
-                                            <option key={name} value={name} className="bg-slate-800 text-white">{name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setListFilterType && setListFilterType(val)}
+                                        options={listTypeOptions || []}
+                                    />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-white/70">优先</span>
@@ -279,38 +595,18 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                     </select>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    className="p-1 rounded hover:bg-slate-600 transition-colors"
-                                    onClick={() => setIsWeekCollapsed(!isWeekCollapsed)}
-                                >
-                                    {isWeekCollapsed ? (
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                                            <circle cx="12" cy="12" r="9" />
-                                            <path d="M8 9 L12 13 L16 9" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M8 13 L12 17 L16 13" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                    ) : (
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                                            <circle cx="12" cy="12" r="9" />
-                                            <path d="M8 15 L12 11 L16 15" strokeLinecap="round" strokeLinejoin="round" />
-                                            <path d="M8 11 L12 7 L16 11" strokeLinecap="round" strokeLinejoin="round" />
-                                        </svg>
-                                    )}
-                                </button>
-                            </div>
                         </div>
 
                     )}
 
                     {/* Week Grid */}
-                    <div className="flex-1 overflow-y-auto relative">
+                    <div className="flex-1 overflow-y-auto relative" ref={gridRef}>
                         <div className="flex min-w-[800px]">
                             {/* Time Column */}
                             <div className="w-12 flex-shrink-0 border-r border-white/10 bg-slate-900 sticky left-0 z-20">
                                 <div className="h-10 border-b border-white/10 bg-slate-900 sticky top-0 z-30"></div>
                                 {hours.map(h => (
-                                    <div key={h} className="h-[40px] border-b border-white/5 text-[10px] text-gray-500 flex items-start justify-center pt-1">
+                                    <div key={h} className="h-[40px] border-b border-white/10 text-[10px] text-slate-400 flex items-start justify-center pt-1">
                                         {String(h).padStart(2, '0')}:00
                                     </div>
                                 ))}
@@ -331,12 +627,17 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                         </div>
 
                                         {/* Grid */}
-                                        <div className="relative bg-slate-900/50">
+                                        <div
+                                            className="relative bg-slate-900/50"
+                                            onDragOver={(e) => handleExternalDragOver(e, dayDate)}
+                                            onDragLeave={handleExternalDragLeave}
+                                            onDrop={(e) => handleExternalDrop(e, dayDate)}
+                                        >
                                             {hours.map(h => (
-                                                <div key={h} className="h-[40px] border-b border-white/5 relative group">
+                                                <div key={h} className="h-[40px] border-b border-white/10 relative group">
                                                     {/* Add button on hover */}
                                                     <button
-                                                        className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100 hover:bg-white/5 transition-opacity z-0"
+                                                        className="absolute inset-0 w-full h-full opacity-0 group-hover:opacity-100 hover:bg-white/5 transition-opacity z-0 cursor-default"
                                                         onClick={() => {
                                                             if (addBlock) {
                                                                 const start = `${String(h).padStart(2, '0')}:00`
@@ -347,6 +648,21 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                     />
                                                 </div>
                                             ))}
+
+                                            {/* Drop Preview */}
+                                            {dropPreview && dropPreview.dayDate.getDate() === dayDate.getDate() && (
+                                                <div
+                                                    className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden border border-dashed z-40 pointer-events-none ${dropPreview.hasConflict ? 'bg-red-500/50 border-red-500' : 'bg-blue-500/50 border-blue-400'}`}
+                                                    style={{
+                                                        top: Math.max(0, ((dropPreview.start.getHours() - startHour) * 60 + dropPreview.start.getMinutes()) / 60 * 40),
+                                                        height: Math.max(20, (dropPreview.end.getTime() - dropPreview.start.getTime()) / 60000 / 60 * 40),
+                                                    }}
+                                                >
+                                                    <div className="px-1 py-0.5" style={{ backgroundColor: dropPreview.hasConflict ? '#EF4444' : (dropPreview.color ? dropPreview.color + '80' : undefined) }}>
+                                                        {dropPreview.title}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Current Time Line */}
                                             {isToday && (
@@ -360,18 +676,28 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
 
                                             {/* Blocks */}
                                             {timelineBlocks.filter((b: any) => {
-                                                const bDate = new Date(b.start_at)
-                                                return bDate.getDate() === dayDate.getDate() &&
-                                                    bDate.getMonth() === dayDate.getMonth() &&
-                                                    bDate.getFullYear() === dayDate.getFullYear()
+                                                const isDraggingThis = dragging?.id === String(b.id)
+                                                // If dragging, use preview date
+                                                const targetDate = isDraggingThis && dragPreview ? dragPreview.date : new Date(b.start_at)
+
+                                                return targetDate.getDate() === dayDate.getDate() &&
+                                                    targetDate.getMonth() === dayDate.getMonth() &&
+                                                    targetDate.getFullYear() === dayDate.getFullYear()
                                             }).map((b: any) => {
-                                                const s = new Date(b.start_at)
-                                                const e = new Date(b.end_at)
+                                                const isDraggingThis = dragging?.id === String(b.id)
+
+                                                const s = isDraggingThis && dragPreview ? dragPreview.start : new Date(b.start_at)
+                                                const e = isDraggingThis && dragPreview ? dragPreview.end : new Date(b.end_at)
 
                                                 // Calculate position relative to startHour
+                                                // If we cross midnight to next day (24:00), handle it.
+                                                // Or if start is previous day? No, filter ensures we are on the day.
+                                                // Using simple minutes-from-start-hour logic.
+
                                                 const startMin = (s.getHours() - startHour) * 60 + s.getMinutes()
                                                 let endMin = (e.getHours() - startHour) * 60 + e.getMinutes()
-                                                // Handle 24:00 case: if end is midnight (00:00) and it's the next day
+
+                                                // Handle 24:00 case
                                                 if (e.getHours() === 0 && e.getMinutes() === 0 && e.getDate() !== s.getDate()) {
                                                     endMin = (24 - startHour) * 60
                                                 }
@@ -396,20 +722,30 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                 return (
                                                     <div
                                                         key={String(b.id)}
-                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white overflow-hidden bg-slate-800/90 hover:bg-slate-800 hover:ring-1 hover:ring-blue-400/50 ${isCurrent
+                                                        className={`absolute left-0.5 right-0.5 rounded text-xs text-white bg-slate-800/90 hover:bg-slate-800 hover:ring-1 hover:ring-blue-400/50 ${isDraggingThis ? 'overflow-visible' : 'overflow-hidden'} ${isCurrent
                                                             ? 'border-2 border-amber-400 shadow-lg shadow-amber-500/50 z-30 ring-2 ring-amber-400/30 animate-pulse'
                                                             : `border border-white/5 ${isMenuOpen ? 'z-50' : 'z-10'}`
-                                                            }`}
+                                                            } ${isDraggingThis
+                                                                ? (dragConflicts.length > 0 ? 'opacity-80 ring-2 ring-red-500 z-50 cursor-not-allowed' : 'opacity-80 ring-2 ring-blue-500 z-50 cursor-grabbing')
+                                                                : ''}`}
                                                         style={{
                                                             top: Math.max(0, top),
                                                             height: Math.max(20, height),
-                                                            borderColor: isCurrent ? undefined : baseColor,
+                                                            borderColor: isCurrent ? undefined : (isDraggingThis ? (dragConflicts.length > 0 ? '#EF4444' : '#3B82F6') : baseColor),
+                                                        }}
+                                                        onMouseDown={(e) => {
+                                                            // Only start drag if not clicking a button/menu
+                                                            // Simple: start drag
+                                                            handleDragStart(e, String(b.id), 'move', b)
                                                         }}
                                                         onClick={(e) => {
                                                             e.stopPropagation()
-                                                            if (setListMenuOpenId) setListMenuOpenId(isMenuOpen ? null : String(b.id))
+                                                            if (!dragging) { // Only toggle menu if not dragging
+                                                                if (setListMenuOpenId) setListMenuOpenId(isMenuOpen ? null : String(b.id))
+                                                            }
                                                         }}
                                                         onMouseEnter={(e) => {
+                                                            if (dragging) return
                                                             if (b.task_id && meta) {
                                                                 if (hoverTimeoutRef.current) {
                                                                     clearTimeout(hoverTimeoutRef.current)
@@ -429,6 +765,25 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                             }, 300)
                                                         }}
                                                     >
+                                                        {/* Top drag handle */}
+                                                        <div
+                                                            className={`absolute top-0 left-0 right-0 h-1 cursor-n-resize rounded-t-xl transition-opacity z-20 ${isDraggingThis && dragging?.edge === 'top'
+                                                                ? 'opacity-100 bg-blue-500/60'
+                                                                : 'opacity-0 group-hover:opacity-100 hover:bg-blue-500/30'
+                                                                }`}
+                                                            onMouseDown={(e) => handleDragStart(e, String(b.id), 'top', b)}
+                                                        />
+                                                        {/* Bottom drag handle */}
+                                                        <div
+                                                            className={`absolute bottom-0 left-0 right-0 h-1 cursor-s-resize rounded-b-xl transition-opacity z-20 ${isDraggingThis && dragging?.edge === 'bottom'
+                                                                ? 'opacity-100 bg-blue-500/60'
+                                                                : 'opacity-0 group-hover:opacity-100 hover:bg-blue-500/30'
+                                                                }`}
+                                                            onMouseDown={(e) => handleDragStart(e, String(b.id), 'bottom', b)}
+                                                        />
+                                                        {/* Left Grip Handle - Optional in week view as space is tight, but consistent */}
+                                                        {/* Removed Left Grip Handle to save space in Week View columns, relying on main body drag */}
+
                                                         <div className={`px-1 py-0.5 leading-tight flex items-start overflow-hidden ${status === 'done' ? 'opacity-70' : ''}`} style={{ maxHeight: height - 4 }}>
                                                             {status === 'done' && (
                                                                 <span className="mr-0.5 flex-shrink-0 inline-flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500/20" title="已完成">
@@ -465,6 +820,13 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                                                                 </button>
                                                             </div>
                                                         )}
+
+                                                        {/* Drag Time Indicator */}
+                                                        {isDraggingThis && dragPreview && (
+                                                            <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 border border-slate-600 text-white text-[10px] px-1.5 py-0.5 rounded shadow-lg z-50 whitespace-nowrap pointer-events-none">
+                                                                {`${String(dragPreview.start.getHours()).padStart(2, '0')}:${String(dragPreview.start.getMinutes()).padStart(2, '0')} - ${String(dragPreview.end.getHours()).padStart(2, '0')}:${String(dragPreview.end.getMinutes()).padStart(2, '0')}`}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )
                                             })}
@@ -477,7 +839,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                 </section>
             </div >
 
-            <div className="lg:col-span-2 h-full overflow-y-auto">
+            <div className="lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
                 <PlannerListView
                     state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions }}
                     actions={{

@@ -3,6 +3,9 @@ import type { Task } from '../../types'
 import { TaskTypeSelector } from './TaskTypeSelector'
 import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 
 export interface PlannerListViewProps {
   state: any
@@ -11,7 +14,7 @@ export interface PlannerListViewProps {
 
 export function PlannerListView({ state, actions }: PlannerListViewProps) {
   const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
-  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta } = actions || {}
+  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta, completeTask } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
@@ -42,6 +45,8 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     setEditingCell(null)
     if (field === 'title') {
       updateTaskAdvanced(id, { title: value })
+    } else if (field === 'content') {
+      updateTaskAdvanced(id, { content: value })
     } else if (field === 'duration') {
       updateTaskAdvanced(id, { estimate_min: value })
     } else {
@@ -272,145 +277,196 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
                         )
                       )}
                     </div>
-                  </div>
-                  {/* Duration Display */}
-                  <div className="px-1.5 min-w-[3.5rem] flex justify-end">
-                    {editingCell?.id === String(t.id) && editingCell.field === 'duration' ? (
-                      <div className="flex items-center justify-end">
-                        <input
-                          autoFocus
-                          type="number"
-                          className="bg-slate-700 text-white text-xs px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
-                          value={editingCell.value}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => {
-                            const val = parseInt(e.target.value) || 0
-                            setEditingCell({
-                              ...editingCell,
-                              value: val
-                            })
-                          }}
-                          onBlur={() => handleSave(String(t.id), 'duration', editingCell.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') handleSave(String(t.id), 'duration', editingCell.value)
-                            if (e.key === 'Escape') setEditingCell(null)
-                          }}
-                        />
-                        <span className="text-xs text-slate-400 ml-0.5">min</span>
-                      </div>
-                    ) : (
-                      <p
-                        className="text-xs text-slate-400 cursor-pointer hover:text-slate-200 hover:underline decoration-dashed decoration-slate-500 text-right"
-                        onDoubleClick={(e) => {
-                          e.stopPropagation()
-                          setEditingCell({ id: String(t.id), field: 'duration', value: t.estimate_min || 30 })
-                        }}
-                      >
-                        {t.estimate_min || 30} min
-                      </p>
-                    )}
-                  </div>
-                  {/* Action menu */}
-                  <div className="relative">
-                    <button
-                      className="flex h-7 w-7 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
-                      onClick={(e) => {
+
+                    {/* Content (Markdown) */}
+                    <div
+                      className="mt-1"
+                      onDoubleClick={(e) => {
                         e.stopPropagation()
-                        if (!setUnschedMenuOpenId) return
-                        const idStr = String(t.id)
-                        setUnschedMenuOpenId((prev: string | null) => (prev === idStr ? null : idStr))
+                        setEditingCell({ id: String(t.id), field: 'content', value: t.content || '' })
                       }}
                     >
-                      <span className="material-symbols-outlined text-lg">more_vert</span>
-                    </button>
-                    {unschedMenuOpenId === String(t.id) && (
-                      <div
-                        className={`absolute right-0 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20 ${menuPositionClass}`}
-                      >
-                        <button
-                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                          onClick={() => {
-                            setEditTask && setEditTask(t)
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                      {editingCell?.id === String(t.id) && editingCell.field === 'content' ? (
+                        <textarea
+                          autoFocus
+                          className="w-full bg-slate-700 text-slate-200 p-2 rounded text-xs min-h-[80px] border border-blue-500/50 focus:border-blue-500 focus:ring-0 outline-none resize-y"
+                          value={editingCell.value}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
+                          onBlur={() => handleSave(String(t.id), 'content', editingCell.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && e.ctrlKey) {
+                              handleSave(String(t.id), 'content', editingCell.value)
+                            }
+                            if (e.key === 'Escape') setEditingCell(null)
                           }}
-                        >
-                          修改/安排
-                        </button>
-                        <button
-                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                          onClick={async () => {
-                            if (!updateTaskAdvanced) {
-                              alert('updateTaskAdvanced 函数不可用')
-                              return
-                            }
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            const parts = (t.recurrence_rule || 'POOL').split(';')
-                            const isTodayMust = parts.includes('TODAY_MUST')
-                            let newParts = parts.filter(p => p !== 'TODAY_MUST')
-                            if (!isTodayMust) {
-                              newParts.push('TODAY_MUST')
-                            }
-                            // Ensure POOL is present if it's the only rule or if it was there
-                            if (!newParts.includes('POOL') && (parts.includes('POOL') || newParts.length === 0 || (newParts.length === 1 && newParts[0] === 'TODAY_MUST'))) {
-                              if (!newParts.includes('POOL')) newParts.unshift('POOL')
-                            }
-
-                            const newRule = newParts.join(';')
-                            await updateTaskAdvanced(t.id, {
-                              title: t.title,
-                              recurrence_rule: newRule,
-                            })
-                          }}
-                        >
-                          {t.recurrence_rule?.includes('TODAY_MUST') ? '取消今日必' : '今日必'}
-                        </button>
-                        <button
-                          className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
-                          onClick={async () => {
-                            if (!updateTaskAdvanced) {
-                              alert('updateTaskAdvanced 函数不可用')
-                              return
-                            }
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            const parts = (t.recurrence_rule || 'POOL').split(';')
-                            const isPinned = parts.includes('PINNED')
-                            let newParts = parts.filter(p => p !== 'PINNED')
-                            if (!isPinned) {
-                              newParts.push('PINNED')
-                            }
-                            if (newParts.length === 0) newParts.push('POOL')
-                            const newRule = newParts.join(';')
-
-                            const result = await updateTaskAdvanced(t.id, {
-                              title: t.title,
-                              recurrence_rule: newRule,
-                            })
-                          }}
-                        >
-                          {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
-                        </button>
-
-                        <button
-                          className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
-                          onClick={async () => {
-                            if (!deleteTask) return
-                            setUnschedMenuOpenId && setUnschedMenuOpenId(null)
-                            await deleteTask(t.id)
-                          }}
-                        >
-                          删除
-                        </button>
-                      </div>
-                    )}
+                          placeholder="添加描述 (支持 Markdown)..."
+                        />
+                      ) : (
+                        t.content ? (
+                          <div className="text-xs text-slate-400/90 py-0.5" onClick={e => e.stopPropagation()}>
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              rehypePlugins={[rehypeRaw]}
+                              components={{
+                                p: ({ node, ...props }) => <p className="mb-1 last:mb-0 leading-relaxed" {...props} />,
+                                a: ({ node, ...props }) => <a className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+                                ul: ({ node, ...props }) => <ul className="list-disc list-inside space-y-0.5 mb-1" {...props} />,
+                                ol: ({ node, ...props }) => <ol className="list-decimal list-inside space-y-0.5 mb-1" {...props} />,
+                                code: ({ node, className, children, ...props }) => <code className="bg-black/30 px-1 py-0.5 rounded text-[10px] font-mono" {...props}>{children}</code>,
+                              }}
+                            >
+                              {t.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-600/50 italic py-0.5 select-none">双击添加详情...</div>
+                        )
+                      )}
+                    </div>
                   </div>
-                  {/* TODAY_MUST and PINNED icons */}
-                  <div className="flex flex-col items-center justify-center w-4 gap-1">
-                    {t.recurrence_rule?.includes('TODAY_MUST') && (
-                      <span className="text-[12px] font-black text-amber-400 leading-none italic tracking-tighter" style={{ fontFamily: 'sans-serif' }}>do</span>
-                    )}
-                    {t.recurrence_rule?.includes('PINNED') && (
-                      <span className="material-symbols-outlined text-[14px] text-amber-400 rotate-45">push_pin</span>
-                    )}
+                  {/* Right Side Group: Duration, Menu, Icons */}
+                  <div className="flex items-center gap-0.5 ml-auto shrink-0">
+                    {/* Duration Display */}
+                    <div className="px-0.5 flex justify-end">
+                      {editingCell?.id === String(t.id) && editingCell.field === 'duration' ? (
+                        <div className="flex items-center justify-end">
+                          <input
+                            autoFocus
+                            type="number"
+                            className="bg-slate-700 text-white text-xs px-0.5 py-0 rounded w-[40px] text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none border border-blue-500/50 focus:border-blue-500 focus:ring-0"
+                            value={editingCell.value}
+                            onClick={e => e.stopPropagation()}
+                            onChange={e => {
+                              const val = parseInt(e.target.value) || 0
+                              setEditingCell({
+                                ...editingCell,
+                                value: val
+                              })
+                            }}
+                            onBlur={() => handleSave(String(t.id), 'duration', editingCell.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSave(String(t.id), 'duration', editingCell.value)
+                              if (e.key === 'Escape') setEditingCell(null)
+                            }}
+                          />
+                          <span className="text-xs text-slate-400 ml-0.5">min</span>
+                        </div>
+                      ) : (
+                        <p
+                          className="text-xs text-slate-400 cursor-pointer hover:text-slate-200 hover:underline decoration-dashed decoration-slate-500 text-right"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            setEditingCell({ id: String(t.id), field: 'duration', value: t.estimate_min || 30 })
+                          }}
+                        >
+                          {t.estimate_min || 30} min
+                        </p>
+                      )}
+                    </div>
+                    {/* Action menu */}
+                    <div className="relative">
+                      <button
+                        className="flex h-6 w-6 items-center justify-center rounded-full text-white/70 hover:bg-white/10 hover:text-white"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (!setUnschedMenuOpenId) return
+                          const idStr = String(t.id)
+                          setUnschedMenuOpenId((prev: string | null) => (prev === idStr ? null : idStr))
+                        }}
+                      >
+                        <span className="material-symbols-outlined text-lg">more_vert</span>
+                      </button>
+                      {unschedMenuOpenId === String(t.id) && (
+                        <div
+                          className={`absolute right-0 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-20 ${menuPositionClass}`}
+                        >
+                          <button
+                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                            onClick={() => {
+                              setEditTask && setEditTask(t)
+                              setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                            }}
+                          >
+                            修改/安排
+                          </button>
+                          <button
+                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                            onClick={async () => {
+                              if (!updateTaskAdvanced) {
+                                alert('updateTaskAdvanced 函数不可用')
+                                return
+                              }
+                              setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                              const parts = (t.recurrence_rule || 'POOL').split(';')
+                              const isTodayMust = parts.includes('TODAY_MUST')
+                              let newParts = parts.filter(p => p !== 'TODAY_MUST')
+                              if (!isTodayMust) {
+                                newParts.push('TODAY_MUST')
+                              }
+                              // Ensure POOL is present if it's the only rule or if it was there
+                              if (!newParts.includes('POOL') && (parts.includes('POOL') || newParts.length === 0 || (newParts.length === 1 && newParts[0] === 'TODAY_MUST'))) {
+                                if (!newParts.includes('POOL')) newParts.unshift('POOL')
+                              }
+
+                              const newRule = newParts.join(';')
+                              await updateTaskAdvanced(t.id, {
+                                title: t.title,
+                                recurrence_rule: newRule,
+                              })
+                            }}
+                          >
+                            {t.recurrence_rule?.includes('TODAY_MUST') ? '取消今日必' : '今日必'}
+                          </button>
+                          <button
+                            className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800"
+                            onClick={async () => {
+                              if (!updateTaskAdvanced) {
+                                alert('updateTaskAdvanced 函数不可用')
+                                return
+                              }
+                              setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                              const parts = (t.recurrence_rule || 'POOL').split(';')
+                              const isPinned = parts.includes('PINNED')
+                              let newParts = parts.filter(p => p !== 'PINNED')
+                              if (!isPinned) {
+                                newParts.push('PINNED')
+                              }
+                              if (newParts.length === 0) newParts.push('POOL')
+                              const newRule = newParts.join(';')
+
+                              const result = await updateTaskAdvanced(t.id, {
+                                title: t.title,
+                                recurrence_rule: newRule,
+                              })
+                            }}
+                          >
+                            {t.recurrence_rule?.includes('PINNED') ? '取消固定' : '固定'}
+                          </button>
+
+
+                          <button
+                            className="block w-full px-3 py-1.5 text-left text-xs text-rose-300 hover:bg-slate-800"
+                            onClick={async () => {
+                              if (!deleteTask) return
+                              setUnschedMenuOpenId && setUnschedMenuOpenId(null)
+                              await deleteTask(t.id)
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {/* TODAY_MUST and PINNED icons */}
+                    <div className="flex flex-col items-center justify-center w-3 gap-0.5 ml-0.5">
+                      {t.recurrence_rule?.includes('TODAY_MUST') && (
+                        <span className="text-[10px] font-black text-amber-400 leading-none italic tracking-tighter" style={{ fontFamily: 'sans-serif' }}>do</span>
+                      )}
+                      {t.recurrence_rule?.includes('PINNED') && (
+                        <span className="material-symbols-outlined text-[12px] text-amber-400 rotate-45">push_pin</span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {listEdit && listEdit.taskId === String(t.id) && (
@@ -490,13 +546,7 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
           })}
         </div>
       </div>
-      <button
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#137fec] py-2.5 text-sm font-bold text-white hover:bg-[#0f6cc8]"
-        onClick={() => setShowCreateTask && setShowCreateTask(true)}
-      >
-        <span className="material-symbols-outlined text-xl">add_circle</span>
-        添加新任务
-      </button>
+
     </section >
   )
 }

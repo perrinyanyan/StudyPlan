@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { AddBlock } from './AddBlock'
 import { PlannerListView } from './PlannerListView'
 import type { Task } from '../../types'
@@ -7,6 +7,7 @@ import { TaskTagSelector } from './TaskTagSelector'
 import { TaskPrioritySelector } from './TaskPrioritySelector'
 import { TaskHoverCard } from './TaskHoverCard'
 import { MultiSelect } from '../ui/MultiSelect'
+import { TypeFilterDropdown } from '../ui/TypeFilterDropdown'
 import { fmtRange } from '../../utils/datetime'
 
 import { createPortal } from 'react-dom'
@@ -25,7 +26,8 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     isToday,
     currentBlock,
     now,
-    filteredBlocks,
+    date,
+    filteredBlocks: propsFilteredBlocks, // Rename for local merging
     hourCollapsed,
     HOUR_PX,
     pxPerMin,
@@ -114,6 +116,17 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     setDragPreview({ start: originalStart, end: originalEnd })
     setDragPreview({ start: originalStart, end: originalEnd })
   }
+
+  // Optimistic Blocks State
+  const [optimisticBlocks, setOptimisticBlocks] = useState<any[]>([])
+
+  // Merge optimistic blocks with propsFilteredBlocks
+  const filteredBlocks = useMemo(() => {
+    const base = propsFilteredBlocks || []
+    const optIds = new Set(optimisticBlocks.map(b => String(b.id)))
+    const filteredBase = base.filter((b: any) => !optIds.has(String(b.id)))
+    return [...filteredBase, ...optimisticBlocks]
+  }, [propsFilteredBlocks, optimisticBlocks])
 
   // Auto-collapse state
   const [autoCollapsePending, setAutoCollapsePending] = useState(false)
@@ -323,15 +336,16 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       const minute = Math.round((relativeY / HOUR_PX) * 60 / SNAP_MINUTES) * SNAP_MINUTES
       const clampedMinute = Math.min(55, Math.max(0, minute))
 
-      // Create start and end time based on today's date with the dropped hour/minute
+      // Create start and end time based on the DISPLAYED date with the dropped hour/minute
       // Use explicit date construction to avoid timezone issues
-      const startTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour, clampedMinute, 0, 0)
+      const displayedDate = new Date(date)
+      const startTime = new Date(displayedDate.getFullYear(), displayedDate.getMonth(), displayedDate.getDate(), hour, clampedMinute, 0, 0)
 
       const estimateMin = data.estimateMin || 30
       const endTime = new Date(startTime.getTime() + estimateMin * 60000)
 
       // Validate single day constraint
-      const startOfDay = new Date(now)
+      const startOfDay = new Date(displayedDate)
       startOfDay.setHours(0, 0, 0, 0)
       const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000)
 
@@ -350,46 +364,64 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
       // Update the task with scheduled time
       // Server expects due_at (end time) and estimate_min to create time_block
-      if (updateTaskAdvanced) {
-        const isPinned = data.recurrenceRule?.includes('PINNED')
-        // For pinned pool tasks: create a NEW task (copy) and schedule it.
-        // This ensures deletion of the scheduled task doesn't affect the pool task.
-        if (isPinned && createTaskAdvanced) {
-          await createTaskAdvanced({
-            title: data.taskTitle,
-            estimate_min: estimateMin,
-            due_at: endTime.toISOString(),
-            priority: data.priority,
-            tags: data.tags,
-            type: data.taskType,
-            content: data.content,
-            recurrence_rule: '', // Clear POOL/PINNED flags
-            color: data.color
-          })
-        } else if (addBlock && isPinned) {
-          // Fallback if createTaskAdvanced is missing (should not happen)
-          const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
-          const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
-          const dateStr = now.toISOString().split('T')[0]
-          await addBlock(startStr, endStr, data.taskId, dateStr)
-        } else {
+      // Update the task with scheduled time
+      // Server expects due_at (end time) and estimate_min to create time_block
 
-          // For non-pinned pool tasks: update task to remove from pool and schedule it
-          await updateTaskAdvanced(data.taskId, {
-            title: data.taskTitle, // Required field
-            due_at: endTime.toISOString(), // Server uses this as end time
-            estimate_min: estimateMin, // Duration in minutes
-            recurrence_rule: '', // Clear POOL flag (empty string, not null)
-          })
+      // Optimistic Update
+      const tempId = data.taskId || 'temp-' + Date.now()
+      const optimisticBlock = {
+        id: tempId,
+        task_id: data.taskId, // Link to task metadata
+        start_at: startTime.toISOString(),
+        end_at: endTime.toISOString(),
+      }
+      setOptimisticBlocks(prev => [...prev, optimisticBlock])
+
+      try {
+        if (updateTaskAdvanced) {
+          const isPinned = data.recurrenceRule?.includes('PINNED')
+          // For pinned pool tasks: create a NEW task (copy) and schedule it.
+          // This ensures deletion of the scheduled task doesn't affect the pool task.
+          if (isPinned && createTaskAdvanced) {
+            await createTaskAdvanced({
+              title: data.taskTitle,
+              estimate_min: estimateMin,
+              due_at: endTime.toISOString(),
+              priority: data.priority,
+              tags: data.tags,
+              type: data.taskType,
+              content: data.content,
+              recurrence_rule: '', // Clear POOL/PINNED flags
+              color: data.color
+            })
+          } else if (addBlock && isPinned) {
+            // Fallback if createTaskAdvanced is missing (should not happen)
+            const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
+            const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
+            const dateStr = date
+            await addBlock(startStr, endStr, data.taskId, dateStr)
+          } else {
+
+            // For non-pinned pool tasks: update task to remove from pool and schedule it
+            await updateTaskAdvanced(data.taskId, {
+              title: data.taskTitle, // Required field
+              due_at: endTime.toISOString(), // Server uses this as end time
+              estimate_min: estimateMin, // Duration in minutes
+              recurrence_rule: '', // Clear POOL flag (empty string, not null)
+            })
+          }
+
+          // Refresh data
+          fetchUnscheduled && fetchUnscheduled()
+          // Trigger auto-collapse after drop
+          setAutoCollapsePending(true)
         }
-
-        // Refresh data
-        fetchUnscheduled && fetchUnscheduled()
-        // Trigger auto-collapse after drop
-        setAutoCollapsePending(true)
+      } finally {
+        setOptimisticBlocks(prev => prev.filter(b => b.id !== tempId))
       }
     } catch (err) {
       console.error('Drop error:', err)
+      setOptimisticBlocks(prev => [])
     }
   }
 
@@ -603,11 +635,49 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     }
   }
 
+  const displayedHoverTask = useMemo(() => {
+    if (!hoveredTask) return null
+    if (!tasksFlat) return hoveredTask
+    const fresh = tasksFlat.find((t: Task) => String(t.id) === String(hoveredTask.task_id || hoveredTask.id))
+    if (fresh) {
+      return { ...hoveredTask, ...fresh, status: fresh.status }
+    }
+    return hoveredTask
+  }, [hoveredTask, tasksFlat])
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
       <div className="md:col-span-3 lg:col-span-4 relative">
         {/* Filter Toggle Button */}
-        <div className="absolute -top-[3.25rem] right-0 z-10">
+        {/* Filter Toggle Button */}
+        <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
+          {(() => {
+            const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
+            return (
+              <button
+                className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                title={hasCollapsed ? "展开全部" : "折叠全部"}
+                onClick={() => {
+                  if (hasCollapsed) {
+                    actions.expandAllHours?.()
+                  } else {
+                    actions.collapseAllHours?.()
+                  }
+                }}
+              >
+                <span className="material-symbols-outlined text-sm">
+                  {hasCollapsed ? 'unfold_more' : 'unfold_less'}
+                </span>
+              </button>
+            )
+          })()}
+          <button
+            onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+            title="新建任务"
+          >
+            <span className="material-symbols-outlined text-sm">add</span>
+          </button>
           <button
             onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
             className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
@@ -627,20 +697,11 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
 
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-white/70">类型</span>
-                    <select
-                      className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
+                    <TypeFilterDropdown
                       value={listFilterType}
-                      onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                    >
-                      <option value="all" className="bg-slate-800 text-white">
-                        所有
-                      </option>
-                      {(listTypeOptions || []).map((name: string) => (
-                        <option key={name} value={name} className="bg-slate-800 text-white">
-                          {name}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(val) => setListFilterType && setListFilterType(val)}
+                      options={listTypeOptions || []}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-white/70">优先</span>
@@ -719,40 +780,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                     </select>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 justify-end">
 
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
-                      return (
-                        <button
-                          className="p-1 rounded hover:bg-slate-600 transition-colors"
-                          onClick={() => {
-                            if (hasCollapsed) {
-                              actions.expandAllHours?.()
-                            } else {
-                              actions.collapseAllHours?.()
-                            }
-                          }}
-                        >
-                          {hasCollapsed ? (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                              <circle cx="12" cy="12" r="9" />
-                              <path d="M8 9 L12 13 L16 9" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M8 13 L12 17 L16 13" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          ) : (
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                              <circle cx="12" cy="12" r="9" />
-                              <path d="M8 15 L12 11 L16 15" strokeLinecap="round" strokeLinejoin="round" />
-                              <path d="M8 11 L12 7 L16 11" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                          )}
-                        </button>
-                      )
-                    })()}
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -1510,7 +1538,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         </section>
       </div >
 
-      <div className="md:col-span-2 lg:col-span-2">
+      <div className="md:col-span-2 lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
         <PlannerListView
           state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTagOptions }}
           actions={{
@@ -1528,9 +1556,9 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         />
       </div>
 
-      {hoveredTask && hoverPosition && (
+      {displayedHoverTask && hoverPosition && (
         <TaskHoverCard
-          task={hoveredTask}
+          task={displayedHoverTask}
           position={hoverPosition}
           onClose={() => {
             setHoveredTask(null)
@@ -1573,6 +1601,15 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
           if (!b) return null
           const taskIdStr = b.task_id ? String(b.task_id) : null
 
+          if (!taskIdStr) return
+          const candidates: Task[] = []
+            ; (tasks?.today || []).forEach((x: Task) => candidates.push(x))
+            ; (tasks?.overdue || []).forEach((x: Task) => candidates.push(x))
+            ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
+            ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
+          const t = candidates.find((x) => String(x.id) === taskIdStr)
+          const isDone = t?.status === 'done'
+
           return (
             <>
               <div
@@ -1591,14 +1628,6 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer text-slate-200"
                   onClick={() => {
-                    if (!taskIdStr) return
-                    if (!tasks) return
-                    const candidates: Task[] = []
-                      ; (tasks.today || []).forEach((x: Task) => candidates.push(x))
-                      ; (tasks.overdue || []).forEach((x: Task) => candidates.push(x))
-                      ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
-                      ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
-                    const t = candidates.find((x) => String(x.id) === taskIdStr)
                     if (t && setEditTask) {
                       setEditTask({
                         ...t,
@@ -1618,22 +1647,14 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
                     if (!taskIdStr || !completeTask) return
                     setListMenuOpenId && setListMenuOpenId(null)
                     setMenuPos(null)
-                    await completeTask(taskIdStr)
+                    await completeTask(taskIdStr, isDone ? 'open' : 'done')
                   }}
                 >
-                  完成
+                  {isDone ? '取消完成' : '完成'}
                 </button>
                 <button
                   className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 cursor-pointer text-slate-200"
                   onClick={() => {
-                    if (!taskIdStr) return
-                    if (!tasks) return
-                    const candidates: Task[] = []
-                      ; (tasks.today || []).forEach((x: Task) => candidates.push(x))
-                      ; (tasks.overdue || []).forEach((x: Task) => candidates.push(x))
-                      ; (unscheduled || []).forEach((x: Task) => candidates.push(x))
-                      ; (rangeTasks || []).forEach((x: Task) => candidates.push(x))
-                    const t = candidates.find((x) => String(x.id) === taskIdStr)
                     if (t) {
                       handleCopyToPool(t)
                     }

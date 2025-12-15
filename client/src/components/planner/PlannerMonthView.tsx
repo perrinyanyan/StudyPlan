@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { getConflictIds } from '../../utils/conflicts'
 import { PlannerListView } from './PlannerListView'
 import { TaskHoverCard } from './TaskHoverCard'
 import { todayStr } from '../../utils/datetime'
 import { MultiSelect } from '../ui/MultiSelect'
+import { TypeFilterDropdown } from '../ui/TypeFilterDropdown'
 
 export interface PlannerMonthViewProps {
     state: any
@@ -12,7 +13,7 @@ export interface PlannerMonthViewProps {
 
 export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
     const {
-        rangeBlocks, // This will hold the month's blocks
+        rangeBlocks: propsRangeBlocks, // This will hold the month's blocks
         now,
         currentBlock,
         taskTitleMap,
@@ -45,6 +46,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
         setShowCreateTask,
         updateBlock,
         deleteBlock,
+        addBlock,
         setListFilterType,
         setListFilterPriority,
         setListFilterTag,
@@ -71,6 +73,219 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
             // No due_at for pool tasks
         }
         await createTaskAdvanced(payload)
+    }
+
+    // Optimistic Blocks State
+    const [optimisticBlocks, setOptimisticBlocks] = useState<any[]>([])
+
+    // Merge optimistic blocks with propsRangeBlocks
+    const rangeBlocks = useMemo(() => {
+        const base = propsRangeBlocks || []
+        const optIds = new Set(optimisticBlocks.map(b => String(b.id)))
+        const filteredBase = base.filter((b: any) => !optIds.has(String(b.id)))
+        return [...filteredBase, ...optimisticBlocks]
+    }, [propsRangeBlocks, optimisticBlocks])
+
+    // Drag and Drop Logic
+    const [dragging, setDragging] = useState<{ id: string, originalBlock: any } | null>(null)
+    const [dragPreview, setDragPreview] = useState<{ date: Date } | null>(null)
+    const [dragMousePos, setDragMousePos] = useState<{ x: number, y: number } | null>(null)
+    const [dragConflicts, setDragConflicts] = useState<string[]>([])
+
+    // Conflict check function for internal drag
+    const checkInternalConflicts = (blockId: string, targetDate: Date, block: any): string[] => {
+        const originalStart = new Date(block.start_at)
+        const originalEnd = new Date(block.end_at)
+        const duration = originalEnd.getTime() - originalStart.getTime()
+
+        const newStart = new Date(targetDate)
+        newStart.setHours(originalStart.getHours(), originalStart.getMinutes(), 0, 0)
+        const newEnd = new Date(newStart.getTime() + duration)
+
+        const conflicts: string[] = []
+        for (const b of rangeBlocks || []) {
+            if (String(b.id) === blockId) continue
+            const bStart = new Date(b.start_at)
+            const bEnd = new Date(b.end_at)
+            // Check same day
+            if (bStart.toDateString() !== newStart.toDateString()) continue
+            // Check overlap
+            if (newStart.getTime() < bEnd.getTime() && newEnd.getTime() > bStart.getTime()) {
+                conflicts.push(String(b.id))
+            }
+        }
+        return conflicts
+    }
+
+    // Handle Drop (Global MouseUp)
+    useEffect(() => {
+        if (dragging) {
+            const handleMouseMove = (e: MouseEvent) => {
+                setDragMousePos({ x: e.clientX, y: e.clientY })
+            }
+            const handleMouseUp = async () => {
+                if (dragPreview && dragging) {
+                    // Check conflicts before committing
+                    if (dragConflicts.length > 0) {
+                        if (setCenterAlert) {
+                            setCenterAlert({ title: '时间冲突', detail: '目标日期存在时间冲突，请选择其他日期' })
+                        }
+                        setDragging(null)
+                        setDragPreview(null)
+                        setDragMousePos(null)
+                        setDragConflicts([])
+                        return
+                    }
+
+                    const originalStart = new Date(dragging.originalBlock.start_at)
+                    const originalEnd = new Date(dragging.originalBlock.end_at)
+                    const duration = originalEnd.getTime() - originalStart.getTime()
+
+                    const newStart = new Date(dragPreview.date)
+                    // Keep original time
+                    newStart.setHours(originalStart.getHours(), originalStart.getMinutes(), 0, 0)
+                    const newEnd = new Date(newStart.getTime() + duration)
+
+                    // Optimistic update handled by render logic, now commit
+                    if (updateBlock) {
+                        updateBlock(dragging.id, {
+                            start_at: newStart.toISOString(),
+                            end_at: newEnd.toISOString()
+                        })
+                    }
+                }
+                setDragging(null)
+                setDragPreview(null)
+                setDragMousePos(null)
+                setDragConflicts([])
+            }
+            window.addEventListener('mousemove', handleMouseMove)
+            window.addEventListener('mouseup', handleMouseUp)
+            return () => {
+                window.removeEventListener('mousemove', handleMouseMove)
+                window.removeEventListener('mouseup', handleMouseUp)
+            }
+        }
+    }, [dragging, dragPreview, dragConflicts, updateBlock, setCenterAlert, rangeBlocks])
+
+    // Update conflicts when dragPreview changes
+    useEffect(() => {
+        if (dragging && dragPreview) {
+            const conflicts = checkInternalConflicts(dragging.id, dragPreview.date, dragging.originalBlock)
+            setDragConflicts(conflicts)
+        }
+    }, [dragging, dragPreview])
+
+    const handleDragStart = (e: React.MouseEvent, block: any) => {
+        e.stopPropagation()
+        setDragging({ id: String(block.id), originalBlock: block })
+        setDragPreview({ date: new Date(block.start_at) })
+        setDragMousePos({ x: e.clientX, y: e.clientY })
+    }
+
+    // External Drag Handlers
+    const [externalDragOver, setExternalDragOver] = useState<{ date: Date } | null>(null)
+
+    const handleExternalDragOver = (e: React.DragEvent, date: Date) => {
+        e.preventDefault()
+        setExternalDragOver({ date })
+    }
+
+    const handleExternalDrop = async (e: React.DragEvent, date: Date) => {
+        e.preventDefault()
+        setExternalDragOver(null)
+        try {
+            // Try to get data from global context first (more robust) or dataTransfer
+            let data = (window as any).__dragPoolTask
+            if (!data) {
+                try {
+                    const json = e.dataTransfer.getData('application/json')
+                    if (json) data = JSON.parse(json)
+                } catch (e) { /* ignore */ }
+            }
+
+            if (!data) return
+            // Allow pool-task type or fallback if custom data struct
+            if (data.type && data.type !== 'pool-task') return
+
+            // Calculate Start Time: Append to end of existing tasks
+            const dayStart = new Date(date)
+            dayStart.setHours(0, 0, 0, 0)
+            const dayEnd = new Date(date)
+            dayEnd.setHours(23, 59, 59, 999)
+
+            const dayBlocks = (rangeBlocks || []).filter((b: any) => {
+                const bStart = new Date(b.start_at)
+                return bStart >= dayStart && bStart <= dayEnd
+            })
+
+            let startTime = new Date(date)
+            if (dayBlocks.length > 0) {
+                // Find max end time
+                const maxEnd = dayBlocks.reduce((max: number, b: any) => {
+                    return Math.max(max, new Date(b.end_at).getTime())
+                }, dayStart.getTime())
+                startTime = new Date(maxEnd)
+            } else {
+                // Default to 09:00 if empty
+                startTime.setHours(9, 0, 0, 0)
+            }
+
+            // Cap at 23:45?
+            if (startTime.getHours() >= 24) {
+                startTime.setHours(23, 45, 0, 0)
+            }
+
+            const estimateMin = data.estimateMin || 60
+            const endTime = new Date(startTime.getTime() + estimateMin * 60000)
+
+            // Optimistic Update
+            const tempId = data.taskId || 'temp-' + Date.now()
+            const optimisticBlock = {
+                id: tempId,
+                task_id: data.taskId,
+                start_at: startTime.toISOString(),
+                end_at: endTime.toISOString(),
+            }
+            setOptimisticBlocks(prev => [...prev, optimisticBlock])
+
+            try {
+                if (updateTaskAdvanced) {
+                    const isPinned = data.recurrenceRule?.includes('PINNED')
+                    if (isPinned && createTaskAdvanced) {
+                        await createTaskAdvanced({
+                            title: data.taskTitle,
+                            estimate_min: estimateMin,
+                            due_at: endTime.toISOString(),
+                            priority: data.priority,
+                            tags: data.tags,
+                            type: data.taskType,
+                            content: data.content,
+                            recurrence_rule: '',
+                            color: data.color
+                        })
+                    } else if (addBlock && isPinned) {
+                        const startStr = `${String(startTime.getHours()).padStart(2, '0')}:${String(startTime.getMinutes()).padStart(2, '0')}`
+                        const endStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`
+                        await addBlock(startStr, endStr, data.taskId, todayStr(date))
+                    } else {
+                        await updateTaskAdvanced(data.taskId, {
+                            title: data.taskTitle,
+                            due_at: endTime.toISOString(),
+                            estimate_min: estimateMin,
+                            recurrence_rule: '',
+                        })
+                    }
+                    if (fetchUnscheduled) fetchUnscheduled()
+                }
+            } finally {
+                setOptimisticBlocks(prev => prev.filter(b => b.id !== tempId))
+            }
+
+        } catch (err) {
+            console.error(err)
+            setOptimisticBlocks(prev => [])
+        }
     }
 
     // Calculate month days (including padding)
@@ -167,7 +382,14 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
         <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
             <div className="lg:col-span-6 h-full flex flex-col relative">
                 {/* Filter Toggle Button */}
-                <div className="absolute -top-[3.25rem] right-0 z-10">
+                <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
+                    <button
+                        onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                        title="新建任务"
+                    >
+                        <span className="material-symbols-outlined text-sm">add</span>
+                    </button>
                     <button
                         onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
                         className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
@@ -187,16 +409,11 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
 
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-white/70">类型</span>
-                                    <select
-                                        className="bg-black/20 border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white/90 outline-none hover:bg-white/10 focus:border-blue-500"
+                                    <TypeFilterDropdown
                                         value={listFilterType}
-                                        onChange={(e) => setListFilterType && setListFilterType(e.target.value)}
-                                    >
-                                        <option value="all" className="bg-slate-800 text-white">所有</option>
-                                        {(listTypeOptions || []).map((name: string) => (
-                                            <option key={name} value={name} className="bg-slate-800 text-white">{name}</option>
-                                        ))}
-                                    </select>
+                                        onChange={(val) => setListFilterType && setListFilterType(val)}
+                                        options={listTypeOptions || []}
+                                    />
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs text-white/70">优先</span>
@@ -278,17 +495,27 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
 
                                 // Filter blocks for this day
                                 const dayBlocks = filteredBlocks.filter((b: any) => {
-                                    const bDate = new Date(b.start_at)
-                                    return bDate.getDate() === dayDate.getDate() &&
-                                        bDate.getMonth() === dayDate.getMonth() &&
-                                        bDate.getFullYear() === dayDate.getFullYear()
+                                    const isDraggingThis = dragging?.id === String(b.id)
+                                    // Verify dragPreview exists if dragging
+                                    const targetDate = isDraggingThis && dragPreview ? dragPreview.date : new Date(b.start_at)
+
+                                    return targetDate.getDate() === dayDate.getDate() &&
+                                        targetDate.getMonth() === dayDate.getMonth() &&
+                                        targetDate.getFullYear() === dayDate.getFullYear()
                                 })
 
                                 return (
                                     <div
                                         key={dateStr}
                                         className={`border-b border-r border-white/5 p-1 relative flex flex-col ${!isCurrentMonth ? 'bg-slate-900/80' : ''
-                                            } ${isToday ? 'bg-[#137fec]/10' : ''}`}
+                                            } ${isToday ? 'bg-[#137fec]/10' : ''} ${externalDragOver?.date.getTime() === dayDate.getTime() ? 'bg-blue-500/10 ring-2 ring-blue-500 inset-0' : ''}`}
+                                        onDragOver={(e) => handleExternalDragOver(e, dayDate)}
+                                        onDrop={(e) => handleExternalDrop(e, dayDate)}
+                                        onMouseEnter={() => {
+                                            if (dragging) {
+                                                setDragPreview({ date: dayDate })
+                                            }
+                                        }}
                                     >
                                         <div className={`text-[10px] font-medium mb-1 flex justify-center ${isToday
                                             ? 'text-white bg-[#137fec] w-5 h-5 rounded-full flex items-center justify-center mx-auto'
@@ -306,18 +533,21 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                                                 const status = taskIdStr ? taskStatusMap?.[taskIdStr] : 'open'
                                                 const isOverdue = new Date(b.end_at).getTime() < now.getTime() && status !== 'done'
                                                 const isCurrent = currentBlock && String(currentBlock.id) === String(b.id)
+                                                const isDraggingThis = dragging?.id === String(b.id)
 
                                                 return (
                                                     <div
                                                         key={b.id}
-                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center border ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
+                                                        className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer hover:ring-1 hover:ring-blue-400/50 flex items-center border ${isDraggingThis ? 'opacity-50 ring-2 ring-blue-500 z-50' : ''} ${isCurrent ? 'ring-1 ring-amber-400 shadow-sm shadow-amber-500/50' : ''
                                                             } ${status === 'done' ? 'opacity-70' : ''}`}
                                                         style={{
                                                             backgroundColor: isCurrent ? '#F59E0B20' : baseColor + '1A',
                                                             borderColor: isCurrent ? '#F59E0B' : baseColor,
                                                             color: 'white'
                                                         }}
+                                                        onMouseDown={(e) => handleDragStart(e, b)}
                                                         onMouseEnter={(e) => {
+                                                            if (dragging) return
                                                             if (b.task_id && meta) {
                                                                 if (hoverTimeoutRef.current) {
                                                                     clearTimeout(hoverTimeoutRef.current)
@@ -368,7 +598,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                 </section>
             </div>
 
-            <div className="lg:col-span-2 h-full overflow-y-auto">
+            <div className="md:col-span-2 lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
                 <PlannerListView
                     state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions }}
                     actions={{
@@ -429,6 +659,35 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                     />
                 )
             }
+
+            {/* Drag Ghost Overlay */}
+            {dragging && dragMousePos && (
+                <div
+                    className="fixed pointer-events-none z-[100]"
+                    style={{
+                        left: dragMousePos.x + 10,
+                        top: dragMousePos.y - 10,
+                    }}
+                >
+                    <div
+                        className={`text-[10px] px-2 py-1 rounded shadow-lg border-2 flex items-center gap-1 ${dragConflicts.length > 0
+                            ? 'bg-red-500/20 border-red-500 text-red-300'
+                            : 'bg-blue-500/20 border-blue-500 text-white'
+                            }`}
+                    >
+                        {taskTitleMap?.[String(dragging.originalBlock.task_id)] || '时间块'}
+                        {dragConflicts.length > 0 && (
+                            <span className="material-symbols-outlined text-xs text-red-400">warning</span>
+                        )}
+                    </div>
+                    {dragPreview && (
+                        <div className="text-[9px] text-slate-400 mt-1 text-center">
+                            {dragPreview.date.getMonth() + 1}月{dragPreview.date.getDate()}日
+                            {dragConflicts.length > 0 ? ' (有冲突)' : ''}
+                        </div>
+                    )}
+                </div>
+            )}
         </div >
     )
 }

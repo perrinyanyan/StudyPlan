@@ -349,6 +349,7 @@ export function PlannerScreen({
             isToday,
             currentBlock,
             now,
+            date,
             filteredBlocks,
             hourCollapsed,
             HOUR_PX,

@@ -268,17 +268,17 @@ export function usePlanner(props: UsePlannerProps) {
   }, [tasks, unscheduled, rangeTasks])
 
   const listTypeOptions = useMemo(() => {
-    const set = new Set<string>()
+    const map = new Map<string, string>() // type -> color
       ; (tasks.today || []).forEach((t) => {
-        if (t.type) set.add(t.type)
+        if (t.type && !map.has(t.type)) map.set(t.type, t.color || '#60A5FA')
       })
       ; (tasks.overdue || []).forEach((t) => {
-        if (t.type) set.add(t.type)
+        if (t.type && !map.has(t.type)) map.set(t.type, t.color || '#60A5FA')
       })
       ; (unscheduled || []).forEach((t) => {
-        if (t.type) set.add(t.type)
+        if (t.type && !map.has(t.type)) map.set(t.type, t.color || '#60A5FA')
       })
-    return Array.from(set)
+    return Array.from(map.entries()).map(([name, color]) => ({ name, color }))
   }, [tasks, unscheduled])
 
   const listTagOptions = useMemo(() => {
@@ -566,11 +566,11 @@ export function usePlanner(props: UsePlannerProps) {
     return true
   }
 
-  async function completeTask(id: Task['id']) {
+  async function completeTask(id: Task['id'], status: 'done' | 'open' = 'done') {
     // Optimistic update
     const updateLocalTask = (t: Task) => {
       if (String(t.id) === String(id)) {
-        return { ...t, status: 'done' }
+        return { ...t, status: status }
       }
       return t
     }
@@ -587,13 +587,13 @@ export function usePlanner(props: UsePlannerProps) {
     const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...headers() },
-      body: JSON.stringify({ status: 'done' }),
+      body: JSON.stringify({ status: status }),
     })
     if (!r.ok) {
       alert('更新任务失败')
       return
     }
-    if (showToast) showToast('已标记完成')
+    if (showToast) showToast(status === 'done' ? '已标记完成' : '已取消完成')
     await Promise.all([fetchDaily(true), fetchUnscheduled(true)])
     if (pathOnly === '/planner' && ['list', 'week', 'month'].includes(plannerView)) {
       setRangeReloadKey((k) => k + 1)
