@@ -336,7 +336,7 @@ export default function App() {
               className="flex h-8 w-8 items-center justify-center rounded-lg text-white/80 hover:bg-white/10"
               onClick={() => setSidebarCollapsed((v) => !v)}
             >
-              <span className="material-symbols-outlined">menu_open</span>
+              <span className="material-symbols-outlined">{sidebarCollapsed ? 'chevron_right' : 'chevron_left'}</span>
             </button>
           </div>
           <div className="mb-2">
