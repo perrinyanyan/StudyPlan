@@ -110,6 +110,8 @@ export function usePlanner(props: UsePlannerProps) {
     return getConflictIds(blocks)
   }, [blocks, listFilterConflict])
 
+  const [taskPoolCollapsed, setTaskPoolCollapsed] = useState(true)
+
   const [hourCollapsed, setHourCollapsed] = useState<Record<number, boolean>>({})
 
   const [rangeBlocks, setRangeBlocks] = useState<Block[] | null>(null)
@@ -280,8 +282,11 @@ export function usePlanner(props: UsePlannerProps) {
       ; (unscheduled || []).forEach((t) => {
         if (t.type && !map.has(t.type)) map.set(t.type, t.color || '#60A5FA')
       })
+      ; (rangeTasks || []).forEach((t) => {
+        if (t.type && !map.has(t.type)) map.set(t.type, t.color || '#60A5FA')
+      })
     return Array.from(map.entries()).map(([name, color]) => ({ name, color }))
-  }, [tasks, unscheduled])
+  }, [tasks, unscheduled, rangeTasks])
 
   const listTagOptions = useMemo(() => {
     const set = new Set<string>()
@@ -294,8 +299,11 @@ export function usePlanner(props: UsePlannerProps) {
       ; (unscheduled || []).forEach((t) => {
         ; (t.tags || []).forEach((g) => set.add(g))
       })
+      ; (rangeTasks || []).forEach((t) => {
+        ; (t.tags || []).forEach((g) => set.add(g))
+      })
     return Array.from(set)
-  }, [tasks, unscheduled])
+  }, [tasks, unscheduled, rangeTasks])
 
   async function fetchDaily(isBackground = false) {
     if (!jwt) return
@@ -745,6 +753,8 @@ export function usePlanner(props: UsePlannerProps) {
     pxPerMin,
     filteredBlocks,
     dayViewConflictIds,
+    taskPoolCollapsed,
+    setTaskPoolCollapsed,
     hourCollapsed,
     expandAllHours,
     collapseAllHours,

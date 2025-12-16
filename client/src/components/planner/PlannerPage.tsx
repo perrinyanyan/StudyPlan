@@ -12,6 +12,7 @@ export interface PlannerPageProps {
   onChangeRangeEnd: (value: string) => void
   onResetWeekRange: () => void
   onCloseRangePicker: () => void
+  extraActions?: any
 }
 
 export function PlannerPage(props: PlannerPageProps) {
@@ -28,7 +29,9 @@ export function PlannerPage(props: PlannerPageProps) {
     onChangeRangeStart,
     onChangeRangeEnd,
     onResetWeekRange,
+
     onCloseRangePicker,
+    extraActions,
   } = props
 
   const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
@@ -112,6 +115,12 @@ export function PlannerPage(props: PlannerPageProps) {
                 <span className="material-symbols-outlined">chevron_right</span>
               </button>
             </div>
+
+          )}
+          {extraActions && (
+            <div className="flex items-center gap-2">
+              {extraActions}
+            </div>
           )}
           {plannerView === 'list' && listRangePickerOpen && (
             <div className="absolute top-full left-6 mt-2 z-[999] w-72 rounded-lg border border-white/10 bg-slate-900 shadow-xl p-3">
@@ -169,6 +178,6 @@ export function PlannerPage(props: PlannerPageProps) {
           </button>
         ))}
       </div>
-    </div>
+    </div >
   )
 }

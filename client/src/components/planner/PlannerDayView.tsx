@@ -15,9 +15,10 @@ import { createPortal } from 'react-dom'
 export interface PlannerDayViewProps {
   state: any
   actions: any
+  renderPageHeader?: (extra?: any) => any
 }
 
-export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
+export function PlannerDayView({ state, actions, renderPageHeader }: PlannerDayViewProps) {
   const {
     tasks,
     unscheduled,
@@ -46,6 +47,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     fmtHHmm,
     rangeTasks,
     unschedMenuOpenId,
+    taskPoolCollapsed,
   } = state || {}
 
   const {
@@ -73,6 +75,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
     expandAllHours, // Expand all on drag start
     autoCollapseEmptyHours, // Restore cleanup state on drag end
     setListMenuOpenId,
+    setTaskPoolCollapsed,
 
     setCenterAlert,
     createTaskAdvanced,
@@ -525,6 +528,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
       color: task.color,
       priority: task.priority,
       tags: task.tags,
+      content: task.content,
       recurrence_rule: 'POOL',
       estimate_min: task.estimate_min,
       // No due_at for pool tasks
@@ -646,48 +650,48 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
   }, [hoveredTask, tasksFlat])
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
-      <div className="md:col-span-3 lg:col-span-4 relative">
-        {/* Filter Toggle Button */}
-        {/* Filter Toggle Button */}
-        <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
-          {(() => {
-            const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
-            return (
-              <button
-                className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                title={hasCollapsed ? "展开全部" : "折叠全部"}
-                onClick={() => {
-                  if (hasCollapsed) {
-                    actions.expandAllHours?.()
-                  } else {
-                    actions.collapseAllHours?.()
-                  }
-                }}
-              >
-                <span className="material-symbols-outlined text-sm">
-                  {hasCollapsed ? 'unfold_more' : 'unfold_less'}
-                </span>
-              </button>
-            )
-          })()}
-          <button
-            onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
-            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-            title="新建任务"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-          </button>
-          <button
-            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
-            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
-          >
-            <span className="material-symbols-outlined text-sm">
-              {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
-            </span>
-          </button>
-        </div>
+    <div className={`flex flex-col md:flex-row ${taskPoolCollapsed ? 'gap-0' : 'gap-4 lg:gap-6'} justify-center`}>
+      <div className="flex-1 min-w-0 relative max-w-[1200px] w-full">
+        {renderPageHeader?.(
+          <div className="flex items-center gap-2">
+            {(() => {
+              const hasCollapsed = hourCollapsed && Object.values(hourCollapsed).some((c: any) => c === true)
+              return (
+                <button
+                  className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                  title={hasCollapsed ? "展开全部" : "折叠全部"}
+                  onClick={() => {
+                    if (hasCollapsed) {
+                      actions.expandAllHours?.()
+                    } else {
+                      actions.collapseAllHours?.()
+                    }
+                  }}
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    {hasCollapsed ? 'unfold_more' : 'unfold_less'}
+                  </span>
+                </button>
+              )
+            })()}
+            <button
+              onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+              className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+              title="新建任务"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+            </button>
+            <button
+              onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+              className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+              title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+              </span>
+            </button>
+          </div>
+        )}
 
         <section className="rounded-xl border border-white/10 bg-slate-800/50">
           {state.showFilters && (
@@ -1540,9 +1544,9 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
         </section>
       </div >
 
-      <div className="md:col-span-2 lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
+      <div className={`${taskPoolCollapsed ? 'w-12 top-[65px] mt-[65px]' : 'w-full md:w-80 lg:w-[22rem] xl:w-[450px] top-0'} sticky max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar transition-all duration-300 shrink-0`}>
         <PlannerListView
-          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTagOptions }}
+          state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTagOptions, taskPoolCollapsed }}
           actions={{
             fetchUnscheduled,
             setUnschedMenuOpenId,
@@ -1554,6 +1558,7 @@ export function PlannerDayView({ state, actions }: PlannerDayViewProps) {
             updateTaskMeta,
             updateTaskAdvanced,
             headers: actions.headers,
+            setTaskPoolCollapsed,
           }}
         />
       </div>

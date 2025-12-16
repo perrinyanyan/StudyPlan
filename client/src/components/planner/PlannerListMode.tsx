@@ -15,9 +15,10 @@ import { fmtRange, todayStr } from '../../utils/datetime'
 export interface PlannerListModeProps {
   state: any
   actions: any
+  renderPageHeader?: (extra?: any) => any
 }
 
-export function PlannerListMode({ state, actions }: PlannerListModeProps) {
+export function PlannerListMode({ state, actions, renderPageHeader }: PlannerListModeProps) {
   const {
     listFilterType,
     listFilterPriority,
@@ -40,6 +41,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     unscheduled,
     rangeTasks,
     unschedMenuOpenId,
+    taskPoolCollapsed,
   } = state || {}
 
   const {
@@ -67,6 +69,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
     updateBlock,
     headers,
     createTaskAdvanced,
+    setTaskPoolCollapsed,
   } = actions || {}
 
   const handleCopyToPool = async (task: any) => {
@@ -78,8 +81,8 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
       type: task.type,
       color: task.color,
       tags: task.tags,
-      estimated_time: task.estimated_time,
-      description: task.description,
+      estimate_min: task.estimate_min,
+      content: task.content,
     }
     await createTaskAdvanced(payload)
   }
@@ -485,27 +488,28 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-5 lg:grid-cols-6 gap-4 lg:gap-6">
-      <div className="md:col-span-3 lg:col-span-4 relative">
-        {/* Filter Toggle Button */}
-        <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
-          <button
-            onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
-            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-            title="新建任务"
-          >
-            <span className="material-symbols-outlined text-sm">add</span>
-          </button>
-          <button
-            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
-            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
-          >
-            <span className="material-symbols-outlined text-sm">
-              {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
-            </span>
-          </button>
-        </div>
+    <div className={`flex flex-col md:flex-row ${taskPoolCollapsed ? 'gap-0' : 'gap-4 lg:gap-6'} justify-center`}>
+      <div className="flex-1 min-w-0 relative max-w-[1200px] w-full">
+        {renderPageHeader?.(
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+              className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+              title="新建任务"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+            </button>
+            <button
+              onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+              className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+              title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+              </span>
+            </button>
+          </div>
+        )}
 
         <div className="rounded-xl border border-white/10 bg-slate-800/50">
           {state.showFilters && (
@@ -1261,9 +1265,9 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
           </div>
         </div>
       </div>
-      <div className="md:col-span-2 lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
+      <div className={`${taskPoolCollapsed ? 'w-12 top-[65px] mt-[65px]' : 'w-full md:w-80 lg:w-[22rem] xl:w-[450px] top-0'} sticky max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar transition-all duration-300 shrink-0`}>
         <PlannerListView
-          state={{ unscheduled, unschedMenuOpenId, listEdit, listTagOptions }}
+          state={{ unscheduled, unschedMenuOpenId, listEdit, listTagOptions, taskPoolCollapsed }}
           actions={{
             fetchUnscheduled,
             setUnschedMenuOpenId,
@@ -1275,6 +1279,7 @@ export function PlannerListMode({ state, actions }: PlannerListModeProps) {
             updateTaskMeta,
             updateTaskAdvanced,
             headers,
+            setTaskPoolCollapsed,
           }}
         />
       </div>

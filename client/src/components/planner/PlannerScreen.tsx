@@ -66,6 +66,7 @@ export function PlannerScreen({
     showCreateTask,
     editTask,
     scheduleFor,
+    taskPoolCollapsed,
   } = state || {}
 
   const {
@@ -110,9 +111,70 @@ export function PlannerScreen({
 
     updateTaskAdvanced,
     headers,
+    setTaskPoolCollapsed,
   } = actions || {}
 
   const [showFilters, setShowFilters] = useState(false)
+
+  const renderPageHeader = (extraActions: any) => (
+    <PlannerPage
+      plannerView={plannerView}
+      date={date}
+      listRangeStart={listRangeStart}
+      listRangeEnd={listRangeEnd}
+      listRangePickerOpen={listRangePickerOpen}
+      onPrevDay={() => {
+        if (!setDate || !todayStr) return
+        if (plannerView === 'month') {
+          const d = new Date(date)
+          d.setMonth(d.getMonth() - 1)
+          setDate(todayStr(d))
+        } else {
+          const offset = plannerView === 'week' ? 7 : 1
+          setDate(todayStr(new Date(new Date(date).getTime() - offset * 86400000)))
+        }
+      }}
+      onToday={() => {
+        if (!setDate || !todayStr) return
+        setDate(todayStr())
+      }}
+      onNextDay={() => {
+        if (!setDate || !todayStr) return
+        if (plannerView === 'month') {
+          const d = new Date(date)
+          d.setMonth(d.getMonth() + 1)
+          setDate(todayStr(d))
+        } else {
+          const offset = plannerView === 'week' ? 7 : 1
+          setDate(todayStr(new Date(new Date(date).getTime() + offset * 86400000)))
+        }
+      }}
+      onToggleRangePicker={() => {
+        if (!setListRangePickerOpen) return
+        setListRangePickerOpen((open: boolean) => !open)
+      }}
+      onChangeRangeStart={(value) => {
+        if (!setListRangeStart) return
+        setListRangeStart(value)
+      }}
+      onChangeRangeEnd={(value) => {
+        if (!setListRangeEnd) return
+        setListRangeEnd(value)
+      }}
+      onResetWeekRange={() => {
+        if (!setListRangeStart || !setListRangeEnd || !todayStr) return
+        const start = todayStr()
+        const end = todayStr(new Date(Date.now() + 6 * 86400000))
+        setListRangeStart(start)
+        setListRangeEnd(end)
+      }}
+      onCloseRangePicker={() => {
+        if (!setListRangePickerOpen) return
+        setListRangePickerOpen(false)
+      }}
+      extraActions={extraActions}
+    />
+  )
 
   return (
     <div>
@@ -126,65 +188,11 @@ export function PlannerScreen({
         <div className="flex-1 justify-end" />
       </header>
 
-      <PlannerPage
-        plannerView={plannerView}
-        date={date}
-        listRangeStart={listRangeStart}
-        listRangeEnd={listRangeEnd}
-        listRangePickerOpen={listRangePickerOpen}
-        onPrevDay={() => {
-          if (!setDate || !todayStr) return
-          if (plannerView === 'month') {
-            const d = new Date(date)
-            d.setMonth(d.getMonth() - 1)
-            setDate(todayStr(d))
-          } else {
-            const offset = plannerView === 'week' ? 7 : 1
-            setDate(todayStr(new Date(new Date(date).getTime() - offset * 86400000)))
-          }
-        }}
-        onToday={() => {
-          if (!setDate || !todayStr) return
-          setDate(todayStr())
-        }}
-        onNextDay={() => {
-          if (!setDate || !todayStr) return
-          if (plannerView === 'month') {
-            const d = new Date(date)
-            d.setMonth(d.getMonth() + 1)
-            setDate(todayStr(d))
-          } else {
-            const offset = plannerView === 'week' ? 7 : 1
-            setDate(todayStr(new Date(new Date(date).getTime() + offset * 86400000)))
-          }
-        }}
-        onToggleRangePicker={() => {
-          if (!setListRangePickerOpen) return
-          setListRangePickerOpen((open: boolean) => !open)
-        }}
-        onChangeRangeStart={(value) => {
-          if (!setListRangeStart) return
-          setListRangeStart(value)
-        }}
-        onChangeRangeEnd={(value) => {
-          if (!setListRangeEnd) return
-          setListRangeEnd(value)
-        }}
-        onResetWeekRange={() => {
-          if (!setListRangeStart || !setListRangeEnd || !todayStr) return
-          const start = todayStr()
-          const end = todayStr(new Date(Date.now() + 6 * 86400000))
-          setListRangeStart(start)
-          setListRangeEnd(end)
-        }}
-        onCloseRangePicker={() => {
-          if (!setListRangePickerOpen) return
-          setListRangePickerOpen(false)
-        }}
-      />
+
 
       {plannerView === 'list' ? (
         <PlannerListMode
+          renderPageHeader={renderPageHeader}
           state={{
             listFilterType,
             listFilterPriority,
@@ -208,6 +216,7 @@ export function PlannerScreen({
             unschedMenuOpenId,
             showFilters, // Added
             listFilterConflict,
+            taskPoolCollapsed,
           }}
 
           actions={{
@@ -237,10 +246,12 @@ export function PlannerScreen({
             headers,
             setShowFilters, // Added
             setListFilterConflict,
+            setTaskPoolCollapsed,
           }}
         />
       ) : plannerView === 'month' ? (
         <PlannerMonthView
+          renderPageHeader={renderPageHeader}
           state={{
             rangeBlocks,
             now,
@@ -262,6 +273,7 @@ export function PlannerScreen({
             date,
             showFilters, // Added
             listFilterConflict,
+            taskPoolCollapsed,
           }}
           actions={{
             deleteTask,
@@ -286,10 +298,12 @@ export function PlannerScreen({
             headers,
             setShowFilters, // Added
             setListFilterConflict,
+            setTaskPoolCollapsed,
           }}
         />
       ) : plannerView === 'week' ? (
         <PlannerWeekView
+          renderPageHeader={renderPageHeader}
           state={{
             rangeBlocks,
             now,
@@ -311,6 +325,7 @@ export function PlannerScreen({
             date,
             showFilters, // Added
             listFilterConflict,
+            taskPoolCollapsed,
           }}
           actions={{
             deleteTask,
@@ -335,10 +350,12 @@ export function PlannerScreen({
             headers,
             setShowFilters, // Added
             setListFilterConflict,
+            setTaskPoolCollapsed,
           }}
         />
       ) : (
         <PlannerDayView
+          renderPageHeader={renderPageHeader}
           state={{
             tasks,
             unscheduled,
@@ -374,6 +391,7 @@ export function PlannerScreen({
             fmtHHmm,
             showFilters, // Added
             listFilterConflict,
+            taskPoolCollapsed,
           }}
           actions={{
             completeTask,
@@ -405,6 +423,7 @@ export function PlannerScreen({
             updateTaskAdvanced,
             headers,
             setShowFilters, // Added
+            setTaskPoolCollapsed,
           }}
         />
       )}

@@ -13,8 +13,8 @@ export interface PlannerListViewProps {
 }
 
 export function PlannerListView({ state, actions }: PlannerListViewProps) {
-  const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap } = state || {}
-  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta, completeTask } = actions || {}
+  const { unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, taskPoolCollapsed } = state || {}
+  const { fetchUnscheduled, setUnschedMenuOpenId, setListEdit, setEditTask, setScheduleFor, deleteTask, setShowCreateTask, updateTaskAdvanced, updateTaskMeta, completeTask, setTaskPoolCollapsed } = actions || {}
 
   const [editingCell, setEditingCell] = useState<{ id: string, field: string, value: any } | null>(null)
 
@@ -65,10 +65,71 @@ export function PlannerListView({ state, actions }: PlannerListViewProps) {
     }
   }
 
+
+  if (taskPoolCollapsed) {
+    const total = list.length
+    const todayMust = list.filter((t: any) => t.recurrence_rule?.includes('TODAY_MUST')).length
+    const highPrio = list.filter((t: any) => t.priority === 2).length
+
+    return (
+      <section
+        className="bg-slate-800 border border-slate-700 rounded-xl rounded-l-none h-auto flex flex-col items-center gap-6 py-4 transition-all hover:bg-slate-800/80 cursor-pointer shadow-lg active:scale-95 duration-200"
+        onClick={() => setTaskPoolCollapsed && setTaskPoolCollapsed(false)}
+        title="点击展开任务池"
+      >
+        <button
+          className="p-1 rounded-lg text-slate-400 hover:text-white"
+        >
+          <span className="material-symbols-outlined">keyboard_double_arrow_right</span>
+        </button>
+
+        <div className="flex flex-col gap-4 w-full">
+          {/* Total */}
+          <div className="flex flex-col items-center gap-0.5 text-slate-300">
+            <span className="material-symbols-outlined text-[18px] opacity-70">list</span>
+            <span className="text-[10px] font-bold">{total}</span>
+          </div>
+
+          {/* Today Must */}
+          {todayMust > 0 && (
+            <div className="flex flex-col items-center gap-0.5 text-amber-400">
+              <span className="text-[14px] font-black text-amber-400 leading-none italic tracking-tighter opacity-90" style={{ fontFamily: 'sans-serif' }}>do</span>
+              <span className="text-[10px] font-bold">{todayMust}</span>
+            </div>
+          )}
+
+          {/* High Priority */}
+          {highPrio > 0 && (
+            <div className="flex flex-col items-center gap-1">
+              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20 text-red-300 text-[10px] font-bold leading-none">H</span>
+              <span className="text-[10px] font-bold text-red-400">{highPrio}</span>
+            </div>
+          )}
+        </div>
+
+        <div
+          className="mt-auto text-xs text-slate-500 tracking-widest select-none flex flex-col items-center opacity-50"
+          style={{ writingMode: 'vertical-rl' }}
+        >
+          <span>任务池</span>
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-      <h2 className="font-semibold mb-3">任务池</h2>
-      <div className="mb-3">
+    <section className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 h-full flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <h2 className="font-semibold">任务池</h2>
+        <button
+          onClick={() => setTaskPoolCollapsed && setTaskPoolCollapsed(true)}
+          className="text-slate-400 hover:text-white p-1 hover:bg-white/5 rounded"
+          title="收起任务池"
+        >
+          <span className="material-symbols-outlined text-lg">keyboard_double_arrow_left</span>
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
         <div className="flex flex-col gap-2">
           {list.length === 0 && <div className="text-xs text-slate-400">暂无未排程任务</div>}
           {list.map((t, index) => {

@@ -10,9 +10,10 @@ import { TypeFilterDropdown } from '../ui/TypeFilterDropdown'
 export interface PlannerWeekViewProps {
     state: any
     actions: any
+    renderPageHeader?: (extra?: any) => any
 }
 
-export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
+export function PlannerWeekView({ state, actions, renderPageHeader }: PlannerWeekViewProps) {
     const {
         tasks,
         unscheduled,
@@ -35,6 +36,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         fmtHHmm,
         unschedMenuOpenId,
         date, // Current selected date
+        taskPoolCollapsed,
     } = state || {}
 
     const {
@@ -62,6 +64,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
         setCenterAlert,
         createTaskAdvanced,
         updateTaskAdvanced,
+        setTaskPoolCollapsed,
     } = actions || {}
 
     const handleCopyToPool = async (task: any) => {
@@ -492,36 +495,37 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
     const hours = visibleHours // Override the static hours array
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
-            <div className="lg:col-span-6 h-full flex flex-col relative">
-                {/* Filter Toggle Button */}
-                <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
-                    <button
-                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                        title={isWeekCollapsed ? "展开全部" : "折叠全部"}
-                        onClick={() => setIsWeekCollapsed(!isWeekCollapsed)}
-                    >
-                        <span className="material-symbols-outlined text-sm">
-                            {isWeekCollapsed ? 'unfold_more' : 'unfold_less'}
-                        </span>
-                    </button>
-                    <button
-                        onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
-                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                        title="新建任务"
-                    >
-                        <span className="material-symbols-outlined text-sm">add</span>
-                    </button>
-                    <button
-                        onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
-                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                        title={state.showFilters ? "隐藏筛选" : "显示筛选"}
-                    >
-                        <span className="material-symbols-outlined text-sm">
-                            {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
-                        </span>
-                    </button>
-                </div>
+        <div className={`flex flex-col lg:flex-row ${taskPoolCollapsed ? 'gap-0' : 'gap-4 lg:gap-6'} h-[calc(100vh-180px)] justify-center`}>
+            <div className="flex-1 min-w-0 h-full flex flex-col relative max-w-[2000px] w-full">
+                {renderPageHeader?.(
+                    <div className="flex items-center gap-2">
+                        <button
+                            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                            title={isWeekCollapsed ? "展开全部" : "折叠全部"}
+                            onClick={() => setIsWeekCollapsed(!isWeekCollapsed)}
+                        >
+                            <span className="material-symbols-outlined text-sm">
+                                {isWeekCollapsed ? 'unfold_more' : 'unfold_less'}
+                            </span>
+                        </button>
+                        <button
+                            onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+                            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                            title="新建任务"
+                        >
+                            <span className="material-symbols-outlined text-sm">add</span>
+                        </button>
+                        <button
+                            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+                            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+                        >
+                            <span className="material-symbols-outlined text-sm">
+                                {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50">
                     {/* Filters Toolbar */}
@@ -840,9 +844,9 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                 </section>
             </div >
 
-            <div className="lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
+            <div className={`${taskPoolCollapsed ? 'w-12 top-[65px] mt-[65px]' : 'w-full lg:w-80 xl:w-[22rem] 2xl:w-[450px] top-0'} sticky max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar transition-all duration-300 shrink-0`}>
                 <PlannerListView
-                    state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions }}
+                    state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions, taskPoolCollapsed }}
                     actions={{
                         fetchUnscheduled,
                         setUnschedMenuOpenId,
@@ -850,6 +854,7 @@ export function PlannerWeekView({ state, actions }: PlannerWeekViewProps) {
                         setEditTask,
                         setScheduleFor,
                         deleteTask,
+                        setTaskPoolCollapsed,
                         setShowCreateTask,
                         updateTaskMeta,
                         updateTaskAdvanced,

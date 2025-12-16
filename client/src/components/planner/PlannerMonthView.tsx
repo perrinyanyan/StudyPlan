@@ -9,9 +9,10 @@ import { TypeFilterDropdown } from '../ui/TypeFilterDropdown'
 export interface PlannerMonthViewProps {
     state: any
     actions: any
+    renderPageHeader?: (extra?: any) => any
 }
 
-export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
+export function PlannerMonthView({ state, actions, renderPageHeader }: PlannerMonthViewProps) {
     const {
         rangeBlocks: propsRangeBlocks, // This will hold the month's blocks
         now,
@@ -32,6 +33,7 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
         unschedMenuOpenId,
         listEdit,
         date, // Current selected date
+        taskPoolCollapsed,
     } = state || {}
 
     const {
@@ -57,7 +59,9 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
 
         createTaskAdvanced,
         updateTaskAdvanced,
+
         setCenterAlert,
+        setTaskPoolCollapsed,
     } = actions || {}
 
     const handleCopyToPool = async (task: any) => {
@@ -378,27 +382,28 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
     const weekDayLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 lg:gap-6 h-[calc(100vh-180px)]">
-            <div className="lg:col-span-6 h-full flex flex-col relative">
-                {/* Filter Toggle Button */}
-                <div className="absolute -top-[3.25rem] right-0 z-10 flex items-center gap-2">
-                    <button
-                        onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
-                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                        title="新建任务"
-                    >
-                        <span className="material-symbols-outlined text-sm">add</span>
-                    </button>
-                    <button
-                        onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
-                        className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
-                        title={state.showFilters ? "隐藏筛选" : "显示筛选"}
-                    >
-                        <span className="material-symbols-outlined text-sm">
-                            {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
-                        </span>
-                    </button>
-                </div>
+        <div className={`flex flex-col lg:flex-row ${taskPoolCollapsed ? 'gap-0' : 'gap-4 lg:gap-6'} h-[calc(100vh-180px)] justify-center`}>
+            <div className="flex-1 min-w-0 h-full flex flex-col relative max-w-[2000px] w-full">
+                {renderPageHeader?.(
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => actions.setShowCreateTask && actions.setShowCreateTask(true)}
+                            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                            title="新建任务"
+                        >
+                            <span className="material-symbols-outlined text-sm">add</span>
+                        </button>
+                        <button
+                            onClick={() => actions.setShowFilters && actions.setShowFilters(!state.showFilters)}
+                            className="p-1.5 rounded-lg bg-slate-800/50 hover:bg-slate-700 text-white/70 hover:text-white transition-colors border border-white/10"
+                            title={state.showFilters ? "隐藏筛选" : "显示筛选"}
+                        >
+                            <span className="material-symbols-outlined text-sm">
+                                {state.showFilters ? 'filter_alt_off' : 'filter_alt'}
+                            </span>
+                        </button>
+                    </div>
+                )}
 
                 <section className="flex-1 flex flex-col rounded-xl border border-white/10 bg-slate-800/50">
                     {/* Filters Toolbar */}
@@ -599,15 +604,17 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
                 </section>
             </div>
 
-            <div className="md:col-span-2 lg:col-span-2 sticky top-0 max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar">
+
+            <div className={`${taskPoolCollapsed ? 'w-12 top-[65px] mt-[65px]' : 'w-full md:w-80 lg:w-[22rem] xl:w-[450px] top-0'} sticky max-h-[calc(100vh-140px)] overflow-y-auto pl-1 no-scrollbar transition-all duration-300 shrink-0`}>
                 <PlannerListView
-                    state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions }}
+                    state={{ unscheduled, unschedMenuOpenId, listEdit, taskMetaMap, listTypeOptions, listTagOptions, taskPoolCollapsed }}
                     actions={{
                         fetchUnscheduled,
                         setUnschedMenuOpenId,
                         setListEdit,
                         setEditTask,
                         setScheduleFor,
+                        setTaskPoolCollapsed,
                         deleteTask,
                         setShowCreateTask,
                         updateTaskMeta,
@@ -662,33 +669,35 @@ export function PlannerMonthView({ state, actions }: PlannerMonthViewProps) {
             }
 
             {/* Drag Ghost Overlay */}
-            {dragging && dragMousePos && (
-                <div
-                    className="fixed pointer-events-none z-[100]"
-                    style={{
-                        left: dragMousePos.x + 10,
-                        top: dragMousePos.y - 10,
-                    }}
-                >
+            {
+                dragging && dragMousePos && (
                     <div
-                        className={`text-[10px] px-2 py-1 rounded shadow-lg border-2 flex items-center gap-1 ${dragConflicts.length > 0
-                            ? 'bg-red-500/20 border-red-500 text-red-300'
-                            : 'bg-blue-500/20 border-blue-500 text-white'
-                            }`}
+                        className="fixed pointer-events-none z-[100]"
+                        style={{
+                            left: dragMousePos.x + 10,
+                            top: dragMousePos.y - 10,
+                        }}
                     >
-                        {taskTitleMap?.[String(dragging.originalBlock.task_id)] || '时间块'}
-                        {dragConflicts.length > 0 && (
-                            <span className="material-symbols-outlined text-xs text-red-400">warning</span>
+                        <div
+                            className={`text-[10px] px-2 py-1 rounded shadow-lg border-2 flex items-center gap-1 ${dragConflicts.length > 0
+                                ? 'bg-red-500/20 border-red-500 text-red-300'
+                                : 'bg-blue-500/20 border-blue-500 text-white'
+                                }`}
+                        >
+                            {taskTitleMap?.[String(dragging.originalBlock.task_id)] || '时间块'}
+                            {dragConflicts.length > 0 && (
+                                <span className="material-symbols-outlined text-xs text-red-400">warning</span>
+                            )}
+                        </div>
+                        {dragPreview && (
+                            <div className="text-[9px] text-slate-400 mt-1 text-center">
+                                {dragPreview.date.getMonth() + 1}月{dragPreview.date.getDate()}日
+                                {dragConflicts.length > 0 ? ' (有冲突)' : ''}
+                            </div>
                         )}
                     </div>
-                    {dragPreview && (
-                        <div className="text-[9px] text-slate-400 mt-1 text-center">
-                            {dragPreview.date.getMonth() + 1}月{dragPreview.date.getDate()}日
-                            {dragConflicts.length > 0 ? ' (有冲突)' : ''}
-                        </div>
-                    )}
-                </div>
-            )}
+                )
+            }
         </div >
     )
 }

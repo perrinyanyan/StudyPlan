@@ -161,6 +161,7 @@ export function TaskHoverCard({
             color: optimisticTask.color,
             priority: optimisticTask.priority,
             tags: optimisticTask.tags,
+            content: optimisticTask.content,
             recurrence_rule: 'POOL',
             estimate_min: optimisticTask.estimate_min,
         }
@@ -484,7 +485,7 @@ export function TaskHoverCard({
                             <span className="material-symbols-outlined text-lg">more_vert</span>
                         </button>
                         {cardMenuOpen && (
-                            <div className="absolute right-0 top-full mt-1 w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-50">
+                            <div className={`absolute right-0 ${position.y > window.innerHeight - 300 ? 'bottom-full mb-1' : 'top-full mt-1'} w-28 rounded-md bg-slate-900 border border-slate-700 shadow-lg z-50`}>
                                 <button
                                     className="block w-full px-3 py-1.5 text-left text-xs hover:bg-slate-800 text-white"
                                     onClick={() => {
