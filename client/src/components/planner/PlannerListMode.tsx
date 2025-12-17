@@ -469,22 +469,31 @@ export function PlannerListMode({ state, actions, renderPageHeader }: PlannerLis
     setSelectedTaskIds(newSet)
   }
 
-  const handleBulkComplete = async () => {
+  const handleBulkComplete = () => {
     if (!completeTask) return
     if (!confirm(`确定要完成选中的 ${selectedTaskIds.size} 个任务吗？`)) return
 
-    // Execute in parallel
-    await Promise.all(Array.from(selectedTaskIds).map(id => completeTask(id)))
+    const ids = Array.from(selectedTaskIds)
     setSelectedTaskIds(new Set())
+    Promise.all(ids.map(id => completeTask(id))).catch(console.error)
   }
 
-  const handleBulkDelete = async () => {
+  const handleBulkUncomplete = () => {
+    if (!completeTask) return
+    if (!confirm(`确定要取消完成选中的 ${selectedTaskIds.size} 个任务吗？`)) return
+
+    const ids = Array.from(selectedTaskIds)
+    setSelectedTaskIds(new Set())
+    Promise.all(ids.map(id => completeTask(id, 'open'))).catch(console.error)
+  }
+
+  const handleBulkDelete = () => {
     if (!deleteTask) return
     if (!confirm(`确定要删除选中的 ${selectedTaskIds.size} 个任务吗？此操作不可撤销。`)) return
 
-    // Execute in parallel
-    await Promise.all(Array.from(selectedTaskIds).map(id => deleteTask(id)))
+    const ids = Array.from(selectedTaskIds)
     setSelectedTaskIds(new Set())
+    Promise.all(ids.map(id => deleteTask(id))).catch(console.error)
   }
 
   return (
@@ -1296,6 +1305,13 @@ export function PlannerListMode({ state, actions, renderPageHeader }: PlannerLis
               >
                 <span className="material-symbols-outlined text-lg">check_circle</span>
                 完成
+              </button>
+              <button
+                onClick={handleBulkUncomplete}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-500/20 text-slate-300 hover:bg-slate-500/30 transition-colors text-sm font-medium"
+              >
+                <span className="material-symbols-outlined text-lg">undo</span>
+                取消完成
               </button>
               <button
                 onClick={handleBulkDelete}

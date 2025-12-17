@@ -27,9 +27,10 @@ The system SHALL store individual class sessions:
 - `class_id` (UUID, optional): Specific class group
 - `instructor` (String): Instructor name
 - `attendance_policy` (String): Attendance rules
+- `content` (String, optional): Session details (e.g. topic covered)
 - `created_at` (DateTime): Creation timestamp
 
-#### Scenario: Session scheduling
-- **WHEN** a session is created
-- **THEN** it must be linked to a valid course
+#### Scenario: Session import with content
+- **WHEN** a session is imported from CSV
+- **THEN** the content field is populated
 

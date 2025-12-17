@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Dispatch, SetStateAction } from 'react'
 import { getApiUrl } from '../config'
 import { useAuth } from './useAuth'
 import { todayStr, toIso } from '../utils/datetime'
@@ -21,10 +21,10 @@ export interface UsePlannerProps {
   listRangeEnd: string
   listRangePickerOpen: boolean
   rangeReloadKey: number
-  setTasks: (t: DailyTasks) => void
+  setTasks: Dispatch<SetStateAction<DailyTasks>>
   setBlocks: (b: Block[]) => void
   setFetchState: (s: FetchState) => void
-  setUnscheduled: (t: Task[]) => void
+  setUnscheduled: Dispatch<SetStateAction<Task[]>>
   setRangeReloadKey: (cb: (k: number) => number) => void
   setCenterAlert: (a: { title: string; detail?: string } | null) => void
   showToast?: (msg: string) => void
@@ -548,15 +548,13 @@ export function usePlanner(props: UsePlannerProps) {
       }
       return t
     }
-    setTasks({
-      ...tasks,
-      today: tasks.today?.map(updateLocalTask),
-      overdue: tasks.overdue?.map(updateLocalTask),
-    })
-    setUnscheduled(unscheduled.map(updateLocalTask))
-    if (rangeTasks) {
-      setRangeTasks(rangeTasks.map(updateLocalTask))
-    }
+    setTasks(prev => ({
+      ...prev,
+      today: prev.today?.map(updateLocalTask),
+      overdue: prev.overdue?.map(updateLocalTask),
+    }))
+    setUnscheduled(prev => prev.map(updateLocalTask))
+    setRangeTasks(prev => prev ? prev.map(updateLocalTask) : prev)
 
     const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
@@ -584,15 +582,13 @@ export function usePlanner(props: UsePlannerProps) {
       }
       return t
     }
-    setTasks({
-      ...tasks,
-      today: tasks.today?.map(updateLocalTask),
-      overdue: tasks.overdue?.map(updateLocalTask),
-    })
-    setUnscheduled(unscheduled.map(updateLocalTask))
-    if (rangeTasks) {
-      setRangeTasks(rangeTasks.map(updateLocalTask))
-    }
+    setTasks(prev => ({
+      ...prev,
+      today: prev.today?.map(updateLocalTask),
+      overdue: prev.overdue?.map(updateLocalTask),
+    }))
+    setUnscheduled(prev => prev.map(updateLocalTask))
+    setRangeTasks(prev => prev ? prev.map(updateLocalTask) : prev)
 
     const r = await fetch(getApiUrl(`/tasks/${id}`), {
       method: 'PATCH',
@@ -613,15 +609,13 @@ export function usePlanner(props: UsePlannerProps) {
   async function deleteTask(id: Task['id']) {
     // Optimistic update
     const filterLocalTask = (t: Task) => String(t.id) !== String(id)
-    setTasks({
-      ...tasks,
-      today: tasks.today?.filter(filterLocalTask),
-      overdue: tasks.overdue?.filter(filterLocalTask),
-    })
-    setUnscheduled(unscheduled.filter(filterLocalTask))
-    if (rangeTasks) {
-      setRangeTasks(rangeTasks.filter(filterLocalTask))
-    }
+    setTasks(prev => ({
+      ...prev,
+      today: prev.today?.filter(filterLocalTask),
+      overdue: prev.overdue?.filter(filterLocalTask),
+    }))
+    setUnscheduled(prev => prev.filter(filterLocalTask))
+    setRangeTasks(prev => prev ? prev.filter(filterLocalTask) : prev)
 
     const r = await fetch(getApiUrl(`/tasks/${id}`), { method: 'DELETE', headers: headers() })
     if (!r.ok) {
