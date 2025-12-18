@@ -68,6 +68,46 @@ export function SettingsPage({
     const [deleteMsg, setDeleteMsg] = useState('')
     const [deleteLoading, setDeleteLoading] = useState(false)
 
+    // Calendar Token State
+    const [calendarToken, setCalendarToken] = useState<string | null>(null)
+    const [calLoading, setCalLoading] = useState(false)
+
+    useEffect(() => {
+        // Load initial calendar token
+        if (headers) {
+            fetch(getApiUrl('/calendar/token'), { headers: headers() })
+                .then(r => r.json())
+                .then(d => {
+                    if (d.token) setCalendarToken(d.token)
+                })
+                .catch(() => { })
+        }
+    }, [])
+
+    const handleRegenCalendarToken = async () => {
+        setCalLoading(true)
+        try {
+            const res = await fetch(getApiUrl('/calendar/token'), {
+                method: 'POST',
+                headers: headers()
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                showToast && showToast(data.error || '请求失败')
+                return
+            }
+            if (data.token) {
+                setCalendarToken(data.token)
+                showToast && showToast('链接已生成')
+            }
+        } catch (e: any) {
+            console.error('Calendar token error:', e)
+            showToast && showToast('网络错误: ' + (e.message || ''))
+        } finally {
+            setCalLoading(false)
+        }
+    }
+
     const handleClearData = async () => {
         if (!confirmEmail) return
         setClearLoading(true)
@@ -635,7 +675,68 @@ export function SettingsPage({
                 </div>
             </section>
 
-            {/* Task Types Section */}
+            {/* Calendar Sync Section */}
+            <section className="bg-slate-800/50 border border-slate-700/50 rounded-2xl overflow-hidden backdrop-blur-sm transition-all hover:border-slate-600/50">
+                <div className="p-6 border-b border-slate-700/50">
+                    <div className="flex items-center gap-3">
+                        <span className="p-2 rounded-lg bg-orange-500/10 text-orange-400">
+                            <span className="material-symbols-outlined">calendar_month</span>
+                        </span>
+                        <div>
+                            <h2 className="text-lg font-semibold text-white">日历同步</h2>
+                            <p className="text-sm text-slate-400">将您的日程同步到 Apple Calendar / Outlook</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                        <p className="text-sm text-slate-300 mb-3">
+                            使用订阅链接将任务单向同步到您的日历应用。
+                            <span className="text-orange-400 ml-1">该链接包含您的私人信息，请勿泄露。</span>
+                        </p>
+
+                        {!calendarToken ? (
+                            <button
+                                onClick={handleRegenCalendarToken}
+                                disabled={calLoading}
+                                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium transition-colors disabled:opacity-50"
+                            >
+                                {calLoading ? '生成中...' : '生成订阅链接'}
+                            </button>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 bg-black/30 p-3 rounded font-mono text-xs text-slate-400 break-all border border-slate-800">
+                                        {getApiUrl(`/calendar/share/${calendarToken}`).replace(/^http/, 'webcal')}
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            const url = getApiUrl(`/calendar/share/${calendarToken}`).replace(/^http/, 'webcal')
+                                            navigator.clipboard.writeText(url)
+                                            showToast && showToast('已复制')
+                                        }}
+                                        className="p-3 rounded bg-slate-700 hover:bg-slate-600 text-white transition-colors"
+                                        title="复制链接"
+                                    >
+                                        <span className="material-symbols-outlined text-[20px]">content_copy</span>
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={handleRegenCalendarToken}
+                                        disabled={calLoading}
+                                        className="text-sm text-slate-500 hover:text-slate-300 underline decoration-dashed"
+                                    >
+                                        {calLoading ? '重置中...' : '重置/撤销旧链接'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </section>
+
             {/* Task Types Section */}
             <TaskTypeSettings authHeaders={headers()} showToast={showToast} />
 
@@ -688,112 +789,116 @@ export function SettingsPage({
             </section>
 
             {/* Clear Data Confirmation Modal */}
-            {showClearModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
-                        <div className="flex items-center gap-3 mb-4 text-red-400">
-                            <span className="material-symbols-outlined text-3xl">warning</span>
-                            <h3 className="text-xl font-bold">确认清空规划？</h3>
-                        </div>
-
-                        <p className="text-slate-300 mb-6">
-                            此操作将<span className="text-red-400 font-bold">永久删除</span>您的所有任务、日程和时间块数据。此操作无法撤销！
-                        </p>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
-                                <input
-                                    type="email"
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
-                                    placeholder={profile?.email}
-                                    value={confirmEmail}
-                                    onChange={e => setConfirmEmail(e.target.value)}
-                                />
+            {
+                showClearModal && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
+                            <div className="flex items-center gap-3 mb-4 text-red-400">
+                                <span className="material-symbols-outlined text-3xl">warning</span>
+                                <h3 className="text-xl font-bold">确认清空规划？</h3>
                             </div>
-                            {clearMsg && (
-                                <p className={`text-sm ${clearMsg.includes('成功') ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {clearMsg}
-                                </p>
-                            )}
-                        </div>
 
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => {
-                                    setShowClearModal(false)
-                                    setConfirmEmail('')
-                                    setClearMsg('')
-                                }}
-                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleClearData}
-                                disabled={clearLoading || !confirmEmail}
-                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                                {clearLoading ? '执行中...' : '确认清空'}
-                            </button>
+                            <p className="text-slate-300 mb-6">
+                                此操作将<span className="text-red-400 font-bold">永久删除</span>您的所有任务、日程和时间块数据。此操作无法撤销！
+                            </p>
+
+                            <div className="space-y-4 mb-6">
+                                <div>
+                                    <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
+                                    <input
+                                        type="email"
+                                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
+                                        placeholder={profile?.email}
+                                        value={confirmEmail}
+                                        onChange={e => setConfirmEmail(e.target.value)}
+                                    />
+                                </div>
+                                {clearMsg && (
+                                    <p className={`text-sm ${clearMsg.includes('成功') ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {clearMsg}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        setShowClearModal(false)
+                                        setConfirmEmail('')
+                                        setClearMsg('')
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleClearData}
+                                    disabled={clearLoading || !confirmEmail}
+                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {clearLoading ? '执行中...' : '确认清空'}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Delete Account Confirmation Modal */}
-            {showDeleteModal && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
-                    <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
-                        <div className="flex items-center gap-3 mb-4 text-red-400">
-                            <span className="material-symbols-outlined text-3xl">no_accounts</span>
-                            <h3 className="text-xl font-bold">确认注销账户？</h3>
-                        </div>
-
-                        <p className="text-slate-300 mb-6">
-                            此操作将<span className="text-red-400 font-bold">永久删除</span>您的账户及所有数据。此操作<span className="text-red-400 font-bold">无法撤销</span>！
-                        </p>
-
-                        <div className="space-y-4 mb-6">
-                            <div>
-                                <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
-                                <input
-                                    type="email"
-                                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
-                                    placeholder={profile?.email}
-                                    value={deleteEmail}
-                                    onChange={e => setDeleteEmail(e.target.value)}
-                                />
+            {
+                showDeleteModal && (
+                    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-slate-800 rounded-2xl p-6 w-full max-w-md border border-red-500/30 shadow-2xl shadow-red-900/20">
+                            <div className="flex items-center gap-3 mb-4 text-red-400">
+                                <span className="material-symbols-outlined text-3xl">no_accounts</span>
+                                <h3 className="text-xl font-bold">确认注销账户？</h3>
                             </div>
-                            {deleteMsg && (
-                                <p className={`text-sm ${deleteMsg.includes('注销') ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {deleteMsg}
-                                </p>
-                            )}
-                        </div>
 
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => {
-                                    setShowDeleteModal(false)
-                                    setDeleteEmail('')
-                                    setDeleteMsg('')
-                                }}
-                                className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
-                            >
-                                取消
-                            </button>
-                            <button
-                                onClick={handleDeleteAccount}
-                                disabled={deleteLoading || !deleteEmail}
-                                className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                            >
-                                {deleteLoading ? '注销中...' : '确认注销'}
-                            </button>
+                            <p className="text-slate-300 mb-6">
+                                此操作将<span className="text-red-400 font-bold">永久删除</span>您的账户及所有数据。此操作<span className="text-red-400 font-bold">无法撤销</span>！
+                            </p>
+
+                            <div className="space-y-4 mb-6">
+                                <div>
+                                    <label className="block text-sm text-slate-400 mb-1">请输入您的邮箱以确认</label>
+                                    <input
+                                        type="email"
+                                        className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none"
+                                        placeholder={profile?.email}
+                                        value={deleteEmail}
+                                        onChange={e => setDeleteEmail(e.target.value)}
+                                    />
+                                </div>
+                                {deleteMsg && (
+                                    <p className={`text-sm ${deleteMsg.includes('注销') ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {deleteMsg}
+                                    </p>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => {
+                                        setShowDeleteModal(false)
+                                        setDeleteEmail('')
+                                        setDeleteMsg('')
+                                    }}
+                                    className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={handleDeleteAccount}
+                                    disabled={deleteLoading || !deleteEmail}
+                                    className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {deleteLoading ? '注销中...' : '确认注销'}
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     )
 }

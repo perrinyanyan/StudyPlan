@@ -22,7 +22,8 @@ export default defineConfig({
       '/admin': { target: 'http://localhost:3000', changeOrigin: true },
       '/plans': { target: 'http://localhost:3000', changeOrigin: true },
       '/upload': { target: 'http://localhost:3000', changeOrigin: true },
-      '/uploads': { target: 'http://localhost:3000', changeOrigin: true }
+      '/uploads': { target: 'http://localhost:3000', changeOrigin: true },
+      '/calendar': { target: 'http://localhost:3000', changeOrigin: true }
     }
   }
 })

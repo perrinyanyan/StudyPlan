@@ -73,6 +73,8 @@ app.use('/settings', settingsRouter);
 app.use('/admin', adminRouter);
 app.use('/upload', uploadRouter);
 app.use('/plans', plansRouter);
+import calendarRouter from './routes/calendar.js';
+app.use('/calendar', calendarRouter);
 
 if (process.env.NODE_ENV !== 'production') {
   app.get('/docs', (_req, res) => {
