@@ -50,7 +50,7 @@ router.get('/share/:token', async (req: Request, res: Response) => {
         .from('time_blocks')
         .select(`
       id, start_at, end_at, task_id,
-      tasks (title, content, status)
+      tasks (title, content, status, priority, tags)
     `)
         .eq('user_id', user.id)
         .gte('start_at', since.toISOString());
@@ -67,7 +67,19 @@ router.get('/share/:token', async (req: Request, res: Response) => {
             const title = b.tasks?.title || 'Unknown Task';
             const description = b.tasks?.content || '';
 
-            events.push({
+            // Map priority (2=high, 1=medium, 0=low) to ICS priority (1-4=high, 5=medium, 6-9=low)
+            // Our app: 1=high, 2=medium, 3=low
+            // ICS: 1=highest, 5=normal, 9=lowest
+            let icsPriority: number | undefined = undefined;
+            const taskPriority = b.tasks?.priority;
+            if (taskPriority === 2) icsPriority = 1; // High
+            else if (taskPriority === 1) icsPriority = 5; // Medium
+            else if (taskPriority === 0) icsPriority = 9; // Low
+
+            // Tags become categories
+            const tags: string[] = b.tasks?.tags || [];
+
+            const event: ics.EventAttributes = {
                 title,
                 description,
                 start,
@@ -75,8 +87,20 @@ router.get('/share/:token', async (req: Request, res: Response) => {
                 uid: `block-${b.id}@planner.app`,
                 status: 'CONFIRMED',
                 busyStatus: 'BUSY',
-                productId: 'MyPlannerApp' // Optional
-            });
+                productId: 'MyPlannerApp'
+            };
+
+            // Add priority if set
+            if (icsPriority !== undefined) {
+                (event as any).priority = icsPriority;
+            }
+
+            // Add categories (tags) if any
+            if (tags.length > 0) {
+                event.categories = tags;
+            }
+
+            events.push(event);
         });
     }
 
