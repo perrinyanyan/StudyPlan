@@ -708,11 +708,11 @@ export function SettingsPage({
                             <div className="space-y-3">
                                 <div className="flex items-center gap-2">
                                     <div className="flex-1 bg-black/30 p-3 rounded font-mono text-xs text-slate-400 break-all border border-slate-800">
-                                        {getApiUrl(`/calendar/share/${calendarToken}`).replace(/^http/, 'webcal')}
+                                        {getApiUrl(`/calendar/share/${calendarToken}`)}
                                     </div>
                                     <button
                                         onClick={() => {
-                                            const url = getApiUrl(`/calendar/share/${calendarToken}`).replace(/^http/, 'webcal')
+                                            const url = getApiUrl(`/calendar/share/${calendarToken}`)
                                             navigator.clipboard.writeText(url)
                                             showToast && showToast('已复制')
                                         }}
